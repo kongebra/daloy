@@ -533,8 +533,8 @@ test("deno-basic template ships a runtime-native scaffold", async () => {
   const denoJson = JSON.parse(await readFile(path.join(pkgRoot, "templates/deno-basic/deno.json"), "utf8"));
   assert.match(denoJson.tasks.dev, /^deno run.*--watch src\/main\.ts$/);
   assert.match(denoJson.tasks.test, /^deno test\b/);
-  assert.equal(denoJson.imports["@daloyjs/core"], "npm:@daloyjs/core@^0.7.5");
-  assert.equal(denoJson.imports["@daloyjs/core/"], "npm:@daloyjs/core@^0.7.5/");
+  assert.equal(denoJson.imports["@daloyjs/core"], "npm:@daloyjs/core@^0.8.0");
+  assert.equal(denoJson.imports["@daloyjs/core/"], "npm:@daloyjs/core@^0.8.0/");
 });
 
 test("--list-templates includes the new bun-basic and deno-basic options", async () => {

@@ -181,7 +181,7 @@ import { swaggerUiHtml, htmlResponse } from "@daloyjs/core/docs";
 ```
 
 Mount at `/docs` and the UI is always contract-accurate — never stale.
-`create-daloy@0.1.24` mounts Swagger UI at `/docs` and the live spec at `/openapi.json` by default.
+`create-daloy@0.2.0` mounts Swagger UI at `/docs` and the live spec at `/openapi.json` by default.
 
 ---
 
@@ -265,11 +265,17 @@ await app.ready();
 ## Multi-runtime
 
 ```ts
-import { serve } from "@daloyjs/core/node";          // Node
-import { serve } from "@daloyjs/core/bun";           // Bun
-import { serve } from "@daloyjs/core/deno";          // Deno
+import { serve } from "@daloyjs/core/node";              // Node (Heroku, Railway, Render, Fly.io, any PaaS)
+import { serve } from "@daloyjs/core/bun";               // Bun
+import { serve } from "@daloyjs/core/deno";              // Deno
 import { toFetchHandler } from "@daloyjs/core/cloudflare"; // Cloudflare Workers
-import { toEdgeHandler }  from "@daloyjs/core/vercel";     // Vercel Edge / Next.js
+import {
+  toFetchHandler as toVercelFetchHandler,
+  toRouteHandlers,
+  toWebHandler,
+} from "@daloyjs/core/vercel"; // Vercel Node / Edge / Next.js / Netlify Edge
+import { installFastlyListener } from "@daloyjs/core/fastly";    // Fastly Compute
+import { toLambdaHandler }      from "@daloyjs/core/lambda";     // AWS Lambda / Netlify Functions / Lambda Function URLs
 ```
 
 The core only ever sees `Request → Response`. Adapters live at the edge.
@@ -295,7 +301,7 @@ DaloyJS is in **public preview** (`0.x`). The public API may still change betwee
 What works today, at a glance:
 
 - Contract-first routing, Standard Schema validation (Zod 4 / Valibot / ArkType / TypeBox), and OpenAPI 3.1 from a single source of truth.
-- Adapters for Node, Bun, Deno, Cloudflare Workers, and Vercel Edge.
+- Adapters for Node (Heroku/Railway/Render/Fly.io), Bun, Deno, Cloudflare Workers, Vercel Node / Edge / Next.js / Netlify Edge, Fastly Compute, and AWS Lambda / Netlify Functions / Lambda Function URLs.
 - Built-in security primitives (body limits, prototype-pollution-safe JSON, path-traversal guard, request timeouts, header injection guards) plus first-party middleware (`secureHeaders`, `cors`, `rateLimit`, `requestId`, `bearerAuth`, `csrf`, `session`, `timing` / `timingSafeEqual`).
 - Streaming helpers (SSE + NDJSON), multipart ergonomics, OpenTelemetry-compatible tracing, signed-cookie sessions with pluggable stores, and a Redis-backed rate-limit store at `@daloyjs/core/rate-limit-redis`.
 - In-process test client (`app.request()`), contract-test runner, in-process typed client, and Hey API codegen via `pnpm gen`.

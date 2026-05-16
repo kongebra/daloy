@@ -25,7 +25,7 @@ const TEMPLATE_OPTIONS = [
   {
     value: "vercel-edge",
     title: "Vercel Edge",
-    description: "Catch-all Edge API route using @daloyjs/core/vercel",
+    description: "Catch-all Vercel Edge route with Node.js migration notes",
   },
   {
     value: "cloudflare-worker",

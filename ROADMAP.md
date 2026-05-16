@@ -21,7 +21,7 @@ last at least one minor cycle before removal.
 
 ## Now — `0.1.x` (shipped)
 
-Published to npm as **`@daloyjs/core@0.7.5`**. The `0.1.x` foundation below is fully shipped; confidence/lifecycle cleanup shipped in the `0.2.x` line, the streaming/helper + OpenAPI extras work shipped in the `0.3.x` line, input ergonomics shipped in the `0.4.x` line, the first project-ops slice shipped in the `0.5.x` line, plugin lifecycle events shipped in the `0.6.x` line, and edge-friendly sessions shipped in the `0.7.x` line.
+Published to npm as **`@daloyjs/core@0.8.0`**. The `0.1.x` foundation below is fully shipped; confidence/lifecycle cleanup shipped in the `0.2.x` line, the streaming/helper + OpenAPI extras work shipped in the `0.3.x` line, input ergonomics shipped in the `0.4.x` line, the first project-ops slice shipped in the `0.5.x` line, plugin lifecycle events shipped in the `0.6.x` line, edge-friendly sessions shipped in the `0.7.x` line, and adapter/runtime modernization shipped in the `0.8.x` line.
 
 - [x] Trie router with static fast path, traversal guard, real `405 + Allow`.
 - [x] Contract-first `app.route()`, groups, encapsulated plugins, decorators.

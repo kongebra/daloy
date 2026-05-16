@@ -148,7 +148,7 @@ export default function HomePage() {
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
                 <span className="relative inline-flex size-1.5 rounded-full bg-emerald-500" />
               </span>
-              @daloyjs/core 0.7.5 · public preview
+              @daloyjs/core 0.8.0 · public preview
             </Badge>
             <h1
               className="max-w-4xl text-4xl font-bold tracking-tight leading-tight sm:text-5xl lg:text-6xl float-up"

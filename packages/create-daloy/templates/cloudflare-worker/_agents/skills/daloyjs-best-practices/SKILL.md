@@ -23,9 +23,8 @@ Do **not** use this skill for tasks unrelated to the API itself.
 DaloyJS is a **contract-first** framework. On Workers, additionally:
 
 1. **Stay on the Workers runtime.** Only Web Standards APIs and
-   Cloudflare-specific bindings. No `node:` modules unless
-   `nodejs_compat` is enabled in `wrangler.toml` and the user explicitly
-   opts in.
+  Cloudflare-specific bindings. No `node:` modules unless the user
+  explicitly adds `nodejs_compat` to `wrangler.toml` and opts in.
 2. **The route definition is the contract.** Method, path, request
    schemas, and response schemas live in one place (`app.route({...})`).
 3. **Zod schemas validate at every boundary.**
@@ -40,8 +39,8 @@ DaloyJS is a **contract-first** framework. On Workers, additionally:
 ## Project shape
 
 - `src/index.ts` — the Worker entrypoint. Builds the `App`, registers
-  routes/middleware, and exports `default { fetch: toFetchHandler(app) }`
-  from `@daloyjs/core/cloudflare`.
+  routes/middleware, and exports `default toFetchHandler(app)` from
+  `@daloyjs/core/cloudflare`. Do not wrap the result in another `{ fetch }`.
 - `wrangler.toml` — Worker config (name, compatibility date, bindings,
   routes).
 - `tests/` — test files using Workers-compatible test runners (e.g.
@@ -115,7 +114,7 @@ function buildApp(env: Env) {
 
 export default {
   fetch: (req: Request, env: Env, ctx: ExecutionContext) =>
-    toFetchHandler(buildApp(env))(req, env, ctx),
+    toFetchHandler<Env>(buildApp(env)).fetch(req, env, ctx),
 };
 ```
 

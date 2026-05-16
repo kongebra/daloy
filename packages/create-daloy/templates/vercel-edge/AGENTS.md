@@ -15,7 +15,7 @@ A [DaloyJS](https://daloyjs.dev) REST API deployed to **Vercel Edge**. **Contrac
 
 ## Project shape
 
-- `api/[...path].ts` — Edge entrypoint. Builds the `App`, registers routes/middleware, and exports `default toEdgeHandler(app)` plus `export const config = { runtime: "edge" }`. **Keep it a catch-all** so DaloyJS owns routing.
+- `api/[...path].ts` — Vercel Edge entrypoint. Builds the `App`, registers routes/middleware, and exports `default toWebHandler(app)` plus `export const config = { runtime: "edge" }`. **Keep it a catch-all** so DaloyJS owns routing. For Vercel's recommended Node.js runtime, remove the Edge config and export `default toFetchHandler(app)` from `@daloyjs/core/vercel`.
 - `vercel.json` — Vercel build/runtime configuration.
 - `tests/` — test files.
 

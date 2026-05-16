@@ -1,12 +1,32 @@
 /**
  * Cloudflare Workers / generic fetch handler adapter.
  *
- * Usage:
+ * Cloudflare Workers expect the module's default export to expose a `fetch`
+ * property whose value is the `(request, env, ctx) => Response` function.
+ * `toFetchHandler` returns that exact shape, so the recommended usage is:
+ *
+ *   import { toFetchHandler } from "@daloyjs/core/cloudflare";
+ *   import { app } from "./server.js";
  *   export default toFetchHandler(app);
+ *
+ * Do NOT wrap the result again (e.g. `export default { fetch: toFetchHandler(app) }`),
+ * that nests the object and breaks the Workers runtime.
+ *
+ * The generic accepts the Worker's `Env` type when you want stronger typing
+ * against bindings, e.g. `toFetchHandler<MyEnv>(app)`.
  */
 import type { App } from "../app.js";
 
-export function toFetchHandler(app: App): { fetch: (req: Request, env?: unknown, ctx?: unknown) => Promise<Response> } {
+export interface ExportedFetchHandler<Env = unknown> {
+  fetch: (request: Request, env?: Env, ctx?: ExecutionContextLike) => Promise<Response>;
+}
+
+interface ExecutionContextLike {
+  waitUntil?: (promise: Promise<unknown>) => void;
+  passThroughOnException?: () => void;
+}
+
+export function toFetchHandler<Env = unknown>(app: App): ExportedFetchHandler<Env> {
   return {
     fetch: (req) => app.fetch(req),
   };

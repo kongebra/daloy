@@ -15,7 +15,7 @@ A [DaloyJS](https://daloyjs.dev) REST API deployed to **Cloudflare Workers**. **
 
 ## Project shape
 
-- `src/index.ts` — Worker entrypoint. Builds the `App`, registers routes/middleware, and exports `default { fetch: toFetchHandler(app) }` from `@daloyjs/core/cloudflare`.
+- `src/index.ts` — Worker entrypoint. Builds the `App`, registers routes/middleware, and exports `default toFetchHandler(app)` from `@daloyjs/core/cloudflare`. Do NOT wrap the result in another `{ fetch }` object — `toFetchHandler` already returns the shape Workers expect.
 - `wrangler.toml` — Worker configuration (name, compatibility date, bindings, routes).
 - `tests/` — test files.
 
@@ -26,7 +26,7 @@ A [DaloyJS](https://daloyjs.dev) REST API deployed to **Cloudflare Workers**. **
 3. Preserve literal types in responses: `status: 200 as const`, `z.literal(...)` on discriminator fields.
 4. Throw typed errors (`NotFoundError`, `BadRequestError`, etc.) from `@daloyjs/core`.
 5. Keep `requestId()`, `secureHeaders()`, and `rateLimit()` enabled. For high-traffic routes, attach Cloudflare's native rate-limit binding (the in-memory limiter resets per isolate).
-6. Stay on the Workers runtime: only Web Standards APIs + Cloudflare bindings. No `node:` modules unless `nodejs_compat` is enabled and required.
+6. Stay on the Workers runtime: only Web Standards APIs + Cloudflare bindings. No `node:` modules unless you explicitly add `nodejs_compat` and require it.
 7. Bindings flow through `env`. Read KV/D1/R2/secrets from the `env` argument; never read them via globals.
 8. Long-running work belongs in `ctx.waitUntil(...)`, not blocking the response.
 9. Every new route ships with a test that covers a happy path and at least one unhappy path.

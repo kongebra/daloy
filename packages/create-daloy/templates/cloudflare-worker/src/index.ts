@@ -35,4 +35,4 @@ app.route({
 });
 // daloy-minimal:strip-end books
 
-export default { fetch: toFetchHandler(app) };
+export default toFetchHandler(app);

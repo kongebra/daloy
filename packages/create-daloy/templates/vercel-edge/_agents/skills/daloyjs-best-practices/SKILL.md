@@ -39,7 +39,7 @@ DaloyJS is a **contract-first** framework. On Vercel Edge, additionally:
 ## Project shape
 
 - `api/[...path].ts` — the Edge entrypoint. Builds the `App`, registers
-  routes/middleware, and exports `default toEdgeHandler(app)` plus
+  routes/middleware, and exports `default toWebHandler(app)` plus
   `export const config = { runtime: "edge" }`.
 - `vercel.json` — Vercel build/runtime configuration.
 - `tests/` — test files (`*.test.ts`).
@@ -179,8 +179,9 @@ Aim for **100% line and function coverage** on the routes you add.
   handles routing. Do not split routes into multiple Vercel API files
   unless the user explicitly asks (it disables shared middleware and a
   unified OpenAPI).
-- Use `toEdgeHandler(app)` from `@daloyjs/core/vercel` — never hand-roll
-  a `fetch(req)` adapter.
+- Use `toWebHandler(app)` from `@daloyjs/core/vercel` for Edge — never
+  hand-roll a `fetch(req)` adapter. For Vercel's recommended Node.js
+  runtime, remove the Edge config and export `default toFetchHandler(app)`.
 - Do not import `@daloyjs/core/node`, `@daloyjs/core/bun`, etc. — only
   `@daloyjs/core` and `@daloyjs/core/vercel`.
 - Avoid Node-only APIs (`Buffer`, `fs`, full `process` API). If a

@@ -37,10 +37,21 @@ The API entry lives at `api/[...path].ts` and uses `@daloyjs/core/vercel`:
 
 ```ts
 export const config = { runtime: "edge" };
-export default toEdgeHandler(app);
+export default toWebHandler(app);
 ```
 
-That catch-all API route lets DaloyJS own routing while Vercel handles the Edge runtime.
+This starter defaults to Vercel's Edge runtime for compatibility with the
+`vercel-edge` template name. Vercel now recommends Node.js for new projects;
+for Node.js Functions, remove the `config` export and use the official default
+`{ fetch }` shape instead:
+
+```ts
+import { toFetchHandler } from "@daloyjs/core/vercel";
+
+export default toFetchHandler(app);
+```
+
+That catch-all API route lets DaloyJS own routing while Vercel handles the runtime.
 
 ## What's included
 

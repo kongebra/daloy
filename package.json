@@ -1,6 +1,6 @@
 {
   "name": "@daloyjs/core",
-  "version": "0.7.5",
+  "version": "0.8.0",
   "description": "DaloyJS is a runtime-portable, contract-first TypeScript web framework with built-in OpenAPI (Hey API), typed client generation, large-scale maintainability, and security-first defaults. Hono-grade portability, Elysia-grade DX, FastAPI-grade docs, Fastify-grade ops — distributed via pnpm.",
   "type": "module",
   "publishConfig": {
@@ -64,6 +64,14 @@
     "./vercel": {
       "types": "./dist/adapters/vercel.d.ts",
       "import": "./dist/adapters/vercel.js"
+    },
+    "./fastly": {
+      "types": "./dist/adapters/fastly.d.ts",
+      "import": "./dist/adapters/fastly.js"
+    },
+    "./lambda": {
+      "types": "./dist/adapters/lambda.d.ts",
+      "import": "./dist/adapters/lambda.js"
     },
     "./client": {
       "types": "./dist/client.d.ts",

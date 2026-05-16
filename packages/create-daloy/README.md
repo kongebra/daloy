@@ -83,6 +83,7 @@ A Vercel Edge API bootstrap using `@daloyjs/core/vercel` with:
 
 - `api/[...path].ts` catch-all routing so DaloyJS owns the API surface.
 - `export const config = { runtime: "edge" }` ready for Vercel Edge.
+- Node.js migration notes using Vercel's default `{ fetch }` export shape.
 - `vercel dev` / `vercel deploy` scripts.
 - `secureHeaders` and `requestId` enabled by default, with smaller edge-friendly body and timeout limits.
 - A health route and bookstore route mirroring the Node starter.

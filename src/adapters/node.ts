@@ -18,6 +18,13 @@ export interface NodeServerOptions {
   handleSignals?: boolean;
   /** Maximum HTTP header size bytes (DoS protection). Default: 16 KiB. */
   maxHeaderBytes?: number;
+  /**
+   * When true, honor `x-forwarded-proto` and `x-forwarded-host` headers when
+   * constructing the request URL. Enable this only when running behind a
+   * trusted reverse proxy (e.g. a TLS-terminating load balancer); otherwise
+   * clients can spoof the scheme/host. Default: false.
+   */
+  trustProxy?: boolean;
 }
 
 export interface NodeServerHandle {
@@ -27,9 +34,10 @@ export interface NodeServerHandle {
 }
 
 export function serve(app: App, opts: NodeServerOptions = {}): NodeServerHandle {
+  const trustProxy = opts.trustProxy === true;
   const server = createServer({ maxHeaderSize: opts.maxHeaderBytes ?? 16 * 1024 }, async (req, res) => {
     try {
-      const request = await toWebRequest(req);
+      const request = await toWebRequest(req, trustProxy);
       const response = await app.fetch(request);
       await sendWebResponse(response, res);
     } catch (e) {
@@ -79,9 +87,12 @@ export function serve(app: App, opts: NodeServerOptions = {}): NodeServerHandle 
   return { server, port, close };
 }
 
-async function toWebRequest(req: IncomingMessage): Promise<Request> {
-  const host = req.headers.host ?? "localhost";
-  const url = `http://${host}${req.url ?? "/"}`;
+async function toWebRequest(req: IncomingMessage, trustProxy: boolean): Promise<Request> {
+  const forwardedHost = trustProxy ? firstHeader(req.headers["x-forwarded-host"]) : undefined;
+  const host = forwardedHost ?? req.headers.host ?? "localhost";
+  const forwardedProto = trustProxy ? firstHeader(req.headers["x-forwarded-proto"]) : undefined;
+  const proto = forwardedProto ?? ((req.socket as { encrypted?: boolean }).encrypted ? "https" : "http");
+  const url = `${proto}://${host}${req.url ?? "/"}`;
   const headers = new Headers();
   for (const [k, v] of Object.entries(req.headers)) {
     if (v === undefined) continue;
@@ -95,6 +106,14 @@ async function toWebRequest(req: IncomingMessage): Promise<Request> {
     (init as any).duplex = "half";
   }
   return new Request(url, init);
+}
+
+function firstHeader(v: string | string[] | undefined): string | undefined {
+  if (v === undefined) return undefined;
+  const raw = Array.isArray(v) ? v[0] : v;
+  if (raw === undefined) return undefined;
+  const comma = raw.indexOf(",");
+  return (comma === -1 ? raw : raw.slice(0, comma)).trim() || undefined;
 }
 
 async function sendWebResponse(res: Response, out: ServerResponse): Promise<void> {

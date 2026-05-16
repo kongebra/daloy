@@ -1,11 +1,14 @@
 import { z } from "zod";
 import { App, NotFoundError, requestId, secureHeaders } from "@daloyjs/core";
-import { toEdgeHandler } from "@daloyjs/core/vercel";
+import { toWebHandler } from "@daloyjs/core/vercel";
 // daloy-minimal:strip-start docs
 import { generateOpenAPI } from "@daloyjs/core/openapi";
 import { htmlResponse, swaggerUiHtml } from "@daloyjs/core/docs";
 // daloy-minimal:strip-end docs
 
+// This template defaults to Vercel's Edge runtime for compatibility with the
+// existing `vercel-edge` starter. For Vercel's recommended Node.js runtime,
+// remove this config and export `toFetchHandler(app)` from @daloyjs/core/vercel.
 export const config = { runtime: "edge" };
 
 const app = new App({
@@ -95,4 +98,4 @@ app.route({
 });
 // daloy-minimal:strip-end docs
 
-export default toEdgeHandler(app);
+export default toWebHandler(app);
