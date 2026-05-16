@@ -248,13 +248,15 @@ function renderBox(lines, options = {}) {
   return out.join("\n");
 }
 
-// Block-letter "DALOY" banner with a left-to-right cyan→magenta gradient when
-// the terminal supports truecolor. Falls back to a single bold-cyan line on
-// non-truecolor TTYs and to plain text in dumb terminals. The shape is built
-// from half-block characters so it stays compact (2 lines tall).
+// Block-letter "DALOYJS" banner rendered with a left-to-right golden
+// gradient (dark goldenrod → bright gold) on truecolor terminals. Falls back
+// to a single bold-yellow line on 256-color TTYs and to plain text in dumb
+// terminals. The shape is built from half-block characters so it stays
+// compact (2 lines tall) and each glyph is 3 columns wide with a single
+// space between letters, keeping the top and bottom rows perfectly aligned.
 const LOGO_LINES = [
-  " \u2588\u2580\u2584    \u2584\u2580\u2588    \u2588      \u2588\u2580\u2588   \u2588   \u2588 ",
-  " \u2588\u2584\u2580    \u2588\u2580\u2588    \u2588\u2584\u2584   \u2588\u2584\u2588    \u2580\u2584\u2580 ",
+  " \u2588\u2580\u2584 \u2584\u2580\u2588 \u2588   \u2588\u2580\u2588 \u2588 \u2588   \u2588 \u2584\u2580\u2580 ",
+  " \u2588\u2584\u2580 \u2588\u2580\u2588 \u2588\u2584\u2584 \u2588\u2584\u2588  \u2588  \u2584\u2584\u2588 \u2584\u2584\u2580 ",
 ];
 
 function gradientLine(line, startRgb, endRgb) {
@@ -274,23 +276,25 @@ function gradientLine(line, startRgb, endRgb) {
 
 function printBanner(version) {
   if (!SUPPORTS_UNICODE) {
-    console.log(`\n${color(COLORS.bold, "create-daloy")}  ${color(COLORS.dim, `v${version}`)}`);
+    console.log(`\n${color(COLORS.bold + COLORS.yellow, "create-daloy")}  ${color(COLORS.dim, `v${version}`)}`);
     console.log(color(COLORS.dim, "Contract-first REST APIs for Node, Bun, Deno, Vercel Edge, and Workers"));
     console.log(color(COLORS.dim, "https://daloyjs.dev\n"));
     return;
   }
-  const start = [56, 189, 248]; // sky-400
-  const end = [217, 70, 239]; // fuchsia-500
+  // Golden gradient: DarkGoldenrod → Gold. Evokes the DaloyJS "flow of gold"
+  // brand and stays legible on both light and dark terminal backgrounds.
+  const start = [184, 134, 11]; // DarkGoldenrod
+  const end = [255, 215, 0]; // Gold
   console.log("");
   for (const line of LOGO_LINES) {
     console.log(` ${gradientLine(line, start, end)}`);
   }
   // Build the welcome content lines (each contains its own ANSI color codes).
-  const headline = `${color(COLORS.bold, "Welcome to DaloyJS")}  ${color(COLORS.gray, `\u2014 v${version}`)}`;
+  const headline = `${color(COLORS.bold + COLORS.yellow, "Welcome to DaloyJS")}  ${color(COLORS.gray, `\u2014 v${version}`)}`;
   const subline = color(COLORS.dim, "Contract-first REST APIs for Node, Bun, Deno, Vercel Edge, and Workers.");
   const docs = `${color(COLORS.gray, "docs:")} ${color(COLORS.cyan, "https://daloyjs.dev/docs")}`;
   console.log("");
-  console.log(renderBox([headline, subline, "", docs]));
+  console.log(renderBox([headline, subline, "", docs], { accent: COLORS.yellow }));
   console.log("");
 }
 
