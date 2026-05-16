@@ -33,7 +33,7 @@ export default function Page() {
 
       <h2>1. Install</h2>
       <CodeBlock
-        code={`pnpm add @prisma/client
+        code={`pnpm add @prisma/client @prisma/adapter-pg dotenv
 pnpm add -D prisma
 pnpm prisma init --datasource-provider postgresql`}
       />
@@ -43,11 +43,11 @@ pnpm prisma init --datasource-provider postgresql`}
         code={`// prisma/schema.prisma
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
 }
 
 model User {
@@ -56,7 +56,33 @@ model User {
   name  String?
 }`}
       />
-      <CodeBlock code={`pnpm prisma migrate dev --name init`} />
+      <CodeBlock
+        code={`// prisma.config.ts
+import "dotenv/config";
+import { defineConfig, env } from "prisma/config";
+
+export default defineConfig({
+  schema: "prisma/schema.prisma",
+  migrations: { path: "prisma/migrations" },
+  datasource: {
+    url: env("DATABASE_URL"),
+  },
+});`}
+      />
+      <p>
+        Prisma&apos;s current{" "}
+        <a
+          href="https://www.prisma.io/docs/orm/prisma-schema/overview/generators#prisma-client"
+          target="_blank"
+          rel="noreferrer"
+        >
+          <code>prisma-client</code>
+        </a>{" "}
+        generator writes the client to the configured output path. Connection URLs live in{" "}
+        <code>prisma.config.ts</code>, and application code imports <code>PrismaClient</code> from the generated path instead of <code>@prisma/client</code>.
+      </p>
+      <CodeBlock code={`pnpm prisma migrate dev --name init
+pnpm prisma generate`} />
 
       <h2>3. Create a Prisma plugin</h2>
       <p>
@@ -64,10 +90,13 @@ model User {
       </p>
       <CodeBlock
         code={`// src/db/prisma.ts
-import { PrismaClient } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "../generated/prisma/client";
 import type { App } from "@daloyjs/core";
 
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
 export const prisma = new PrismaClient({
+  adapter,
   log: process.env.NODE_ENV === "production" ? ["error"] : ["query", "error"],
 });
 
@@ -86,7 +115,7 @@ export const prismaPlugin = {
       <h2>4. Augment app state types</h2>
       <CodeBlock
         code={`// src/types/state.d.ts
-import type { PrismaClient } from "@prisma/client";
+import type { PrismaClient } from "../generated/prisma/client";
 
 declare module "@daloyjs/core" {
   interface AppState {
@@ -168,7 +197,7 @@ serve(app, { port: 3000 });`}
 
       <h2>Edge runtimes</h2>
       <p>
-        For Cloudflare Workers and Vercel Edge, use the appropriate{" "}
+        For Cloudflare Workers and Vercel Edge, set the generated client runtime for your target and use the appropriate{" "}
         <a
           href="https://www.prisma.io/docs/orm/overview/databases/database-drivers"
           target="_blank"
@@ -176,19 +205,27 @@ serve(app, { port: 3000 });`}
         >
           Prisma Driver Adapter
         </a>{" "}
-        (Neon, PlanetScale, D1, etc.) instead of the default Node binary engine.
+        (Neon, PlanetScale, D1, etc.).
       </p>
       <CodeBlock
-        code={`import { PrismaClient } from "@prisma/client";
+        code={`// prisma/schema.prisma
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+  runtime  = "vercel-edge" // use "workerd" for Cloudflare Workers
+}
+
+// src/db/prisma-edge.ts
+import { PrismaClient } from "../generated/prisma/client";
 import { PrismaNeon } from "@prisma/adapter-neon";
 
-    const adapter = new PrismaNeon({ connectionString: env.DATABASE_URL });
+const adapter = new PrismaNeon({ connectionString: env.DATABASE_URL });
 export const prisma = new PrismaClient({ adapter });`}
       />
 
       <h2>Mapping errors to problem+json</h2>
       <CodeBlock
-        code={`import { Prisma } from "@prisma/client";
+        code={`import { Prisma } from "../generated/prisma/client";
 import { HttpError } from "@daloyjs/core";
 
 try {
