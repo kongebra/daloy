@@ -111,6 +111,38 @@ export interface OpenAPIOptions {
   webhooks?: Record<string, WebhookDefinition | WebhookDefinition[]>;
 }
 
+/**
+ * Generate an OpenAPI 3.1 document from a registered {@link App}.
+ *
+ * The output is a plain JSON-serializable object — hand it to Swagger UI,
+ * write it to disk for client SDK generation (`@hey-api/openapi-ts`), or
+ * serve it from a route. Every route registered on `app` becomes one
+ * Operation Object; request/response schemas, callbacks, and the
+ * `securitySchemes` you pass are stitched into the standard slots.
+ *
+ * Schemas implementing Standard Schema with an optional `toJSONSchema()`
+ * method (Zod 4, Valibot, ArkType, ...) are converted to JSON Schema
+ * automatically; otherwise a permissive `{}` is emitted.
+ *
+ * @example
+ * ```ts
+ * import { httpBearerScheme } from "@daloyjs/core";
+ * import { generateOpenAPI } from "@daloyjs/core/openapi";
+ * import { writeFileSync } from "node:fs";
+ *
+ * const doc = generateOpenAPI(app, {
+ *   info: { title: "Books API", version: "1.0.0" },
+ *   servers: [{ url: "https://api.example.com" }],
+ *   securitySchemes: { bearerAuth: httpBearerScheme({ bearerFormat: "JWT" }) },
+ * });
+ * writeFileSync("./generated/openapi.json", JSON.stringify(doc, null, 2));
+ * ```
+ *
+ * @param app - The application whose routes are documented.
+ * @param options - Document metadata, servers, security schemes, and webhooks.
+ * @returns A JSON-serializable OpenAPI 3.1 document.
+ * @since 0.1.0
+ */
 export function generateOpenAPI(app: App, options: OpenAPIOptions): Record<string, unknown> {
   const paths: Record<string, Record<string, unknown>> = {};
 

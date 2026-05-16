@@ -49,6 +49,33 @@ export interface ClientOptions {
   headers?: Record<string, string>;
 }
 
+/**
+ * Build a typed, in-process fetch client whose methods are keyed by
+ * `operationId`. Parameters and response types are inferred from the same
+ * route definitions registered on `app`, so the client and server cannot
+ * drift apart at the type level.
+ *
+ * The returned object is a plain `Record<operationId, (input) => Promise<...>>`
+ * — each call serializes `params`/`query`/`headers`/`body` and dispatches
+ * through `opts.fetch` (default: global `fetch`).
+ *
+ * For non-TypeScript consumers, run `pnpm gen` to emit a fully-typed SDK
+ * from the OpenAPI document instead.
+ *
+ * @example
+ * ```ts
+ * import { createClient } from "@daloyjs/core/client";
+ *
+ * const client = createClient(app, { baseUrl: "https://api.example.com" });
+ * const res = await client.getBook({ params: { id: "123" } });
+ * if (res.status === 200) console.log(res.body.title);
+ * ```
+ *
+ * @param app - The `App` instance whose routes drive the client surface.
+ * @param opts - `baseUrl`, optional custom `fetch`, and default `headers`.
+ * @returns A typed client object keyed by `operationId`.
+ * @since 0.1.0
+ */
 export function createClient<A extends App>(app: A, opts: ClientOptions): ClientFor<A> {
   const f = opts.fetch ?? fetch;
   const out: Record<string, unknown> = {};

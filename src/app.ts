@@ -23,6 +23,12 @@ import type {
   RouteDefinition,
 } from "./types.js";
 
+/**
+ * Configuration accepted by {@link App}'s constructor. Every field is
+ * optional; sensible production defaults are applied.
+ *
+ * @since 0.1.0
+ */
 export interface AppOptions {
   /** OpenAPI document metadata */
   title?: string;
@@ -87,6 +93,13 @@ export interface ShutdownEvent {
   timeoutMs: number;
 }
 
+/**
+ * Lightweight introspection record produced by {@link App.introspect}. Useful
+ * for tooling (dead-route checks, custom dashboards) that needs to enumerate
+ * the registered surface without parsing the OpenAPI document.
+ *
+ * @since 0.1.0
+ */
 export interface IntrospectedRoute {
   method: HttpMethod;
   path: string;
@@ -114,6 +127,55 @@ const DEFAULTS = {
   validateResponses: true,
 };
 
+/**
+ * Contract-first HTTP application.
+ *
+ * `App` is the top-level entry point: register {@link RouteDefinition routes}
+ * with {@link App.route}, layer cross-cutting behavior with
+ * {@link App.use}/{@link App.register}, then expose the application to a
+ * runtime via {@link App.fetch} (Web standard) or one of the adapter subpaths
+ * such as `@daloyjs/core/node`, `@daloyjs/core/cloudflare`, or
+ * `@daloyjs/core/lambda`.
+ *
+ * The same `App` instance powers:
+ *
+ *  - request routing (`Router` under the hood)
+ *  - request/response validation against Standard-Schema validators
+ *  - OpenAPI 3.1 generation (`generateOpenAPI(app)`)
+ *  - typed in-process client (`createClient(app)`) and generated SDK
+ *  - graceful shutdown and lifecycle observability
+ *
+ * `App` is **runtime-agnostic**: the same instance runs on Node, Bun, Deno,
+ * Cloudflare Workers, Vercel Edge, AWS Lambda, and Fastly Compute via the
+ * dedicated adapters.
+ *
+ * @example
+ * ```ts
+ * import { App, secureHeaders } from "@daloyjs/core";
+ * import { z } from "zod";
+ *
+ * const app = new App({ title: "Books API", version: "1.0.0" });
+ *
+ * app.use(secureHeaders());
+ *
+ * app.route({
+ *   method: "GET",
+ *   path: "/books/:id",
+ *   operationId: "getBook",
+ *   request: { params: z.object({ id: z.uuid() }) },
+ *   responses: {
+ *     200: { description: "OK", body: z.object({ id: z.string(), title: z.string() }) },
+ *   },
+ *   handler: ({ params }) => ({ status: 200, body: { id: params.id, title: "Dune" } }),
+ * });
+ *
+ * // Node:
+ * import { serve } from "@daloyjs/core/node";
+ * serve(app, { port: 3000 });
+ * ```
+ *
+ * @since 0.1.0
+ */
 export class App {
   readonly options: Required<Pick<AppOptions, "validateResponses" | "bodyLimitBytes" | "requestTimeoutMs">> &
     AppOptions;
@@ -156,6 +218,30 @@ export class App {
 
   // ---------- registration ----------
 
+  /**
+   * Register a single route on the application.
+   *
+   * The supplied {@link RouteDefinition} is the **single source of truth**
+   * for that endpoint — routing, request/response validation, OpenAPI
+   * documentation, and the typed client SDK all derive from this one call.
+   * Generic parameters are inferred from `path`, `method`, `request`, and
+   * `responses`; you should rarely need to specify them explicitly.
+   *
+   * @example
+   * ```ts
+   * app.route({
+   *   method: "POST",
+   *   path: "/books",
+   *   operationId: "createBook",
+   *   request: { body: z.object({ title: z.string().min(1) }) },
+   *   responses: { 201: { description: "Created" } },
+   *   handler: ({ body }) => ({ status: 201, body: { id: "1", title: body.title } }),
+   * });
+   * ```
+   *
+   * @param def - The route definition.
+   * @returns This `App` instance for chaining.
+   */
   route<
     P extends PathString,
     M extends HttpMethod,
@@ -175,7 +261,31 @@ export class App {
     return this;
   }
 
-  /** Group routes under a path prefix with shared tags/hooks/auth (encapsulated). */
+  /**
+   * Mount a group of routes under a shared prefix with shared tags, hooks,
+   * and authentication.
+   *
+   * The `register` callback receives an encapsulated child `App` whose
+   * `route()` calls inherit the prefix and group config. Hooks and tags are
+   * **merged** with any further `app.use(...)` / route-level entries.
+   *
+   * @example
+  * ```ts
+  * app.group("/admin", { tags: ["admin"] }, (admin) => {
+  *   admin.route({
+  *     method: "GET",
+  *     path: "/users",
+  *     responses: { 200: { description: "OK" } },
+  *     handler: () => ({ status: 200, body: [] }),
+  *   });
+   * });
+   * ```
+   *
+   * @param prefix - Path prefix prepended to every route registered in `register`.
+   * @param config - Shared metadata: tags, hooks, and auth requirement.
+   * @param register - Callback that registers the grouped routes on the child app.
+   * @returns This `App` instance for chaining.
+   */
   group(
     prefix: PathString,
     config: { tags?: string[]; hooks?: Hooks; auth?: RouteDefinition["auth"] },
@@ -199,19 +309,68 @@ export class App {
     return this;
   }
 
-  /** Attach a hook layer to all subsequently-registered routes. */
+  /**
+   * Attach a hook layer that applies to every route registered **afterwards**.
+   *
+   * Use this for cross-cutting middleware (CORS, secure headers, auth
+   * bouncers). Hooks compose pipeline-style — see {@link Hooks} for ordering.
+   *
+   * @example
+   * ```ts
+   * import { secureHeaders, cors } from "@daloyjs/core";
+   *
+   * app.use(secureHeaders());
+   * app.use(cors({ origin: "https://app.example.com", credentials: true }));
+   * ```
+   *
+   * @param hooks - Hook bundle applied to subsequent routes.
+   * @returns This `App` instance for chaining.
+   */
   use(hooks: Hooks): this {
     this.groupHooks.push(hooks);
     return this;
   }
 
-  /** Decorate ctx.state with values available in every handler. */
+  /**
+   * Decorate `ctx.state` with a value available inside every handler and hook.
+   *
+   * Augment the {@link AppState} interface to type the decoration globally:
+   *
+   * ```ts
+   * declare module "@daloyjs/core" {
+   *   interface AppState { db: Database }
+   * }
+   *
+   * app.decorate("db", db);
+   *
+   * app.route({
+   *   method: "GET",
+   *   path: "/health",
+   *   responses: { 200: { description: "OK" } },
+   *   handler: ({ state }) => ({ status: 200, body: state.db.ping() }),
+   * });
+   * ```
+   *
+   * @param key - Property name on `ctx.state`.
+   * @param value - Value bound to that property on every request.
+   * @returns This `App` instance for chaining.
+   */
   decorate<K extends string, V>(key: K, value: V): this {
     this.decorations[key] = value;
     return this;
   }
 
-  /** Register cleanup to run once during graceful shutdown. */
+  /**
+   * Register a callback to run once during graceful shutdown, **after** all
+   * in-flight requests have drained. Use this to close database pools, flush
+   * metrics, or release any other long-lived resources.
+   *
+   * For listeners that need to fire **before** draining starts (e.g. to tell
+   * a load balancer the instance is going away), use {@link App.onShutdown}.
+   *
+   * @param hook - Async or sync cleanup function. Errors are swallowed and logged.
+   * @returns This `App` instance for chaining.
+   */
   onClose(hook: () => void | Promise<void>): this {
     this.closeHooks.push(hook);
     return this;
@@ -292,12 +451,47 @@ export class App {
     return promises.length > 0 ? Promise.all(promises).then(() => undefined) : undefined;
   }
 
-  /** Wait for all async plugins to finish initializing. */
+  /**
+   * Wait until every async plugin registered with {@link App.register} has
+   * finished initializing. Call this after `register()` returns and **before**
+   * starting the server when any plugin's `register()` returns a `Promise`.
+   *
+   * Sync plugins also push observer promises here so `await app.ready()` is
+   * always safe to call.
+   *
+   * @example
+   * ```ts
+   * app.register(metricsPlugin); // async
+   * await app.ready();
+   * serve(app, { port: 3000 });
+   * ```
+   *
+   * @returns Promise that resolves once all pending plugins have settled.
+   */
   ready(): Promise<void> {
     if (this.pendingPlugins.length === 0) return Promise.resolve();
     const pending = this.pendingPlugins.splice(0);
     return Promise.all(pending).then(() => undefined);
   }
+  /**
+   * Web-standard request handler. Accepts a `Request` and returns a `Response`.
+   * This is the universal entry point used by every runtime adapter; you may
+   * also call it directly from tests, Cloudflare Workers, or any other
+   * environment that speaks the Fetch API.
+   *
+   * During graceful shutdown this rejects new requests with `503` and a
+   * `Retry-After: 5` header.
+   *
+   * @example
+   * ```ts
+   * // Cloudflare Worker
+   * export default { fetch: (req) => app.fetch(req) };
+   * ```
+   *
+   * @param request - A standard `Request` object.
+   * @returns A standard `Response`. Errors thrown inside handlers are mapped
+   *   to RFC 9457 `application/problem+json` automatically.
+   */
   fetch = async (request: Request): Promise<Response> => {
     if (this.draining) {
       return new Response(
@@ -422,7 +616,22 @@ export class App {
     }
   };
 
-  /** In-process test client. */
+  /**
+   * In-process test client. Accepts the same arguments as the global `fetch`
+   * but routes them through `this.fetch` without a network hop. Relative URLs
+   * (starting with `/`) are resolved against `http://test.local`.
+   *
+   * @example
+   * ```ts
+   * const res = await app.request("/books/123");
+   * assert.equal(res.status, 200);
+   * const json = await res.json();
+   * ```
+   *
+   * @param input - URL, path, or `Request` to dispatch.
+   * @param init - Standard `RequestInit` (ignored if `input` is a `Request`).
+   * @returns Fulfills with the `Response` produced by the matching handler.
+   */
   request(input: string | URL | Request, init?: RequestInit): Promise<Response> {
     const url =
       typeof input === "string" && input.startsWith("/") ? `http://test.local${input}` : input;
@@ -430,6 +639,13 @@ export class App {
     return this.fetch(req);
   }
 
+  /**
+   * Return a JSON-serializable summary of every registered route. Useful for
+   * dead-route detection, dashboards, and tests that want to assert against
+   * the route table without parsing the OpenAPI document.
+   *
+   * @returns Array of one {@link IntrospectedRoute} per registered route.
+   */
   introspect(): IntrospectedRoute[] {
     return this.routes.map((r) => {
       const route: IntrospectedRoute = {
@@ -452,8 +668,20 @@ export class App {
   }
 
   /**
-   * Begin graceful shutdown: stop accepting new requests, wait for in-flight
-   * requests to drain (up to `timeoutMs`).
+   * Begin graceful shutdown.
+   *
+   * Subsequent calls to {@link App.fetch} immediately reply `503 Service
+   * Unavailable` with `Retry-After: 5`. Listeners registered with
+   * {@link App.onShutdown} fire first (so observability plugins can publish a
+   * "draining" signal); then the app waits up to `timeoutMs` for in-flight
+   * requests to settle; finally, {@link App.onClose} cleanups run.
+   *
+   * Both Node and Bun adapters call this automatically on `SIGINT` / `SIGTERM`.
+   * Call it manually from custom runtimes or integration tests.
+   *
+   * @param timeoutMs - Maximum time (ms) to wait for inflight requests. Default: `10_000`.
+   * @param reason - Optional human-readable reason forwarded to listeners.
+   * @returns Resolves once draining + cleanups complete (or the timeout elapses).
    */
   async shutdown(timeoutMs = 10_000, reason?: string): Promise<void> {
     this.draining = true;

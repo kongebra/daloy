@@ -34,6 +34,25 @@ export interface ConsoleLoggerOptions {
   write?: (line: string) => void;
 }
 
+/**
+ * Build a structured JSON logger writing one record per line to stdout (or
+ * any sink you supply). Records always include `level`, `time`, and the
+ * caller's bindings; objects are merged shallowly and the optional `msg` is
+ * placed under the `msg` key for compatibility with downstream tools.
+ *
+ * @example
+ * ```ts
+ * import { createLogger, App } from "@daloyjs/core";
+ *
+ * const log = createLogger({ level: "info", bindings: { service: "books-api" } });
+ * const app = new App({ logger: log });
+ * log.info({ event: "boot" }, "server starting");
+ * ```
+ *
+ * @param opts - Level, bindings merged into every record, and custom sink.
+ * @returns A {@link Logger} instance.
+ * @since 0.1.0
+ */
 export function createLogger(opts: ConsoleLoggerOptions = {}): Logger {
   const level = opts.level ?? "info";
   const threshold = LEVELS[level];
@@ -81,6 +100,13 @@ export function createLogger(opts: ConsoleLoggerOptions = {}): Logger {
   return logger;
 }
 
+/**
+ * A {@link Logger} that discards every record. Used internally when the App
+ * is constructed with `{ logger: false }` and exported so tests can silence
+ * specific subsystems without monkey-patching console.
+ *
+ * @since 0.1.0
+ */
 export const noopLogger: Logger = {
   level: "fatal",
   trace() {},

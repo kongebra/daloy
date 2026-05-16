@@ -1,6 +1,12 @@
 import type { StandardSchemaV1 } from "./schema.js";
 
-/** HTTP methods supported by DaloyJS. */
+/**
+ * Set of HTTP methods recognized by DaloyJS' router and OpenAPI generator.
+ * `HEAD` is automatically served from the matching `GET` route when no
+ * explicit `HEAD` handler is registered.
+ *
+ * @since 0.1.0
+ */
 export type HttpMethod =
   | "GET"
   | "POST"
@@ -10,10 +16,32 @@ export type HttpMethod =
   | "HEAD"
   | "OPTIONS";
 
-/** A path string, e.g. "/books/:id". */
+/**
+ * A route path. Must start with `"/"`. Path parameters are written with a
+ * leading colon and are inferred into `ctx.params` at the type level.
+ *
+ * @example
+ * ```ts
+ * const path: PathString = "/books/:id";
+ * // ParamsOf<"/books/:id"> => "id"
+ * ```
+ *
+ * @since 0.1.0
+ */
 export type PathString = `/${string}`;
 
-/** Extract path-parameter names from a route path. */
+/**
+ * Extracts the union of path-parameter names from a route path at the
+ * type level. Used to derive `ctx.params` when no explicit `params` schema
+ * is supplied.
+ *
+ * @example
+ * ```ts
+ * type P = ParamsOf<"/orgs/:org/repos/:repo">; // "org" | "repo"
+ * ```
+ *
+ * @since 0.1.0
+ */
 export type ParamsOf<P extends string> =
   P extends `${string}:${infer Param}/${infer Rest}`
     ? Param | ParamsOf<`/${Rest}`>
@@ -21,13 +49,38 @@ export type ParamsOf<P extends string> =
     ? Param
     : never;
 
-/** Map of path params with all string values (raw). */
+/**
+ * Record of raw (string) path parameters keyed by their name in the path.
+ * The shape is computed from {@link ParamsOf}.
+ *
+ * @since 0.1.0
+ */
 export type PathParams<P extends string> = {
   [K in ParamsOf<P>]: string;
 };
 
 // ---------- Request schema bag ----------
 
+/**
+ * Bundle of validators for the four request inputs DaloyJS validates before
+ * calling your handler. Every field is optional — omitted parts pass through
+ * untyped (raw `Record<string, string>` for `query`/`headers`, `unknown` for
+ * `body`, and {@link PathParams} for `params`).
+ *
+ * Schemas may come from any Standard-Schema-compatible validator
+ * (Zod, Valibot, ArkType, TypeBox via adapter, ...).
+ *
+ * @example
+ * ```ts
+ * import { z } from "zod";
+ * const request = {
+ *   params: z.object({ id: z.uuid() }),
+ *   body: z.object({ title: z.string().min(1) }),
+ * } satisfies RequestSchemas;
+ * ```
+ *
+ * @since 0.1.0
+ */
 export interface RequestSchemas {
   params?: StandardSchemaV1;
   query?: StandardSchemaV1;
@@ -39,6 +92,18 @@ export type InferOut<S> = S extends StandardSchemaV1
   ? StandardSchemaV1.InferOutput<S>
   : undefined;
 
+/**
+ * Computed type that infers the four pieces of validated request data from
+ * the route's `request` schemas. When a part has no schema, a permissive
+ * fallback is used:
+ *
+ * - `params`  — `PathParams<P>` (all string)
+ * - `query`   — `Record<string, string | string[] | undefined>`
+ * - `headers` — `Record<string, string | undefined>`
+ * - `body`    — `unknown`
+ *
+ * @since 0.1.0
+ */
 export type InferRequest<R extends RequestSchemas | undefined, P extends string> = {
   params: R extends { params: StandardSchemaV1 }
     ? StandardSchemaV1.InferOutput<R["params"]>
@@ -54,6 +119,19 @@ export type InferRequest<R extends RequestSchemas | undefined, P extends string>
 
 // ---------- Responses ----------
 
+/**
+ * Describes a single HTTP response variant declared by a route.
+ *
+ * - `description` — surfaces in OpenAPI documentation. Required.
+ * - `body`        — Standard-Schema validator for the response body; when
+ *   present, DaloyJS validates the handler's return value against it
+ *   (controlled by `AppOptions.validateResponses`).
+ * - `headers`     — Documented response headers (also typed in OpenAPI).
+ * - `examples`    — Example payloads emitted into the OpenAPI document and
+ *   served by the framework when `AppOptions.mockMode` is enabled.
+ *
+ * @since 0.1.0
+ */
 export interface ResponseSpec {
   description: string;
   body?: StandardSchemaV1;
@@ -61,12 +139,34 @@ export interface ResponseSpec {
   examples?: Record<string, unknown>;
 }
 
+/**
+ * Map of HTTP status code → {@link ResponseSpec}. The keys drive the
+ * `responses` section of the generated OpenAPI document and the discriminated
+ * union returned by your handler.
+ *
+ * @example
+ * ```ts
+ * const responses = {
+ *   200: { description: "OK", body: z.object({ id: z.string() }) },
+ *   404: { description: "Not Found" },
+ * } satisfies ResponsesMap;
+ * ```
+ *
+ * @since 0.1.0
+ */
 export type ResponsesMap = {
   [Status in number]?: ResponseSpec;
 };
 
 export type StatusOf<R extends ResponsesMap> = Extract<keyof R, number>;
 
+/**
+ * Discriminated union of legal return values for a handler. The status code
+ * is a literal type so TypeScript enforces that every returned response is
+ * declared in the route's `responses` map.
+ *
+ * @since 0.1.0
+ */
 export type HandlerReturn<R extends ResponsesMap> = {
   [S in StatusOf<R>]: {
     status: S;
@@ -79,6 +179,18 @@ export type HandlerReturn<R extends ResponsesMap> = {
 
 // ---------- Auth ----------
 
+/**
+ * Declarative authentication requirement for a route. The `scheme` name must
+ * appear in `generateOpenAPI(app, { securitySchemes: { ... } })` so the
+ * generated spec resolves the security requirement correctly.
+ *
+ * @example
+ * ```ts
+ * auth: { scheme: "bearerAuth", scopes: ["orders:read"] }
+ * ```
+ *
+ * @since 0.1.0
+ */
 export interface AuthSpec {
   /** Name referenced in OpenAPI components.securitySchemes */
   scheme: string;
@@ -89,10 +201,41 @@ export interface AuthSpec {
 // ---------- Context ----------
 
 /**
- * Augment this interface from application code to type plugin-provided state.
+ * **Module-augmentation hook** for typing plugin-provided state.
+ *
+ * DaloyJS plugins (sessions, tracing, auth, ...) merge values into
+ * `ctx.state`. Augment this interface from your application code so those
+ * values become strongly typed everywhere `ctx.state` is used.
+ *
+ * @example
+ * ```ts
+ * // src/types.d.ts
+ * declare module "@daloyjs/core" {
+ *   interface AppState {
+ *     user: { id: string; roles: string[] };
+ *   }
+ * }
+ *
+ * // Now ctx.state.user is typed in every handler.
+ * ```
+ *
+ * @since 0.1.0
  */
 export interface AppState {}
 
+/**
+ * The context object passed to every route handler and hook.
+ *
+ * Contains the original `Request`, the four pieces of validated request data
+ * (`params`, `query`, `headers`, `body`), a mutable `state` bag for
+ * cross-cutting plugins, and a `set` helper for adjusting outgoing
+ * status/headers without bypassing schema validation.
+ *
+ * The shape is computed from the route's path and `request` schemas so all
+ * inputs are strongly typed inside the handler with zero extra boilerplate.
+ *
+ * @since 0.1.0
+ */
 export interface BaseContext<P extends string, R extends RequestSchemas | undefined> {
   request: Request;
   /** Validated request data (or raw fallbacks if no schema). */
@@ -111,6 +254,25 @@ export interface BaseContext<P extends string, R extends RequestSchemas | undefi
 
 // ---------- Hooks ----------
 
+/**
+ * Lifecycle hooks fired around request handling. Hooks compose pipeline-style
+ * — the global hooks (`AppOptions.hooks`) run first, then group hooks added
+ * with `app.use()`, then per-route hooks. Returning a `Response` from
+ * `beforeHandle` or `onSend` short-circuits/replaces the response.
+ *
+ * Ordering for a successful request:
+ *   1. `onRequest`     — before any context is built (raw `Request`).
+ *   2. `beforeHandle`  — with the built context; may short-circuit.
+ *   3. *handler runs*
+ *   4. `afterHandle`   — may transform the handler return value.
+ *   5. *response is serialized + validated*
+ *   6. `onSend`        — may mutate or replace the outgoing `Response`.
+ *   7. `onResponse`    — fire-and-forget observer (cannot change anything).
+ *
+ * `onError` runs on the error path before serialization.
+ *
+ * @since 0.1.0
+ */
 export interface Hooks {
   onRequest?: (req: Request) => void | Promise<void>;
   beforeHandle?: (ctx: BaseContext<any, any>) => void | Response | Promise<void | Response>;
@@ -135,6 +297,34 @@ export interface Hooks {
 
 // ---------- Route definition ----------
 
+/**
+ * Declarative description of one HTTP endpoint. The single source of truth
+ * for routing, request validation, response validation, OpenAPI generation,
+ * and the typed client SDK.
+ *
+ * Pass instances to {@link App.route} to register them. Generic parameters
+ * are usually inferred and rarely need to be specified explicitly.
+ *
+ * @example
+ * ```ts
+ * import { z } from "zod";
+ *
+ * app.route({
+ *   method: "GET",
+ *   path: "/books/:id",
+ *   operationId: "getBook",
+ *   summary: "Fetch a book by id",
+ *   request: { params: z.object({ id: z.uuid() }) },
+ *   responses: {
+ *     200: { description: "OK", body: z.object({ id: z.string(), title: z.string() }) },
+ *     404: { description: "Not Found" },
+ *   },
+ *   handler: ({ params }) => ({ status: 200, body: { id: params.id, title: "Dune" } }),
+ * });
+ * ```
+ *
+ * @since 0.1.0
+ */
 export interface RouteDefinition<
   P extends PathString = PathString,
   M extends HttpMethod = HttpMethod,

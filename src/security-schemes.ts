@@ -108,7 +108,26 @@ export type SecurityScheme =
   | OAuth2Scheme
   | OpenIdConnectScheme;
 
-/** HTTP Bearer token scheme (e.g. `Authorization: Bearer <token>`). */
+/**
+ * Build an OpenAPI Security Scheme Object for HTTP Bearer authentication
+ * (e.g. `Authorization: Bearer <token>`).
+ *
+ * @example
+ * ```ts
+ * import { App, httpBearerScheme } from "@daloyjs/core";
+ * import { generateOpenAPI } from "@daloyjs/core/openapi";
+ *
+ * const app = new App();
+ * const doc = generateOpenAPI(app, {
+ *   info: { title: "Books API", version: "1.0.0" },
+ *   securitySchemes: { bearerAuth: httpBearerScheme({ bearerFormat: "JWT" }) },
+ * });
+ * ```
+ *
+ * @param options - Optional `bearerFormat` hint and `description`.
+ * @returns A spec-shaped `{ type, scheme, ... }` object.
+ * @since 0.1.0
+ */
 export function httpBearerScheme(options: HttpBearerSchemeOptions = {}): HttpBearerScheme {
   const scheme: HttpBearerScheme = { type: "http", scheme: "bearer" };
   if (options.bearerFormat !== undefined) scheme.bearerFormat = options.bearerFormat;
@@ -116,14 +135,34 @@ export function httpBearerScheme(options: HttpBearerSchemeOptions = {}): HttpBea
   return scheme;
 }
 
-/** HTTP Basic auth scheme (`Authorization: Basic <base64>`). */
+/**
+ * Build an OpenAPI Security Scheme Object for HTTP Basic authentication
+ * (`Authorization: Basic <base64>`).
+ *
+ * @param options - Optional human-readable `description`.
+ * @returns A spec-shaped `{ type: "http", scheme: "basic", ... }` object.
+ * @since 0.1.0
+ */
 export function httpBasicScheme(options: HttpBasicSchemeOptions = {}): HttpBasicScheme {
   const scheme: HttpBasicScheme = { type: "http", scheme: "basic" };
   if (options.description !== undefined) scheme.description = options.description;
   return scheme;
 }
 
-/** API key scheme delivered in a header, query parameter, or cookie. */
+/**
+ * Build an OpenAPI Security Scheme Object for an API key delivered in a
+ * request header, query parameter, or cookie.
+ *
+ * @example
+ * ```ts
+ * apiKeyScheme({ in: "header", name: "x-api-key" })
+ * ```
+ *
+ * @param options - Required `in` location and `name`, plus optional `description`.
+ * @returns A spec-shaped `{ type: "apiKey", in, name, ... }` object.
+ * @throws {TypeError} When `in` is not `"header" | "query" | "cookie"` or `name` is empty.
+ * @since 0.1.0
+ */
 export function apiKeyScheme(options: ApiKeySchemeOptions): ApiKeyScheme {
   if (options.in !== "header" && options.in !== "query" && options.in !== "cookie") {
     throw new TypeError(
@@ -142,7 +181,29 @@ export function apiKeyScheme(options: ApiKeySchemeOptions): ApiKeyScheme {
   return scheme;
 }
 
-/** OAuth 2.0 scheme. At least one flow is required. */
+/**
+ * Build an OpenAPI Security Scheme Object for OAuth 2.0. At least one flow
+ * (implicit, password, client credentials, or authorization code) must be
+ * declared.
+ *
+ * @example
+ * ```ts
+ * oauth2Scheme({
+ *   flows: {
+ *     authorizationCode: {
+ *       authorizationUrl: "https://example.com/oauth/authorize",
+ *       tokenUrl: "https://example.com/oauth/token",
+ *       scopes: { "orders:read": "Read your orders" },
+ *     },
+ *   },
+ * })
+ * ```
+ *
+ * @param options - Object with at least one `flows.*` entry.
+ * @returns A spec-shaped `{ type: "oauth2", flows, ... }` object.
+ * @throws {TypeError} When no OAuth2 flow is declared.
+ * @since 0.1.0
+ */
 export function oauth2Scheme(options: OAuth2SchemeOptions): OAuth2Scheme {
   const flows = options.flows ?? {};
   const hasFlow =
@@ -158,7 +219,16 @@ export function oauth2Scheme(options: OAuth2SchemeOptions): OAuth2Scheme {
   return scheme;
 }
 
-/** OpenID Connect Discovery scheme. */
+/**
+ * Build an OpenAPI Security Scheme Object for OpenID Connect Discovery.
+ * The `openIdConnectUrl` must be a non-empty string (typically ending in
+ * `/.well-known/openid-configuration`).
+ *
+ * @param options - Object with the required `openIdConnectUrl`.
+ * @returns A spec-shaped `{ type: "openIdConnect", openIdConnectUrl, ... }` object.
+ * @throws {TypeError} When `openIdConnectUrl` is missing or empty.
+ * @since 0.1.0
+ */
 export function openIdConnectScheme(
   options: OpenIdConnectSchemeOptions
 ): OpenIdConnectScheme {

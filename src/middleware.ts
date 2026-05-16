@@ -18,6 +18,27 @@ export interface RequestIdOptions {
   generator?: () => string;
 }
 
+/**
+ * Generate or accept a stable `X-Request-ID` for every request. The id is
+ * stamped on `ctx.state.requestId`, mirrored on every outgoing response
+ * header, and threaded into the per-request structured logger so every log
+ * line for one request shares the same `requestId` field.
+ *
+ * Pass `trustIncoming: true` only when the upstream proxy is trusted to
+ * sanitize/replace the header — otherwise a client could pollute your logs
+ * with arbitrary ids. Untrusted incoming values are also validated against
+ * `^[A-Za-z0-9._-]{1,200}$` before being accepted.
+ *
+ * @example
+ * ```ts
+ * import { requestId } from "@daloyjs/core";
+ * app.use(requestId({ trustIncoming: false }));
+ * ```
+ *
+ * @param opts - Header name, trust flag, and custom id generator.
+ * @returns A {@link Hooks} bundle ready for `app.use(...)`.
+ * @since 0.1.0
+ */
 export function requestId(opts: RequestIdOptions = {}): Hooks {
   const header = (opts.header ?? "x-request-id").toLowerCase();
   const gen = opts.generator ?? randomId;
@@ -50,6 +71,30 @@ export interface SecureHeadersOptions {
   xssProtection?: boolean;
 }
 
+/**
+ * Apply a Helmet-equivalent baseline of secure response headers:
+ * `Content-Security-Policy`, `Strict-Transport-Security`, `X-Frame-Options`,
+ * `Referrer-Policy`, `Permissions-Policy`, `Cross-Origin-Opener-Policy`,
+ * `Cross-Origin-Resource-Policy`, and `X-Content-Type-Options: nosniff`.
+ *
+ * Every header has a hardened default and can be overridden — pass `false`
+ * to disable an individual header entirely. Headers are only set if the
+ * handler did not already set them, so per-route overrides win.
+ *
+ * @example
+ * ```ts
+ * import { secureHeaders } from "@daloyjs/core";
+ *
+ * app.use(secureHeaders({
+ *   contentSecurityPolicy: "default-src 'self'; img-src 'self' data:",
+ *   hsts: { maxAgeSeconds: 31536000, includeSubDomains: true, preload: true },
+ * }));
+ * ```
+ *
+ * @param opts - Per-header overrides. Pass `false` to disable a header.
+ * @returns A {@link Hooks} bundle ready for `app.use(...)`.
+ * @since 0.1.0
+ */
 export function secureHeaders(opts: SecureHeadersOptions = {}): Hooks {
   const headers: Record<string, string> = {};
   const csp = opts.contentSecurityPolicy ?? "default-src 'self'; frame-ancestors 'none'";
@@ -101,6 +146,32 @@ export interface CorsOptions {
   maxAgeSeconds?: number;
 }
 
+/**
+ * Cross-Origin Resource Sharing (CORS) middleware. Handles both preflight
+ * (`OPTIONS`) and actual requests, attaching the correct
+ * `Access-Control-*` headers and `Vary: Origin`.
+ *
+ * `origin` may be a single allowed origin, an array, or a predicate. When
+ * `credentials: true`, the framework rejects the dangerous combination of a
+ * wildcard origin + credentials at construction time — browsers always
+ * forbid that combination silently in production.
+ *
+ * @example
+ * ```ts
+ * import { cors } from "@daloyjs/core";
+ *
+ * app.use(cors({
+ *   origin: ["https://app.example.com", "https://admin.example.com"],
+ *   credentials: true,
+ *   exposedHeaders: ["x-request-id"],
+ * }));
+ * ```
+ *
+ * @param opts - CORS configuration.
+ * @returns A {@link Hooks} bundle ready for `app.use(...)`.
+ * @throws {Error} When `credentials: true` is combined with `origin: "*"`.
+ * @since 0.1.0
+ */
 export function cors(opts: CorsOptions): Hooks {
   // Reject the classic CORS footgun up front. Browsers will refuse to attach
   // credentials to a wildcard origin (the spec literally forbids
@@ -202,6 +273,38 @@ class MemoryStore implements RateLimitStore {
   }
 }
 
+/**
+ * Fixed-window rate limiter. Throws {@link TooManyRequestsError} (mapped to
+ * `429`) when a key exceeds `max` requests inside `windowMs`. Adds
+ * `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset`
+ * headers on every response, plus `Retry-After` on `429` responses (unless
+ * disabled).
+ *
+ * The default `store` is an in-memory map that **only** survives within a
+ * single process. For multi-instance deployments pass a shared store — the
+ * package ships `redisRateLimitStore` from `@daloyjs/core/rate-limit-redis`
+ * as a Redis backend.
+ *
+ * The default key derivation returns `"global"`, which means every caller
+ * shares one bucket. Pass `trustProxyHeaders: true` to derive from
+ * `X-Forwarded-For` / `X-Real-IP` when behind a trusted proxy, or supply a
+ * custom `keyGenerator` (e.g. derive from the authenticated user id).
+ *
+ * @example
+ * ```ts
+ * import { rateLimit } from "@daloyjs/core";
+ *
+ * app.use(rateLimit({
+ *   windowMs: 60_000,
+ *   max: 100,
+ *   keyGenerator: (ctx) => (ctx.state.user as { id: string })?.id ?? "anonymous",
+ * }));
+ * ```
+ *
+ * @param opts - Rate-limit configuration.
+ * @returns A {@link Hooks} bundle ready for `app.use(...)`.
+ * @since 0.1.0
+ */
 export function rateLimit(opts: RateLimitOptions): Hooks {
   const store = opts.store ?? new MemoryStore();
   const keyOf =
@@ -234,6 +337,21 @@ export function rateLimit(opts: RateLimitOptions): Hooks {
 
 // ---------- Timing ----------
 
+/**
+ * Stamp a `Server-Timing` header (or your chosen header) on every response
+ * with the handler's wall-clock duration in milliseconds. Browsers display
+ * the value in the Network panel under the **Timing** column.
+ *
+ * @example
+ * ```ts
+ * import { timing } from "@daloyjs/core";
+ * app.use(timing()); // Server-Timing: app;dur=12.34
+ * ```
+ *
+ * @param headerName - Override the response header name. Default: `"server-timing"`.
+ * @returns A {@link Hooks} bundle ready for `app.use(...)`.
+ * @since 0.1.0
+ */
 export function timing(headerName = "server-timing"): Hooks {
   const now = (): number =>
     typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
@@ -253,6 +371,31 @@ export function timing(headerName = "server-timing"): Hooks {
 
 // ---------- Bearer auth helper ----------
 
+/**
+ * Minimal Bearer-token authentication middleware. Rejects requests with no
+ * `Authorization: Bearer ...` header with `401` (and a `WWW-Authenticate`
+ * challenge), and requests whose token fails `validate(token)` with `403`.
+ *
+ * The `validate` callback is the integration point with whatever JWT
+ * verifier, opaque-token introspector, or in-memory test stub you use.
+ *
+ * @example
+ * ```ts
+ * import { bearerAuth } from "@daloyjs/core";
+ * import { jwtVerify } from "jose";
+ *
+ * app.use(bearerAuth({
+ *   realm: "books-api",
+ *   validate: async (token) => {
+ *     try { await jwtVerify(token, jwks); return true; } catch { return false; }
+ *   },
+ * }));
+ * ```
+ *
+ * @param opts - Token validator and optional `WWW-Authenticate` realm.
+ * @returns A {@link Hooks} bundle ready for `app.use(...)`.
+ * @since 0.1.0
+ */
 export function bearerAuth(opts: {
   validate: (token: string) => boolean | Promise<boolean>;
   realm?: string;
