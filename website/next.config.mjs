@@ -1,7 +1,26 @@
-import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
+import { execSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+const FALLBACK_CORE_PACKAGE_VERSION = "0.7.5";
+
+function getPublishedCorePackageVersion() {
+  if (process.env.NEXT_PUBLIC_CORE_PACKAGE_VERSION) {
+    return process.env.NEXT_PUBLIC_CORE_PACKAGE_VERSION;
+  }
+
+  try {
+    return execSync("npm view @daloyjs/core version", {
+      cwd: __dirname,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch {
+    return FALLBACK_CORE_PACKAGE_VERSION;
+  }
+}
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -10,6 +29,9 @@ const nextConfig = {
   // edge middleware).
   turbopack: { root: __dirname },
   outputFileTracingRoot: __dirname,
+  env: {
+    NEXT_PUBLIC_CORE_PACKAGE_VERSION: getPublishedCorePackageVersion(),
+  },
   async redirects() {
     return [
       // The sidebar labels the docs landing page "Introduction" but it lives at

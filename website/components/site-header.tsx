@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ButterflyIcon, GithubLogoIcon, ListIcon, PackageIcon, XIcon } from "@phosphor-icons/react/ssr";
 import { buttonVariants } from "./ui/button";
 import { ThemeSwitcher } from "./theme-switcher";
+import { CORE_PACKAGE_VERSION } from "@/lib/seo";
 
 const primaryNav = [
   { href: "/docs", label: "Docs" },
@@ -91,7 +92,7 @@ export function SiteHeader() {
               dj
             </span>
             <span className="truncate">DaloyJS</span>
-            <span className="ml-1 hidden text-xs font-mono text-muted-foreground sm:inline-block">v0.7</span>
+            <span className="ml-1 hidden text-xs font-mono text-muted-foreground sm:inline-block">v{CORE_PACKAGE_VERSION}</span>
           </Link>
 
           <nav className="ml-8 hidden items-center gap-5 text-sm xl:flex">

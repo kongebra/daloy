@@ -16,7 +16,7 @@ import { CodeCopyButton } from "../components/code-copy-button";
 import { ContractFlowVisual } from "../components/contract-flow-visual";
 import { FlowHeroScene } from "../components/flow-hero-scene";
 import { Reveal } from "../components/reveal";
-import { buildMetadata, SITE_URL } from "@/lib/seo";
+import { buildMetadata, CORE_PACKAGE_VERSION, SITE_URL } from "@/lib/seo";
 
 export const metadata = buildMetadata({
   title: "Runtime-portable TypeScript web framework",
@@ -148,7 +148,7 @@ export default function HomePage() {
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
                 <span className="relative inline-flex size-1.5 rounded-full bg-emerald-500" />
               </span>
-              @daloyjs/core 0.8.0 · public preview
+              {`@daloyjs/core ${CORE_PACKAGE_VERSION}`}
             </Badge>
             <h1
               className="max-w-4xl text-4xl font-bold tracking-tight leading-tight sm:text-5xl lg:text-6xl float-up"

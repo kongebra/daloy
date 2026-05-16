@@ -1,6 +1,6 @@
 import { CodeBlock } from "../../../components/code-block";
 
-import { buildMetadata } from "@/lib/seo";
+import { buildMetadata, CORE_PACKAGE_VERSION } from "@/lib/seo";
 
 export const metadata = buildMetadata({
   title: "API reference",
@@ -15,7 +15,7 @@ export default function Page() {
   return (
     <>
       <h1>API reference</h1>
-      <p>The complete public surface of DaloyJS v0.7, organized by import path.</p>
+      <p>{`The complete public surface of DaloyJS v${CORE_PACKAGE_VERSION}, organized by import path.`}</p>
 
       <h2><code>@daloyjs/core</code> (root)</h2>
       <h3><code>class App</code></h3>
