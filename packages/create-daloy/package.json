@@ -1,6 +1,6 @@
 {
   "name": "create-daloy",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Scaffold a new DaloyJS project. Run with `pnpm create daloy`, `npm create daloy@latest`, `yarn create daloy`, or `bun create daloy`.",
   "type": "module",
   "license": "MIT",
@@ -27,7 +27,7 @@
     "openapi"
   ],
   "engines": {
-    "node": ">=20.10.0"
+    "node": ">=24.15.0"
   },
   "bin": {
     "create-daloy": "bin/create-daloy.mjs"

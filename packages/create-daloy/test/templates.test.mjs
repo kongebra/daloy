@@ -533,8 +533,8 @@ test("deno-basic template ships a runtime-native scaffold", async () => {
   const denoJson = JSON.parse(await readFile(path.join(pkgRoot, "templates/deno-basic/deno.json"), "utf8"));
   assert.match(denoJson.tasks.dev, /^deno run.*--watch src\/main\.ts$/);
   assert.match(denoJson.tasks.test, /^deno test\b/);
-  assert.equal(denoJson.imports["@daloyjs/core"], "npm:@daloyjs/core@^0.8.2");
-  assert.equal(denoJson.imports["@daloyjs/core/"], "npm:@daloyjs/core@^0.8.2/");
+  assert.equal(denoJson.imports["@daloyjs/core"], "npm:@daloyjs/core@^0.9.0");
+  assert.equal(denoJson.imports["@daloyjs/core/"], "npm:@daloyjs/core@^0.9.0/");
 });
 
 test("--list-templates includes the new bun-basic and deno-basic options", async () => {
@@ -630,7 +630,7 @@ test("--minimal strips books + docs sentinel blocks from node-basic", async () =
     const indexFile = await readFile(path.join(tmpDir, projectName, "src/index.ts"), "utf8");
     assert.doesNotMatch(indexFile, /Swagger UI/);
     assert.doesNotMatch(indexFile, /daloy-minimal:strip-/);
-    assert.match(indexFile, /Health:/);
+    assert.match(indexFile, /label: "Health"/);
 
     const readme = await readFile(path.join(tmpDir, projectName, "README.md"), "utf8");
     assert.doesNotMatch(readme, /\/books\/1/);

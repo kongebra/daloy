@@ -4,7 +4,7 @@ A [DaloyJS](https://daloyjs.dev) Node.js REST API. **Contract-first**:
 routes are defined with Zod schemas and OpenAPI 3.1 is generated from them.
 
 - Package manager: pnpm (use `pnpm` unless the project's `package.json` was rewritten for npm/yarn/bun).
-- Runtime: Node.js >= 20.10.
+- Runtime: Node.js >= 24.15 (active LTS).
 
 ## Commands
 

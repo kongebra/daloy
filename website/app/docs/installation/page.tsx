@@ -17,7 +17,7 @@ export default function Page() {
     <>
       <h1>Installation</h1>
       <p>
-        DaloyJS targets <strong>Node.js ≥ 20.10</strong> and is distributed on the public npm
+        DaloyJS targets <strong>Node.js ≥ 24.15 (active LTS)</strong> and is distributed on the public npm
         registry as <code>@daloyjs/core</code>. The package has <strong>no peer dependencies</strong>,
         so <code>npm</code>, <code>yarn</code>, <code>pnpm</code>, and <code>bun</code> can all install it
         directly. We <em>recommend</em> {" "}
@@ -59,16 +59,16 @@ bun  create daloy           my-api`}
 
       <h3>Prerequisites</h3>
       <ul>
-        <li><strong>Node.js</strong> 20.10 or newer (LTS recommended).</li>
+        <li><strong>Node.js</strong> 24.15 or newer (active LTS).</li>
         <li>
-          A package manager. Any of these works — pnpm 9.x is recommended for supply-chain hardening,
+          A package manager. Any of these works — pnpm 11.x or newer is recommended for supply-chain hardening,
           but <code>npm</code>, <code>yarn</code>, and <code>bun</code> install <code>@daloyjs/core</code>{" "}
           cleanly because the package has no peer dependencies.
         </li>
       </ul>
       <p>To enable pnpm via <a href="https://nodejs.org/api/corepack.html" target="_blank" rel="noreferrer">Corepack</a>:</p>
       <CodeBlock language="bash" code={`corepack enable
-corepack prepare pnpm@9.15.0 --activate
+corepack prepare pnpm@11.1.2 --activate
 pnpm --version`} />
 
       <h3>Install DaloyJS</h3>

@@ -18,6 +18,7 @@ import { serve } from "../src/adapters/node.js";
 import { generateOpenAPI } from "../src/openapi.js";
 import { createClient } from "../src/client.js";
 import { scalarHtml, htmlResponse } from "../src/docs.js";
+import { printStartupBanner } from "../src/banner.js";
 import { buildExampleApp } from "./build-app.js";
 
 const app: App = buildExampleApp();
@@ -61,7 +62,15 @@ app.route({
 });
 
 const { port, close } = serve(app, { port: 3000 });
-console.log(`DaloyJS listening on http://localhost:${port}  (docs: /docs)`);
+printStartupBanner({
+  name: "DaloyJS Bookstore",
+  url: `http://localhost:${port}`,
+  runtime: "Node.js",
+  links: [
+    { label: "Docs", url: `http://localhost:${port}/docs` },
+    { label: "Routes", url: `http://localhost:${port}/_routes` },
+  ],
+});
 
 // In-process typed client smoke (no codegen step).
 const client = createClient(app, { baseUrl: `http://localhost:${port}` }) as {

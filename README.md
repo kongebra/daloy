@@ -304,6 +304,7 @@ What works today, at a glance:
 - Adapters for Node (Heroku/Railway/Render/Fly.io), Bun, Deno, Cloudflare Workers, Vercel Node / Edge / Next.js / Netlify Edge, Fastly Compute, and AWS Lambda / Netlify Functions / Lambda Function URLs.
 - Built-in security primitives (body limits, prototype-pollution-safe JSON, path-traversal guard, request timeouts, header injection guards) plus first-party middleware (`secureHeaders`, `cors`, `rateLimit`, `requestId`, `bearerAuth`, `csrf`, `session`, `timing` / `timingSafeEqual`).
 - Streaming helpers (SSE + NDJSON), multipart ergonomics, OpenTelemetry-compatible tracing, signed-cookie sessions with pluggable stores, and a Redis-backed rate-limit store at `@daloyjs/core/rate-limit-redis`.
+- Pretty `printStartupBanner()` / `formatStartupBanner()` startup helpers at `@daloyjs/core/banner`, used by every starter template so `pnpm dev` greets you with a colorized boxed panel (TTY + `NO_COLOR` / `FORCE_COLOR` aware, with an ASCII fallback for dumb terminals).
 - In-process test client (`app.request()`), contract-test runner, in-process typed client, and Hey API codegen via `pnpm gen`.
 - `pnpm create daloy` scaffolder with Node, Bun, Deno, Cloudflare Worker, and Vercel Edge templates, plus optional `--with-ci` GitHub Actions / Dependabot / CODEOWNERS / SECURITY.md hardening.
 - Plugin encapsulation, decorators, structured logging, request-id propagation, lifecycle events (`onPluginInstalled`, `onShutdown`, `onClose`), and graceful shutdown.

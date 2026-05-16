@@ -1,4 +1,5 @@
 import { serve } from "@daloyjs/core/bun";
+import { printStartupBanner, type StartupBannerLink } from "@daloyjs/core/banner";
 import { buildApp } from "./build-app.ts";
 
 const app = buildApp();
@@ -9,11 +10,16 @@ const handle = serve(app, {
   // Bun closes idle keep-alive connections after this many seconds.
   idleTimeout: 30,
 });
-console.log(`DaloyJS (Bun) listening on ${handle.url ?? `http://localhost:${port}`}`);
-// daloy-minimal:strip-start docs
-console.log(`  Swagger UI:   http://localhost:${port}/docs`);
-console.log(`  OpenAPI JSON: http://localhost:${port}/openapi.json`);
-// daloy-minimal:strip-end docs
-console.log(`  Health:       http://localhost:${port}/healthz`);
+
+const url = handle.url ? String(handle.url) : `http://localhost:${port}`;
+const links: StartupBannerLink[] = [
+  // daloy-minimal:strip-start docs
+  { label: "Swagger UI", url: `${url}/docs` },
+  { label: "OpenAPI JSON", url: `${url}/openapi.json` },
+  // daloy-minimal:strip-end docs
+  { label: "Health", url: `${url}/healthz` },
+];
+
+printStartupBanner({ name: "DaloyJS API", url, runtime: "Bun", links });
 
 export default app;

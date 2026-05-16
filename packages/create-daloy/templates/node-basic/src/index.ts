@@ -1,15 +1,21 @@
 import { serve } from "@daloyjs/core/node";
+import { printStartupBanner, type StartupBannerLink } from "@daloyjs/core/banner";
 import { buildApp } from "./build-app.js";
 
 const app = buildApp();
 const port = Number(process.env.PORT ?? 3000);
 
 serve(app, { port });
-console.log(`DaloyJS listening on http://localhost:${port}`);
-// daloy-minimal:strip-start docs
-console.log(`  Swagger UI:   http://localhost:${port}/docs`);
-console.log(`  OpenAPI JSON: http://localhost:${port}/openapi.json`);
-// daloy-minimal:strip-end docs
-console.log(`  Health:       http://localhost:${port}/healthz`);
+
+const url = `http://localhost:${port}`;
+const links: StartupBannerLink[] = [
+  // daloy-minimal:strip-start docs
+  { label: "Swagger UI", url: `${url}/docs` },
+  { label: "OpenAPI JSON", url: `${url}/openapi.json` },
+  // daloy-minimal:strip-end docs
+  { label: "Health", url: `${url}/healthz` },
+];
+
+printStartupBanner({ name: "DaloyJS API", url, runtime: "Node.js", links });
 
 export default app;

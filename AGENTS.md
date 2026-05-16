@@ -25,3 +25,16 @@
 - Codecoverage is 100% lines and 100% functions, so any change that adds code must also include tests that cover that code, and the coverage report should be checked to ensure that no new code is left untested
 - Any new features should be well documenbted in the `website` documentation, and the documentation should be updated to reflect any changes in behavior or new capabilities introduced by the feature
 - Making the repo and the app itself secure are top priorities; any change that has security implications must be carefully reviewed for potential vulnerabilities and should include updates to `SECURITY.md` or related documentation when relevant
+
+## Release Coordination
+
+`@daloyjs/core` and `create-daloy` ship together. Any change that publishes a new `@daloyjs/core` version MUST also publish a matching `create-daloy` so scaffolded projects pin the latest peer.
+
+- When bumping `@daloyjs/core` version in the root `package.json`, also:
+  - Bump `packages/create-daloy/package.json` version (typically a minor or patch alongside the core bump)
+  - Update `@daloyjs/core` peer/dependency in every `packages/create-daloy/templates/*/package.json` and `packages/create-daloy/templates/deno-basic/deno.json` to the new core version (use `^X.Y.Z`)
+  - Update the matching assertions in `packages/create-daloy/test/templates.test.mjs`
+  - Update the hardcoded `FALLBACK_CORE_PACKAGE_VERSION` in `website/next.config.mjs` and the fallback in `website/lib/seo.ts`
+- Run `pnpm coverage` (not just `pnpm test`) before tagging — the 100% line/function gate in CI blocks publish silently if missed
+- Publish flow: tag `vX.Y.Z` (push tag) triggers `@daloyjs/core` publish; then `gh workflow run release.yml -f package=create-daloy --ref main` for the companion
+- Both runs require approval on the `npm-publish` GitHub Environment

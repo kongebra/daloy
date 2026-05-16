@@ -77,6 +77,27 @@ app.route({
 const { port } = serve(app, { port: 3000 });
 console.log(\`listening on http://localhost:\${port}\`);`} />
 
+      <p>
+        Prefer the colorized startup panel you get from <code>create-daloy</code> templates? Swap the
+        plain <code>console.log</code> for <code>printStartupBanner()</code> from{" "}
+        <code>@daloyjs/core/banner</code> — it renders a TTY-aware, ASCII-fallback boxed banner
+        with your app name, URL, and any extra links (Swagger UI, health check, etc.):
+      </p>
+      <CodeBlock code={`import { printStartupBanner } from "@daloyjs/core/banner";
+
+const { port } = serve(app, { port: 3000 });
+printStartupBanner({
+  name: "MyAPI",
+  version: "1.0.0",
+  url: \`http://localhost:\${port}\`,
+  runtime: "Node.js",
+  links: [
+    { label: "Swagger UI", url: \`http://localhost:\${port}/docs\` },
+    { label: "OpenAPI JSON", url: \`http://localhost:\${port}/openapi.json\` },
+    { label: "Health", url: \`http://localhost:\${port}/healthz\` },
+  ],
+});`} />
+
       <CodeBlock language="bash" code={`pnpm dev
 # in another shell
 curl http://localhost:3000/greet/world

@@ -1,0 +1,149 @@
+/**
+ * Pretty startup banner shared by the official starters and easy to drop into
+ * any DaloyJS app. Mirrors the visual language of the `create-daloy` CLI so
+ * `pnpm dev` / `npm run dev` greets you with the same boxed, colorized panel.
+ */
+
+const ANSI = {
+  reset: "\u001b[0m",
+  bold: "\u001b[1m",
+  dim: "\u001b[2m",
+  cyan: "\u001b[36m",
+  yellow: "\u001b[33m",
+  gray: "\u001b[90m",
+};
+
+const GLYPHS_UNICODE = {
+  cornerTL: "\u256D",
+  cornerTR: "\u256E",
+  cornerBL: "\u2570",
+  cornerBR: "\u256F",
+  lineH: "\u2500",
+  lineV: "\u2502",
+  sparkle: "\u2728",
+  arrow: "\u25B8",
+  mdash: "\u2014",
+  mid: "\u00B7",
+};
+
+const GLYPHS_ASCII = {
+  cornerTL: "+",
+  cornerTR: "+",
+  cornerBL: "+",
+  cornerBR: "+",
+  lineH: "-",
+  lineV: "|",
+  sparkle: "*",
+  arrow: ">",
+  mdash: "-",
+  mid: "-",
+};
+
+const ANSI_REGEX = /\u001b\[[0-9;]*m/g;
+
+export interface StartupBannerLink {
+  /** Short label shown left-aligned, e.g. `"Swagger UI"`. */
+  label: string;
+  /** URL printed in the accent color. */
+  url: string;
+}
+
+export interface StartupBannerOptions {
+  /** App name shown in the header. Defaults to `"DaloyJS"`. */
+  name?: string;
+  /** Optional version, e.g. `"1.0.0"`. Printed as `— v1.0.0`. */
+  version?: string;
+  /** Primary URL, typically `http://localhost:3000`. */
+  url: string;
+  /** Optional runtime label, e.g. `"Node.js"`, `"Bun"`, `"Deno"`. */
+  runtime?: string;
+  /** Extra link rows rendered under the primary URL. */
+  links?: StartupBannerLink[];
+  /** Force color on/off. Defaults to TTY + `NO_COLOR`/`FORCE_COLOR` detection. */
+  color?: boolean;
+  /** Force ASCII-only glyphs. Defaults to environment detection. */
+  ascii?: boolean;
+}
+
+function detectColor(): boolean {
+  if (process.env.NO_COLOR) return false;
+  if (process.env.FORCE_COLOR && process.env.FORCE_COLOR !== "0") return true;
+  const stdout = process.stdout as { isTTY?: boolean } | undefined;
+  return Boolean(stdout && stdout.isTTY);
+}
+
+function detectAscii(): boolean {
+  if (process.env.DALOY_ASCII) return true;
+  if (process.platform === "win32") {
+    return !(process.env.WT_SESSION || process.env.TERM_PROGRAM);
+  }
+  const lang = process.env.LANG ?? process.env.LC_ALL ?? "";
+  if (/UTF-?8/i.test(lang)) return false;
+  if (process.env.TERM_PROGRAM) return false;
+  return true;
+}
+
+function paint(useColor: boolean, code: string, text: string): string {
+  return useColor ? `${code}${text}${ANSI.reset}` : text;
+}
+
+function visibleWidth(s: string): number {
+  return s.replace(ANSI_REGEX, "").length;
+}
+
+/**
+ * Build the multi-line startup banner string without printing it. Useful for
+ * tests, custom loggers, or wrapping the output in additional context.
+ */
+export function formatStartupBanner(options: StartupBannerOptions): string {
+  const useColor = options.color ?? detectColor();
+  const useAscii = options.ascii ?? detectAscii();
+  const g = useAscii ? GLYPHS_ASCII : GLYPHS_UNICODE;
+
+  const name = options.name ?? "DaloyJS";
+  const headerSegments: string[] = [paint(useColor, ANSI.bold + ANSI.yellow, name)];
+  if (options.version) {
+    headerSegments.push(paint(useColor, ANSI.gray, `${g.mdash} v${options.version}`));
+  }
+  if (options.runtime) {
+    headerSegments.push(paint(useColor, ANSI.dim, `${g.mid} ${options.runtime}`));
+  }
+  const header = `${paint(useColor, ANSI.cyan, g.sparkle)}  ${headerSegments.join("  ")}`;
+
+  const rows: { label: string; url: string }[] = [
+    { label: "Local", url: options.url },
+    ...(options.links ?? []),
+  ];
+  const labelWidth = Math.max(...rows.map((r) => r.label.length));
+  const linkLines = rows.map((r) => {
+    const labelText = r.label.padEnd(labelWidth);
+    return `${paint(useColor, ANSI.cyan, g.arrow)}  ${paint(useColor, ANSI.bold, labelText)}  ${paint(useColor, ANSI.cyan, r.url)}`;
+  });
+
+  const contentLines = [header, "", ...linkLines];
+  const contentWidth = Math.max(...contentLines.map(visibleWidth));
+  const innerPad = 2;
+  const horizontal = g.lineH.repeat(contentWidth + innerPad * 2);
+  const accent = useColor ? ANSI.yellow : "";
+  const top = paint(useColor, accent, `${g.cornerTL}${horizontal}${g.cornerTR}`);
+  const bottom = paint(useColor, accent, `${g.cornerBL}${horizontal}${g.cornerBR}`);
+  const side = paint(useColor, accent, g.lineV);
+
+  const boxed = contentLines.map((line) => {
+    const padding = " ".repeat(contentWidth - visibleWidth(line));
+    return `${side}${" ".repeat(innerPad)}${line}${padding}${" ".repeat(innerPad)}${side}`;
+  });
+
+  return [top, ...boxed, bottom].join("\n");
+}
+
+/**
+ * Print {@link formatStartupBanner} to stdout (or a custom writer). Designed to
+ * replace ad-hoc `console.log("listening on …")` calls in starter templates.
+ */
+export function printStartupBanner(
+  options: StartupBannerOptions,
+  write: (s: string) => void = (s) => process.stdout.write(s),
+): void {
+  write(`\n${formatStartupBanner(options)}\n\n`);
+}
