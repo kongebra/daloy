@@ -21,9 +21,60 @@ type DiscoveredDoc = {
   href: Route;
   description: string;
   keywords: string[];
+  body: string;
 };
 
 const docsDir = path.join(process.cwd(), "app", "docs");
+
+/** Per-page cap on extracted body text (chars) sent to the client. */
+const BODY_INDEX_LIMIT = 2_400;
+
+const HTML_ENTITIES: Record<string, string> = {
+  "&apos;": "'",
+  "&quot;": '"',
+  "&amp;": "&",
+  "&lt;": "<",
+  "&gt;": ">",
+  "&nbsp;": " ",
+};
+
+function decodeEntities(value: string) {
+  return value.replace(/&(apos|quot|amp|lt|gt|nbsp);/g, (match) => HTML_ENTITIES[match] ?? match);
+}
+
+/**
+ * Extract searchable plain text from a docs page.tsx source. We strip imports,
+ * the metadata block, and JSX tags, then keep the inner text plus the contents
+ * of any `code={` ... `}` template literals so things mentioned only in code
+ * samples (e.g. `ui: "swagger"`) are still discoverable from cmdk.
+ */
+function extractBodyText(source: string): string {
+  let working = source;
+
+  // Drop imports and the metadata block — they're indexed via the metadata fields already.
+  working = working.replace(/^\s*import[\s\S]*?;\s*$/gm, "");
+  working = working.replace(/export\s+const\s+metadata\s*=\s*buildMetadata\(\{[\s\S]*?\}\);?/, "");
+
+  const collected: string[] = [];
+
+  // Pull CodeBlock template-literal payloads first so they survive tag stripping.
+  for (const match of working.matchAll(/code=\{`([\s\S]*?)`\}/g)) {
+    collected.push(match[1]);
+  }
+  working = working.replace(/code=\{`[\s\S]*?`\}/g, " ");
+
+  // Drop JSX expression containers — most are className strings, hrefs, callbacks.
+  working = working.replace(/\{[^{}]*\}/g, " ");
+  // Drop opening/closing tags but keep their inner text.
+  working = working.replace(/<\/?[A-Za-z][^>]*>/g, " ");
+
+  collected.push(working);
+
+  return decodeEntities(collected.join(" "))
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, BODY_INDEX_LIMIT);
+}
 
 async function walkDocsPages(dir: string): Promise<string[]> {
   const entries = await readdir(dir, { withFileTypes: true });
@@ -68,6 +119,7 @@ function extractMetadata(source: string, filePath: string): DiscoveredDoc {
     href,
     description: normalizeText(description),
     keywords,
+    body: extractBodyText(source),
   };
 }
 
@@ -119,6 +171,7 @@ export const getDocsSearchSections = cache(async (): Promise<DocsSearchSection[]
         doc.href.replaceAll("/", " "),
         doc.description,
         ...doc.keywords,
+        doc.body,
       ]
         .filter(Boolean)
         .join(" "),
