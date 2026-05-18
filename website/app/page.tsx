@@ -13,7 +13,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../co
 import { Badge } from "../components/ui/badge";
 import { CodeBlock } from "../components/code-block";
 import { CodeCopyButton } from "../components/code-copy-button";
-import { HomepageContractFlowVisual, HomepageHeroBackground } from "../components/homepage-hero-visuals";
+import { ContractFlowVisual } from "../components/contract-flow-visual";
+import { FlowHeroScene } from "../components/flow-hero-scene";
 import { Reveal } from "../components/reveal";
 import { buildMetadata, CORE_PACKAGE_VERSION, SITE_URL } from "@/lib/seo";
 
@@ -139,7 +140,7 @@ export default function HomePage() {
       />
       {/* Hero */}
       <section className="relative isolate overflow-hidden border-b bg-background">
-        <HomepageHeroBackground />
+        <FlowHeroScene />
         <div className="relative z-10 mx-auto max-w-7xl px-6 py-12 lg:py-16">
           <div className="flex flex-col items-center text-center gap-5">
             <Badge variant="outline" className="gap-2 float-up" style={{ animationDelay: "0ms" }}>
@@ -155,7 +156,7 @@ export default function HomePage() {
             >
               The runtime-portable TypeScript web framework
             </h1>
-            <HomepageContractFlowVisual />
+            <ContractFlowVisual />
             <p className="max-w-2xl text-lg leading-8 text-muted-foreground float-up" style={{ animationDelay: "180ms" }}>
               Contract-first routing, Standard Schema validation, OpenAPI 3.1 with Hey API typed
               client codegen, streaming and OpenTelemetry tracing, edge-friendly sessions, a
