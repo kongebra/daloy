@@ -1,4 +1,6 @@
-export type DocsNavItem = { title: string; href: string }
+import type { Route } from "next";
+
+export type DocsNavItem = { title: string; href: Route }
 export type DocsNavSection = { title: string; items: DocsNavItem[] }
 
 export const docsNav: DocsNavSection[] = [

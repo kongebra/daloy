@@ -1,10 +1,11 @@
-'use client'
+"use client";
 
-import * as React from 'react'
-import { addTransitionType, startTransition } from 'react'
-import { usePathname, useRouter } from 'next/navigation'
-import { MagnifyingGlassIcon } from '@phosphor-icons/react'
-import { Button } from './ui/button'
+import * as React from "react";
+import type { Route } from "next";
+import { addTransitionType, startTransition } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { MagnifyingGlassIcon } from "@phosphor-icons/react";
+import { Button } from "./ui/button";
 import {
   Command,
   CommandDialog,
@@ -14,78 +15,78 @@ import {
   CommandItem,
   CommandList,
   CommandShortcut,
-} from './ui/command'
-import type { DocsSearchSection } from '@/lib/docs-search'
+} from "./ui/command";
+import type { DocsSearchSection } from "@/lib/docs-search";
 
 function isTypingTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) {
-    return false
+    return false;
   }
 
-  const tagName = target.tagName
+  const tagName = target.tagName;
 
   return (
-    tagName === 'INPUT' ||
-    tagName === 'TEXTAREA' ||
-    tagName === 'SELECT' ||
+    tagName === "INPUT" ||
+    tagName === "TEXTAREA" ||
+    tagName === "SELECT" ||
     target.isContentEditable
-  )
+  );
 }
 
 function scoreDocsItem(value: string, search: string) {
-  const haystack = value.toLowerCase()
-  const needle = search.toLowerCase().trim()
+  const haystack = value.toLowerCase();
+  const needle = search.toLowerCase().trim();
 
   if (!needle) {
-    return 1
+    return 1;
   }
 
   if (haystack.includes(needle)) {
     // Boost matches that hit the title (first segment of value) so e.g.
     // searching "redis" surfaces the "Redis rate-limit store" page first.
-    return haystack.startsWith(needle) ? 1 : 0.75
+    return haystack.startsWith(needle) ? 1 : 0.75;
   }
 
-  const tokens = needle.split(/\s+/).filter(Boolean)
+  const tokens = needle.split(/\s+/).filter(Boolean);
 
   if (tokens.length > 1 && tokens.every((token) => haystack.includes(token))) {
-    return 0.5
+    return 0.5;
   }
 
-  return 0
+  return 0;
 }
 
 export function DocsSearch({ sections }: { sections: DocsSearchSection[] }) {
-  const router = useRouter()
-  const pathname = usePathname()
-  const [open, setOpen] = React.useState(false)
+  const router = useRouter();
+  const pathname = usePathname();
+  const [open, setOpen] = React.useState(false);
   const handleKeyDown = React.useEffectEvent((event: KeyboardEvent) => {
-    if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'k') {
-      return
+    if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "k") {
+      return;
     }
 
     if (isTypingTarget(event.target)) {
-      return
+      return;
     }
 
-    event.preventDefault()
-    setOpen((currentOpen) => !currentOpen)
-  })
+    event.preventDefault();
+    setOpen((currentOpen) => !currentOpen);
+  });
 
   React.useEffect(() => {
-    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener("keydown", handleKeyDown);
 
     return () => {
-      window.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [])
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
 
-  function handleSelect(href: string) {
-    setOpen(false)
+  function handleSelect(href: Route) {
+    setOpen(false);
     startTransition(() => {
-      addTransitionType('nav-forward')
-      router.push(href)
-    })
+      addTransitionType("nav-forward");
+      router.push(href);
+    });
   }
 
   return (
@@ -127,7 +128,7 @@ export function DocsSearch({ sections }: { sections: DocsSearchSection[] }) {
             {sections.map((section) => (
               <CommandGroup key={section.heading} heading={section.heading}>
                 {section.items.map((item) => {
-                  const active = pathname === item.href
+                  const active = pathname === item.href;
 
                   return (
                     <CommandItem
@@ -145,10 +146,10 @@ export function DocsSearch({ sections }: { sections: DocsSearchSection[] }) {
                         </div>
                       </div>
                       <CommandShortcut>
-                        {active ? 'Current' : 'Open'}
+                        {active ? "Current" : "Open"}
                       </CommandShortcut>
                     </CommandItem>
-                  )
+                  );
                 })}
               </CommandGroup>
             ))}
@@ -156,5 +157,5 @@ export function DocsSearch({ sections }: { sections: DocsSearchSection[] }) {
         </Command>
       </CommandDialog>
     </>
-  )
+  );
 }

@@ -1,3 +1,4 @@
+import type { Route } from "next";
 import { cache } from "react";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
@@ -5,7 +6,7 @@ import { docsNav } from "@/components/docs-nav";
 
 export type DocsSearchItem = {
   title: string;
-  href: string;
+  href: Route;
   description: string;
   keywords: string;
 };
@@ -17,7 +18,7 @@ export type DocsSearchSection = {
 
 type DiscoveredDoc = {
   title: string;
-  href: string;
+  href: Route;
   description: string;
   keywords: string[];
 };
@@ -43,14 +44,14 @@ function normalizeText(value: string) {
   return value.replace(/\s+/g, " ").trim();
 }
 
-function getRouteFromFile(filePath: string) {
+function getRouteFromFile(filePath: string): Route {
   const relativeDir = path.relative(docsDir, path.dirname(filePath));
 
   if (!relativeDir || relativeDir === ".") {
     return "/docs";
   }
 
-  return `/docs/${relativeDir.split(path.sep).join("/")}`;
+  return `/docs/${relativeDir.split(path.sep).join("/")}` as Route;
 }
 
 function extractMetadata(source: string, filePath: string): DiscoveredDoc {
@@ -58,7 +59,7 @@ function extractMetadata(source: string, filePath: string): DiscoveredDoc {
   const description =
     source.match(/description:\s*(?:\n\s*)?"([\s\S]*?)",\s*path:/)?.[1] ??
     "Documentation page";
-  const href = source.match(/path:\s*"([^"]+)"/)?.[1] ?? getRouteFromFile(filePath);
+  const href = (source.match(/path:\s*"([^"]+)"/)?.[1] as Route | undefined) ?? getRouteFromFile(filePath);
   const keywordsBlock = source.match(/keywords:\s*\[([\s\S]*?)\]/)?.[1] ?? "";
   const keywords = [...keywordsBlock.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
 
@@ -70,12 +71,12 @@ function extractMetadata(source: string, filePath: string): DiscoveredDoc {
   };
 }
 
-function getSectionForRoute(href: string, navSectionLookup: Map<string, string>) {
+function getSectionForRoute(href: Route, navSectionLookup: Map<Route, string>) {
   if (navSectionLookup.has(href)) {
     return navSectionLookup.get(href) ?? "More docs";
   }
 
-  let bestMatch = "";
+  let bestMatch: Route | "" = "";
   let matchedSection = "More docs";
 
   for (const [navHref, section] of navSectionLookup.entries()) {
@@ -89,18 +90,16 @@ function getSectionForRoute(href: string, navSectionLookup: Map<string, string>)
 }
 
 export const getDocsSearchSections = cache(async (): Promise<DocsSearchSection[]> => {
+  "use cache";
+
   const pageFiles = await walkDocsPages(docsDir);
   const discoveredDocs = await Promise.all(
     pageFiles.map(async (filePath) => extractMetadata(await readFile(filePath, "utf8"), filePath)),
   );
 
-  const navSections = docsNav.map((section) => ({
-    heading: section.title,
-    items: section.items.map((item, index) => ({ ...item, order: index })),
-  }));
-  const navOrder = new Map(navSections.flatMap((section) => section.items.map((item) => [item.href, item.order])));
-  const navTitles = new Map(docsNav.flatMap((section) => section.items.map((item) => [item.href, item.title])));
-  const navSectionLookup = new Map(docsNav.flatMap((section) => section.items.map((item) => [item.href, section.title])));
+  const navOrder = new Map(docsNav.flatMap((section) => section.items.map((item, index) => [item.href, index] as const)));
+  const navTitles = new Map(docsNav.flatMap((section) => section.items.map((item) => [item.href, item.title] as const)));
+  const navSectionLookup = new Map(docsNav.flatMap((section) => section.items.map((item) => [item.href, section.title] as const)));
 
   const grouped = new Map<string, DocsSearchItem[]>();
 

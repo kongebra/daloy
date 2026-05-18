@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import type { Route } from "next";
 import Link from "next/link";
 import {
   ButterflyIcon,
@@ -13,7 +14,7 @@ import { buttonVariants } from "./ui/button";
 import { ThemeSwitcher } from "./theme-switcher";
 import { CORE_PACKAGE_VERSION } from "@/lib/seo";
 
-const primaryNav = [
+const primaryNav: Array<{ href: Route; label: string }> = [
   { href: "/docs", label: "Docs" },
   { href: "/blog", label: "Blog" },
   { href: "/docs/getting-started", label: "Getting started" },

@@ -11,6 +11,7 @@ import { DEFAULT_KEYWORDS, SITE_NAME, SITE_URL } from "@/lib/seo";
 const DEFAULT_TITLE = "DaloyJS — runtime-portable TypeScript web framework";
 const DEFAULT_DESCRIPTION =
   "DaloyJS is a runtime-portable TypeScript web framework with contract-first routing, Standard Schema validation, OpenAPI 3.1 generation via Hey API, typed clients, core-enforced security guardrails, and first-party security middleware. Run on Node.js, Bun, Deno, Cloudflare Workers, and Vercel Edge.";
+const COPYRIGHT_YEAR = 2026;
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -82,7 +83,10 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
-const playfairDisplayHeading = Playfair_Display({ subsets: ["latin"], variable: "--font-heading" });
+const playfairDisplayHeading = Playfair_Display({
+  subsets: ["latin"],
+  variable: "--font-heading",
+});
 
 const notoSans = Noto_Sans({ subsets: ["latin"], variable: "--font-sans" });
 
@@ -91,32 +95,60 @@ const fontMono = Geist_Mono({
   variable: "--font-mono",
 });
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default function RootLayout({
+  children,
+}: Readonly<{ children: React.ReactNode }>) {
   return (
     <html
       lang="en"
       suppressHydrationWarning
-      className={cn("antialiased", fontMono.variable, "font-sans", notoSans.variable, playfairDisplayHeading.variable)}
+      className={cn(
+        "antialiased",
+        fontMono.variable,
+        "font-sans",
+        notoSans.variable,
+        playfairDisplayHeading.variable
+      )}
     >
-      <body className="min-h-screen bg-background font-sans antialiased flex flex-col">
+      <body className="flex min-h-screen flex-col bg-background font-sans antialiased">
         <ThemeProvider>
           <SiteHeader />
           <RouteTransition>{children}</RouteTransition>
-          <footer className="border-t py-6 px-6 text-sm text-muted-foreground" style={{ viewTransitionName: "site-footer" }}>
-            <div className="mx-auto max-w-7xl flex flex-col sm:flex-row items-center justify-between gap-2">
+          <footer
+            className="border-t px-6 py-6 text-sm text-muted-foreground"
+            style={{ viewTransitionName: "site-footer" }}
+          >
+            <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-2 sm:flex-row">
               <p className="text-center sm:text-left">
                 Built with DaloyJS · MIT licensed · Distributed via{" "}
-                <a className="underline" href="https://pnpm.io/motivation" target="_blank" rel="noreferrer">
+                <a
+                  className="underline"
+                  href="https://pnpm.io/motivation"
+                  target="_blank"
+                  rel="noreferrer"
+                >
                   pnpm
-                </a>
-                {" "}· <Link className="underline underline-offset-4" href="/blog">Blog</Link>
-                {" "}· <Link className="underline underline-offset-4" href="/about-the-name">About the name</Link>
+                </a>{" "}
+                ·{" "}
+                <Link className="underline underline-offset-4" href="/blog">
+                  Blog
+                </Link>{" "}
+                ·{" "}
+                <Link
+                  className="underline underline-offset-4"
+                  href="/about-the-name"
+                >
+                  About the name
+                </Link>
               </p>
               <p className="text-center sm:text-right">
-                <a className="underline underline-offset-4" href="mailto:daloyjs@gmail.com">
+                <a
+                  className="underline underline-offset-4"
+                  href="mailto:daloyjs@gmail.com"
+                >
                   daloyjs@gmail.com
-                </a>
-                {" "}· © {new Date().getFullYear()} DaloyJS contributors
+                </a>{" "}
+                · © {COPYRIGHT_YEAR} DaloyJS contributors
               </p>
             </div>
           </footer>

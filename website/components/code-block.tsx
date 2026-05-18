@@ -1,4 +1,8 @@
-import { bundledLanguages, codeToHtml, type BundledLanguage } from "shiki/bundle/full";
+import {
+  bundledLanguages,
+  codeToHtml,
+  type BundledLanguage,
+} from "shiki/bundle/full";
 
 import { cn } from "../lib/utils";
 import { CodeCopyButton } from "./code-copy-button";
@@ -41,7 +45,14 @@ function resolveLanguage(language: string): BundledLanguage | "text" {
   return "text";
 }
 
-export async function CodeBlock({ code, language = "ts", className, showCopyButton = true }: CodeBlockProps) {
+export async function CodeBlock({
+  code,
+  language = "ts",
+  className,
+  showCopyButton = true,
+}: CodeBlockProps) {
+  "use cache";
+
   const highlightedCode = await codeToHtml(code, {
     lang: resolveLanguage(language),
     themes: {
@@ -53,7 +64,13 @@ export async function CodeBlock({ code, language = "ts", className, showCopyButt
   });
 
   return (
-    <div className={cn("code-editor relative my-4 overflow-hidden rounded-xl border", className)} data-language={language}>
+    <div
+      className={cn(
+        "code-editor relative my-4 overflow-hidden rounded-xl border",
+        className
+      )}
+      data-language={language}
+    >
       <div className="code-editor__toolbar flex items-center justify-between gap-3 border-b px-3 py-2 text-[11px] sm:px-4 sm:text-xs">
         <span className="min-w-0 truncate font-mono">{language}</span>
         {showCopyButton ? <CodeCopyButton code={code} /> : null}
