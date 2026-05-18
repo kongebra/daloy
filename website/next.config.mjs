@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
-const FALLBACK_CORE_PACKAGE_VERSION = "0.11.0"
+const FALLBACK_CORE_PACKAGE_VERSION = "0.12.0"
 
 function getPublishedCorePackageVersion() {
   if (process.env.NEXT_PUBLIC_CORE_PACKAGE_VERSION) {

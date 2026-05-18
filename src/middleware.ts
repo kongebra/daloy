@@ -59,8 +59,38 @@ export function requestId(opts: RequestIdOptions = {}): Hooks {
 
 // ---------- Secure headers (Helmet-equivalent defaults) ----------
 
+/**
+ * Object form of the `contentSecurityPolicy` option that enables per-request
+ * nonces and Trusted Types. When this form is used the CSP header is built
+ * fresh for every request so the nonce value can be injected into
+ * `script-src` / `style-src`, and `ctx.state.cspNonce` is exposed for
+ * handlers that render inline `<script nonce="...">` / `<style nonce="...">`.
+ *
+ * @since 0.12.0
+ */
+export interface CspDirectivesOptions {
+  /**
+   * CSP directive map. Keys are directive names (`default-src`,
+   * `script-src`, ...); values are source lists. Strings are split on
+   * whitespace. Empty arrays are skipped.
+   */
+  directives: Record<string, string | string[]>;
+  /**
+   * When true, generate a 128-bit base64url nonce per request, stash it
+   * on `ctx.state.cspNonce`, and append `'nonce-<value>'` to the
+   * `script-src` and `style-src` directives (only when those directives
+   * are already declared).
+   */
+  nonce?: boolean;
+  /**
+   * Emit `require-trusted-types-for 'script'`. Pass an object with
+   * `policies` to also emit a `trusted-types <policy-names...>` directive.
+   */
+  trustedTypes?: boolean | { policies?: string[] };
+}
+
 export interface SecureHeadersOptions {
-  contentSecurityPolicy?: string | false;
+  contentSecurityPolicy?: string | false | CspDirectivesOptions;
   hsts?: { maxAgeSeconds: number; includeSubDomains?: boolean; preload?: boolean } | false;
   frameOptions?: "DENY" | "SAMEORIGIN" | false;
   referrerPolicy?: string | false;
@@ -69,6 +99,54 @@ export interface SecureHeadersOptions {
   crossOriginResourcePolicy?: string | false;
   noSniff?: boolean;
   xssProtection?: boolean;
+}
+
+const CSP_NONCE_STATE = "cspNonce";
+
+function generateCspNonce(): string {
+  const cryptoApi: Crypto | undefined = (globalThis as any).crypto;
+  if (!cryptoApi?.getRandomValues) {
+    throw new Error(
+      "secureHeaders(): WebCrypto is required to generate a CSP nonce. " +
+        "Run on Node 20+, Bun, Deno, Cloudflare Workers, or Vercel Edge.",
+    );
+  }
+  const nonceBytes = new Uint8Array(16);
+  cryptoApi.getRandomValues(nonceBytes);
+  let binary = "";
+  for (let index = 0; index < nonceBytes.length; index++) {
+    binary += String.fromCharCode(nonceBytes[index]!);
+  }
+  // base64url
+  return btoa(binary).replace(/=+$/, "").replace(/\+/g, "-").replace(/\//g, "_");
+}
+
+function buildCspHeader(opt: CspDirectivesOptions, nonce: string | undefined): string {
+  const entries: Record<string, string[]> = {};
+  for (const [directiveName, directiveValue] of Object.entries(opt.directives)) {
+    const list = Array.isArray(directiveValue)
+      ? directiveValue.slice()
+      : directiveValue.split(/\s+/).filter(Boolean);
+    if (list.length > 0) entries[directiveName] = list;
+  }
+  if (opt.nonce && nonce) {
+    const nonceSrc = `'nonce-${nonce}'`;
+    for (const directiveName of ["script-src", "script-src-elem", "style-src", "style-src-elem"]) {
+      if (entries[directiveName]) entries[directiveName]!.push(nonceSrc);
+    }
+  }
+  if (opt.trustedTypes) {
+    entries["require-trusted-types-for"] = ["'script'"];
+    const trustedTypes = opt.trustedTypes;
+    if (typeof trustedTypes === "object" && trustedTypes.policies?.length) {
+      entries["trusted-types"] = trustedTypes.policies.slice();
+    }
+  }
+  const parts: string[] = [];
+  for (const [directiveName, sources] of Object.entries(entries)) {
+    parts.push(`${directiveName} ${sources.join(" ")}`);
+  }
+  return parts.join("; ");
 }
 
 /**
@@ -97,8 +175,12 @@ export interface SecureHeadersOptions {
  */
 export function secureHeaders(opts: SecureHeadersOptions = {}): Hooks {
   const headers: Record<string, string> = {};
-  const csp = opts.contentSecurityPolicy ?? "default-src 'self'; frame-ancestors 'none'";
-  if (csp !== false) headers["content-security-policy"] = csp;
+  const cspOpt = opts.contentSecurityPolicy ?? "default-src 'self'; frame-ancestors 'none'";
+  const cspIsDynamic =
+    cspOpt !== false && typeof cspOpt === "object";
+  if (cspOpt !== false && typeof cspOpt === "string") {
+    headers["content-security-policy"] = cspOpt;
+  }
 
   const hsts = opts.hsts ?? { maxAgeSeconds: 31536000, includeSubDomains: true };
   if (hsts !== false) {
@@ -127,6 +209,21 @@ export function secureHeaders(opts: SecureHeadersOptions = {}): Hooks {
   if (opts.xssProtection ?? false) headers["x-xss-protection"] = "0"; // modern guidance
 
   return {
+    beforeHandle(ctx) {
+      if (cspIsDynamic && (cspOpt as CspDirectivesOptions).nonce) {
+        (ctx.state as Record<string, unknown>)[CSP_NONCE_STATE] = generateCspNonce();
+      }
+    },
+    onSend(res, ctx) {
+      if (cspIsDynamic && !res.headers.has("content-security-policy")) {
+        const nonce = ctx
+          ? ((ctx.state as Record<string, unknown>)[CSP_NONCE_STATE] as string | undefined)
+          : undefined;
+        const header = buildCspHeader(cspOpt as CspDirectivesOptions, nonce);
+        if (header) res.headers.set("content-security-policy", header);
+      }
+      return undefined;
+    },
     onResponse(res) {
       for (const [k, v] of Object.entries(headers)) {
         if (!res.headers.has(k)) res.headers.set(k, v);
@@ -451,6 +548,30 @@ export interface CsrfCookieOptions {
 
 export interface CsrfOptions {
   /**
+   * Validation strategy.
+   *
+   * - `"double-submit"` (default): classic stateless double-submit cookie. A
+   *   random token is set in a cookie and must be echoed back in a request
+   *   header (default `x-csrf-token`). Compared via timing-safe equality.
+   * - `"fetch-metadata"`: tokenless protection that relies on `Sec-Fetch-Site`
+   *   (and `Origin` / `Referer` as backstops). Modern browsers always send
+   *   `Sec-Fetch-Site`; cross-origin requests are rejected with `403`
+   *   regardless of any cookie state. No cookie is issued in this mode.
+   * - `"both"`: require BOTH the fetch-metadata check AND the double-submit
+   *   cookie to succeed. Use this if you want defense-in-depth.
+   *
+   * @default "double-submit"
+   * @since 0.12.0
+   */
+  strategy?: "double-submit" | "fetch-metadata" | "both";
+  /**
+   * Allowlist of origins permitted when `Sec-Fetch-Site` is missing
+   * (legacy browsers) or `cross-site`/`same-site`. Used by
+   * `"fetch-metadata"` and `"both"`. May be an array of full origins
+   * (`"https://app.example.com"`) or a predicate.
+   */
+  allowedOrigins?: string[] | ((origin: string) => boolean);
+  /**
    * Cookie name carrying the CSRF token. Default: `"__Host-daloy.csrf"`.
    * `__Host-` prefixed names require `secure: true`, `path: "/"`, and no `domain`.
    * The middleware enforces those constraints at construction time.
@@ -541,22 +662,76 @@ function buildCsrfSetCookie(name: string, value: string, opts: Required<CsrfCook
 }
 
 /**
- * Double-submit-cookie CSRF protection.
+ * CSRF protection middleware.
  *
- * On safe methods (default GET/HEAD/OPTIONS), ensures the client has a CSRF
- * cookie; if missing, issues a fresh token and sets it via `Set-Cookie` on
- * the response. The token is also exposed on `ctx.state.csrfToken` so handlers
- * can render it into HTML.
+ * Two strategies are supported (see {@link CsrfOptions.strategy}):
  *
- * On mutating methods, requires that an `x-csrf-token` request header (name
- * configurable) matches the cookie value via timing-safe comparison. A missing
- * or mismatched token rejects the request with `403 Forbidden`.
+ * - **`"double-submit"`** (default) — On safe methods (`GET`/`HEAD`/`OPTIONS`)
+ *   ensures the client has a CSRF cookie; if missing, issues a fresh token
+ *   and sets it via `Set-Cookie` on the response. The token is exposed on
+ *   `ctx.state.csrfToken` so handlers can render it into HTML. On mutating
+ *   methods, requires that an `x-csrf-token` request header (name
+ *   configurable) matches the cookie value via timing-safe comparison. A
+ *   missing or mismatched token rejects the request with `403 Forbidden`.
+ *
+ * - **`"fetch-metadata"`** — Tokenless. Requires `Sec-Fetch-Site` to be
+ *   `same-origin` or `none` on mutating requests. Cross-origin requests with
+ *   no allowlisted `Origin`/`Referer` are rejected with `403`. No cookie is
+ *   issued or required. Robust on every browser shipped since 2020.
+ *
+ * - **`"both"`** — Requires the fetch-metadata check AND the double-submit
+ *   cookie check to pass. Useful when you want defense-in-depth.
+ *
+ * @example Fetch-Metadata mode (recommended for new apps)
+ * ```ts
+ * app.use(csrf({
+ *   strategy: "fetch-metadata",
+ *   allowedOrigins: ["https://app.example.com"],
+ * }));
+ * ```
  */
 export function csrf(opts: CsrfOptions = {}): Hooks {
+  const strategy = opts.strategy ?? "double-submit";
+  if (strategy !== "double-submit" && strategy !== "fetch-metadata" && strategy !== "both") {
+    throw new Error('csrf(): strategy must be "double-submit", "fetch-metadata", or "both".');
+  }
   const cookieName = opts.cookieName ?? "__Host-daloy.csrf";
   const headerName = sanitizeHeaderName(opts.headerName ?? "x-csrf-token").toLowerCase();
   const ignore = new Set((opts.ignoreMethods ?? ["GET", "HEAD", "OPTIONS"]).map((m) => m.toUpperCase()));
   const generator = opts.generator ?? generateCsrfToken;
+
+  const originAllowed = (origin: string | null): boolean => {
+    if (!origin) return false;
+    if (Array.isArray(opts.allowedOrigins)) return opts.allowedOrigins.includes(origin);
+    if (typeof opts.allowedOrigins === "function") return opts.allowedOrigins(origin);
+    return false;
+  };
+
+  const checkFetchMetadata = (req: Request): void => {
+    const site = req.headers.get("sec-fetch-site");
+    if (site === "same-origin" || site === "none") return;
+    if (site !== null) {
+      // Browser sent Sec-Fetch-Site and it is same-site/cross-site: reject
+      // unless the caller explicitly allowlisted the Origin.
+      if (originAllowed(req.headers.get("origin"))) return;
+      throw new ForbiddenError("CSRF: cross-origin request rejected (Sec-Fetch-Site)");
+    }
+    // Legacy browser without Fetch-Metadata: fall back to Origin/Referer allowlist.
+    const origin = req.headers.get("origin");
+    if (origin && originAllowed(origin)) return;
+    const referer = req.headers.get("referer");
+    if (referer) {
+      try {
+        const refOrigin = new URL(referer).origin;
+        if (originAllowed(refOrigin)) return;
+      } catch {
+        /* fall through to rejection */
+      }
+    }
+    throw new ForbiddenError("CSRF: request origin could not be verified");
+  };
+
+  const wantsDoubleSubmit = strategy === "double-submit" || strategy === "both";
 
   const cookieOverrides = opts.cookieOptions ?? {};
   const cookieOpts: Required<CsrfCookieOptions> = {
@@ -567,14 +742,22 @@ export function csrf(opts: CsrfOptions = {}): Hooks {
     maxAgeSeconds: cookieOverrides.maxAgeSeconds ?? 0,
     partitioned: cookieOverrides.partitioned ?? false,
   };
-  validateCsrfCookieOptions(cookieName, cookieOpts);
+  if (wantsDoubleSubmit) validateCsrfCookieOptions(cookieName, cookieOpts);
 
   return {
     beforeHandle(ctx) {
-      const existing = parseCookieValue(ctx.request.headers.get("cookie"), cookieName);
       const method = ctx.request.method.toUpperCase();
+      const isSafe = ignore.has(method);
 
-      if (ignore.has(method)) {
+      if (!isSafe && (strategy === "fetch-metadata" || strategy === "both")) {
+        checkFetchMetadata(ctx.request);
+      }
+
+      if (!wantsDoubleSubmit) return undefined;
+
+      const existing = parseCookieValue(ctx.request.headers.get("cookie"), cookieName);
+
+      if (isSafe) {
         if (existing) {
           (ctx.state as Record<string, unknown>)[CSRF_STATE_TOKEN] = existing;
         } else {
@@ -594,10 +777,139 @@ export function csrf(opts: CsrfOptions = {}): Hooks {
       return undefined;
     },
     onSend(res, ctx) {
-      if (!ctx) return undefined;
+      if (!ctx || !wantsDoubleSubmit) return undefined;
       const issued = (ctx.state as Record<string, unknown>)[CSRF_STATE_ISSUED] as string | undefined;
       if (!issued) return undefined;
       res.headers.append("set-cookie", buildCsrfSetCookie(cookieName, issued, cookieOpts));
+      return undefined;
+    },
+  };
+}
+
+// ---------- Basic auth ----------
+
+export interface BasicAuthOptions {
+  /**
+   * Verify the supplied credentials. Must use a constant-time password
+   * comparison and treat unknown usernames identically to wrong passwords
+   * (to avoid username enumeration via timing). Return a falsy value to
+   * reject the request with `401`.
+   *
+   * The resolved value (when truthy) can be either `true` or a user-shaped
+   * object that will be stamped on `ctx.state.user`.
+   */
+  verify: (
+    username: string,
+    password: string,
+  ) => boolean | Promise<boolean> | object | Promise<object | boolean>;
+  /** WWW-Authenticate realm. Default: `"api"`. */
+  realm?: string;
+  /**
+   * Maximum length (bytes) of the `Authorization: Basic ...` value, after
+   * the scheme prefix. Defaults to 1024 base64 bytes, which decodes to at
+   * most 768 credential bytes. Oversize values are rejected with `401`
+   * without invoking `verify`.
+   */
+  maxCredentialBytes?: number;
+}
+
+const BASIC_AUTH_TOKEN_RE = /^Basic\s+([A-Za-z0-9+/=]+)$/i;
+
+function decodeBasic(token: string): { user: string; pass: string } | null {
+  let binary: string;
+  try {
+    binary = atob(token);
+  } catch {
+    return null;
+  }
+
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+
+  let raw: string;
+  try {
+    raw = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return null;
+  }
+
+  // Reject embedded NUL: never legal in usernames/passwords.
+  if (raw.indexOf("\0") !== -1) return null;
+  const separatorIndex = raw.indexOf(":");
+  if (separatorIndex < 0) return null;
+  return { user: raw.slice(0, separatorIndex), pass: raw.slice(separatorIndex + 1) };
+}
+
+function basicAuthChallenge(realm: string): Response {
+  return new Response(
+    JSON.stringify({
+      type: "https://daloyjs.dev/errors/unauthorized",
+      title: "Unauthorized",
+      status: 401,
+    }),
+    {
+      status: 401,
+      headers: {
+        "content-type": "application/problem+json",
+        "www-authenticate": `Basic realm="${realm}", charset="UTF-8"`,
+      },
+    },
+  );
+}
+
+/**
+ * HTTP Basic Authentication middleware (RFC 7617).
+ *
+ * The `verify` callback is the integration point with whatever credential
+ * store you use. **It must use a constant-time password comparison** —
+ * pair it with {@link timingSafeEqual} or a password-hash library that
+ * provides timing-safe verification. Unknown usernames should be
+ * indistinguishable from wrong passwords (perform the hash either way).
+ *
+ * @example
+ * ```ts
+ * import { basicAuth, timingSafeEqual } from "@daloyjs/core";
+ *
+ * app.use(basicAuth({
+ *   realm: "books-api",
+ *   verify: (user, pass) => {
+ *     const okUser = timingSafeEqual(user, "admin");
+ *     const okPass = timingSafeEqual(pass, process.env.ADMIN_PASSWORD ?? "");
+ *     return okUser && okPass;
+ *   },
+ * }));
+ * ```
+ *
+ * @param opts - Credential verifier, realm, and max credential size.
+ * @returns A {@link Hooks} bundle ready for `app.use(...)`.
+ * @since 0.12.0
+ */
+export function basicAuth(opts: BasicAuthOptions): Hooks {
+  const options = opts as BasicAuthOptions | undefined;
+  if (!options || typeof options.verify !== "function") {
+    throw new Error("basicAuth(): verify must be a function.");
+  }
+  const realm = options.realm ?? "api";
+  // Reject CRLF in realm at construction time so it can never reach a
+  // response header.
+  if (/["\r\n\0]/.test(realm)) {
+    throw new Error("basicAuth(): realm must not contain quotes, CR, LF, or NUL bytes.");
+  }
+  const maxBytes = options.maxCredentialBytes ?? 1024;
+  if (!Number.isInteger(maxBytes) || maxBytes < 1) {
+    throw new Error("basicAuth(): maxCredentialBytes must be a positive integer.");
+  }
+  return {
+    async beforeHandle(ctx) {
+      const header = ctx.request.headers.get("authorization") ?? "";
+      const match = BASIC_AUTH_TOKEN_RE.exec(header);
+      if (!match || match[1]!.length > maxBytes) return basicAuthChallenge(realm);
+      const creds = decodeBasic(match[1]!);
+      if (!creds) return basicAuthChallenge(realm);
+      const result = await options.verify(creds.user, creds.pass);
+      if (!result) return basicAuthChallenge(realm);
+      (ctx.state as Record<string, unknown>).user =
+        typeof result === "object" ? result : { username: creds.user };
       return undefined;
     },
   };

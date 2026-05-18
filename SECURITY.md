@@ -11,7 +11,7 @@ release and `main`.
 
 | Version | Supported |
 | --- | --- |
-| `0.7.x` | Yes |
+| Latest `0.x` | Yes |
 
 ## Reporting a Vulnerability
 
@@ -47,6 +47,89 @@ Security reports are especially useful for:
 - Adapter-specific behavior that changes security guarantees across runtimes.
 
 Please do not use destructive tests against systems you do not own.
+
+---
+
+## Threat model
+
+DaloyJS is designed for the threat model of an **internet-facing HTTP API
+running on a trusted runtime** (Node, Bun, Deno, or a managed serverless edge).
+The framework assumes the runtime is not actively malicious; the network and
+every HTTP client (browser, mobile, CLI, attacker) are untrusted.
+
+### In scope (the framework MUST defend)
+
+| Class | Built-in defense |
+| --- | --- |
+| Body-size DoS | Core-enforced streamed body read with hard cap (default 1 MiB); `Content-Length` rejected pre-read when oversize. |
+| Prototype pollution via JSON | Core `safeJsonParse` strips `__proto__` / `constructor` / `prototype` via reviver. |
+| Header/response splitting | Core `sanitizeHeaderName` / `sanitizeHeaderValue` reject CRLF + NUL. |
+| Path traversal | Router rejects `..` and `//` before walking. |
+| Method confusion | Real **405** with `Allow` header. |
+| Slow handlers / runaway loops | Core `requestTimeoutMs` aborts handlers (30 s default); Node adapter sets `requestTimeout` + `headersTimeout` + `maxHeaderSize`. |
+| 5xx info disclosure | Production mode strips `detail` from 5xx problem+json automatically. |
+| CRLF in user-controlled headers | All built-in middleware that emit headers from config (`basicAuth` realm, `csrf` cookie name, etc.) reject CRLF at construction time. |
+| Credential timing attacks | First-party `timingSafeEqual()` plus `basicAuth()` verifier hooks designed for constant-time password checks. |
+| Cross-origin forgery (CSRF) | First-party `csrf()` with two strategies (double-submit cookie + Fetch-Metadata, see [docs](https://daloyjs.dev/docs/security/csrf)). |
+| Clickjacking / MIME sniffing / cross-origin leakage | First-party `secureHeaders()` (CSP, HSTS, COOP, CORP, `X-Frame-Options`, `X-Content-Type-Options`, Permissions-Policy; CSP nonce + Trusted Types). |
+| Trusted-proxy header spoofing | `rateLimit({ trustProxyHeaders })` and `requestId({ trustIncoming })` default OFF; key generators must be explicit. |
+| Supply chain | pnpm strict isolation + `ignore-scripts` + `minimum-release-age` + verified store; SHA-pinned CI; OIDC publishing with provenance (see Supply-chain section below). |
+
+### Explicitly out of scope (the framework will NOT defend)
+
+- **DOS at the network layer** (SYN floods, amplification). Place DaloyJS
+  behind a reverse proxy, WAF, or DDoS mitigation service.
+- **Insecure handler code.** The framework cannot stop a route that constructs
+  SQL via string concatenation, leaks secrets in error messages, or trusts
+  unvalidated client input passed to the OS shell.
+- **Credential storage and rotation.** DaloyJS provides `bearerAuth`,
+  `basicAuth`, and signed-cookie `session`. Hashing, key rotation, JWT verification,
+  and OAuth flow correctness are the application's responsibility (use `jose`,
+  `argon2`, or a dedicated identity provider).
+- **TLS termination.** Production deployments must run behind HTTPS; the Node
+  adapter speaks plain HTTP.
+- **Runtime compromise.** If the underlying Node/Bun/Deno binary or the host
+  is compromised, no framework can protect application data.
+
+### Trust boundaries
+
+```
+[ Untrusted client ] --HTTPS--> [ Trusted reverse proxy / edge ]
+          |
+          v
+        [ DaloyJS App.fetch ]   <- request/header sanitization,
+          |                  body-size cap, timeouts,
+          v                  problem+json
+        [ User handlers ]
+          |
+          v
+        [ Trusted data store ]   <- caller's responsibility
+```
+
+### Hardening roadmap (tracked, not yet shipped)
+
+These improvements are on the security roadmap. They are listed publicly so
+operators can plan around them and contributors can pick them up:
+
+- **First-party JWT verification** (`jwt()` middleware over `jose`) with mandatory
+  algorithm allowlist (no `none`, no `alg` from header), JWKS support, and
+  configurable `issuer`/`audience`/`clockTolerance`.
+- **First-party WebAuthn / passkeys** via a thin wrapper over a vetted library.
+- **SSRF guard** (`fetchGuard()`) blocking outbound `fetch` to RFC1918,
+  loopback, link-local, and metadata-service IPs unless explicitly allowlisted.
+- **Per-route capability-based body limits** derived from the route schema
+  (override the global cap when the schema implies a tighter ceiling).
+- **Under-pressure auto-shedding** in the Node adapter (event-loop lag, RSS,
+  heap), returning `503` before the runtime hangs.
+- **SLSA build-level-3 attestations** and **CycloneDX SBOM** generated and
+  attested per release, beyond the existing npm provenance attestation.
+- **`npm audit signatures`** (or equivalent registry-signature verification)
+  enforced in CI for every install.
+- **Continuous fuzzing** of the JSON parser, header sanitizers, router, and
+  multipart parser via Jazzer.js + OSS-Fuzz.
+- **Third-party audit** of the core once the public API stabilizes around
+  `1.0`, with the report linked from this file.
+- **Public bug bounty** through huntr.dev (or equivalent) once the audit ships.
 
 ---
 

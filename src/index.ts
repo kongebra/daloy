@@ -61,16 +61,19 @@ export {
   rateLimit,
   timing,
   bearerAuth,
+  basicAuth,
   csrf,
 } from "./middleware.js";
 export type {
   RequestIdOptions,
   SecureHeadersOptions,
+  CspDirectivesOptions,
   CorsOptions,
   RateLimitOptions,
   RateLimitStore,
   CsrfOptions,
   CsrfCookieOptions,
+  BasicAuthOptions,
 } from "./middleware.js";
 
 export { createLogger, noopLogger } from "./logger.js";
