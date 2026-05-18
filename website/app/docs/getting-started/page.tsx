@@ -94,6 +94,7 @@ printStartupBanner({
   links: [
     { label: "API docs", url: \`http://localhost:\${port}/docs\` },
     { label: "OpenAPI JSON", url: \`http://localhost:\${port}/openapi.json\` },
+    { label: "OpenAPI YAML", url: \`http://localhost:\${port}/openapi.yaml\` },
     { label: "Health", url: \`http://localhost:\${port}/healthz\` },
   ],
 });`} />
@@ -117,18 +118,19 @@ console.log(res.status, await res.json());
       <h2>3. Add OpenAPI &amp; docs UI</h2>
       <p>
         One line on the <code>App</code> constructor and DaloyJS auto-mounts{" "}
-        <code>GET /openapi.json</code> (the live spec) and <code>GET /docs</code> (a Scalar API
-        reference UI) for you:
+        <code>GET /openapi.json</code> + <code>GET /openapi.yaml</code> (the live spec in both
+        formats) and <code>GET /docs</code> (a Scalar API reference UI) for you:
       </p>
       <CodeBlock code={`const app = new App({
   bodyLimitBytes: 64 * 1024,
   requestTimeoutMs: 5_000,
   openapi: { info: { title: "Hello", version: "1.0.0" } },
-  docs: true, // mounts GET /docs and GET /openapi.json
+  docs: true, // mounts GET /docs, GET /openapi.json, GET /openapi.yaml
 });`} />
 
-      <p>Open <code>http://localhost:3000/docs</code> for an interactive Scalar reference, or{" "}
-      <code>http://localhost:3000/openapi.json</code> for the raw spec.</p>
+      <p>Open <code>http://localhost:3000/docs</code> for an interactive Scalar reference,{" "}
+      <code>http://localhost:3000/openapi.json</code> for the raw JSON spec, or{" "}
+      <code>http://localhost:3000/openapi.yaml</code> for the YAML spec.</p>
 
       <p>
         If you omit <code>openapi.info</code> entirely, DaloyJS will read your project&apos;s{" "}

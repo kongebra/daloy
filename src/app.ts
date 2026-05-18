@@ -25,6 +25,7 @@ import type {
 } from "./types.js";
 import {
   generateOpenAPI,
+  openapiToYAML,
   type OpenAPIInfo,
   type OpenAPIOptions,
 } from "./openapi.js";
@@ -155,6 +156,13 @@ export interface DocsRouteOptions {
   path?: PathString;
   /** Path the OpenAPI 3.1 JSON spec is served from. Default `"/openapi.json"`. */
   openapiPath?: PathString;
+  /**
+   * Path the OpenAPI 3.1 YAML spec is served from. Default `"/openapi.yaml"`.
+   * Set to `false` to disable the YAML route.
+   *
+   * @since 0.13.1
+   */
+  openapiYamlPath?: PathString | false;
   /** Which built-in UI to render. Default `"scalar"` (smaller payload, modern UI). */
   ui?: "scalar" | "swagger";
   /** Page `<title>`. Defaults to the resolved OpenAPI `info.title`. */
@@ -374,6 +382,10 @@ export class App {
 
   private mountDocs(opts: DocsRouteOptions): void {
     const openapiPath = (opts.openapiPath ?? "/openapi.json") as PathString;
+    const openapiYamlPath =
+      opts.openapiYamlPath === false
+        ? null
+        : ((opts.openapiYamlPath ?? "/openapi.yaml") as PathString);
     const docsPath = (opts.path ?? "/docs") as PathString;
     const ui = opts.ui ?? "scalar";
     const tags = opts.tags ?? ["Docs"];
@@ -423,6 +435,27 @@ export class App {
         body: await generate(),
       }),
     });
+
+    if (openapiYamlPath) {
+      this.route({
+        method: "GET",
+        path: openapiYamlPath,
+        operationId: "getOpenAPIDocumentYaml",
+        ...(tags.length ? { tags } : {}),
+        summary: "OpenAPI 3.1 document (YAML)",
+        responses: {
+          200: { description: "OpenAPI 3.1 document for this application, in YAML." },
+        },
+        handler: async () => ({
+          status: 200 as const,
+          body: openapiToYAML(await generate()),
+          headers: {
+            "content-type": "application/yaml; charset=utf-8",
+            "x-content-type-options": "nosniff",
+          },
+        }),
+      });
+    }
 
     this.route({
       method: "GET",

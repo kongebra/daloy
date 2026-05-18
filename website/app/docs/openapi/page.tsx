@@ -22,11 +22,11 @@ export default function Page() {
         no plugins, no separate decorators. Validation, types, and the spec all share one source of truth.
       </p>
 
-      <h2>One line: auto-mount /docs and /openapi.json</h2>
+      <h2>One line: auto-mount /docs, /openapi.json, /openapi.yaml</h2>
       <p>
         FastAPI-style. Pass <code>docs: true</code> to the <code>App</code> constructor and DaloyJS
-        registers <code>GET /openapi.json</code> (the live spec) and <code>GET /docs</code> (a Scalar
-        API reference UI) for you.
+        registers <code>GET /openapi.json</code> + <code>GET /openapi.yaml</code> (the live spec
+        in both formats) and <code>GET /docs</code> (a Scalar API reference UI) for you.
       </p>
       <CodeBlock code={`import { App } from "@daloyjs/core";
 
@@ -36,7 +36,7 @@ const app = new App({
     servers: [{ url: "https://api.example.com" }],
     securitySchemes: { bearer: { type: "http", scheme: "bearer" } },
   },
-  docs: true, // mounts GET /docs and GET /openapi.json
+  docs: true, // mounts GET /docs, GET /openapi.json, GET /openapi.yaml
 });`} />
 
       <p>
@@ -47,11 +47,12 @@ const app = new App({
       <CodeBlock code={`new App({
   openapi: { info: { title: "My API", version: "1.0.0" } },
   docs: {
-    path: "/reference",          // default: "/docs"
-    openapiPath: "/spec.json",   // default: "/openapi.json"
-    ui: "swagger",                // "scalar" (default) | "swagger"
-    tags: ["Docs"],               // default: ["Docs"], pass [] to omit
-    enabled: "auto",              // true | false | "auto" (off in production)
+    path: "/reference",              // default: "/docs"
+    openapiPath: "/spec.json",       // default: "/openapi.json"
+    openapiYamlPath: "/spec.yaml",   // default: "/openapi.yaml"; false disables it
+    ui: "swagger",                    // "scalar" (default) | "swagger"
+    tags: ["Docs"],                   // default: ["Docs"], pass [] to omit
+    enabled: "auto",                  // true | false | "auto" (off in production)
   },
 });`} />
 

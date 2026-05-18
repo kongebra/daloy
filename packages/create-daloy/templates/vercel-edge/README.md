@@ -23,6 +23,7 @@ curl http://localhost:3000/books/1
 
 - API docs (Scalar): <http://localhost:3000/docs>
 - OpenAPI 3.1 JSON: <http://localhost:3000/openapi.json>
+- OpenAPI 3.1 YAML: <http://localhost:3000/openapi.yaml>
 
 After deploying, the same routes serve `/docs` and `/openapi.json` from your Vercel Edge URL.
 <!-- daloy-minimal:strip-end docs -->

@@ -11,6 +11,7 @@ import {
   openIdConnectScheme,
   discriminator,
   discriminatedUnion,
+  openapiToYAML,
 } from "../src/openapi.js";
 import { validate } from "../src/schema.js";
 
@@ -452,4 +453,87 @@ test("discriminatedUnion() falls back to {} when a variant lacks toJSONSchema an
   const Schema = discriminatedUnion("kind", { x: opaque, y: throwing });
   const json = Schema.toJSONSchema();
   assert.deepEqual(json.oneOf, [{}, {}]);
+});
+
+// ---------------------------------------------------------------------------
+// openapiToYAML + /openapi.yaml route
+// ---------------------------------------------------------------------------
+
+test("openapiToYAML serializes a representative OpenAPI document", () => {
+  const doc = {
+    openapi: "3.1.0",
+    info: { title: "Test", version: "1.0.0" },
+    paths: {
+      "/users/{id}": {
+        get: {
+          summary: "Get user",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "ok" },
+          },
+        },
+      },
+    },
+    components: { schemas: {} },
+  };
+  const yaml = openapiToYAML(doc);
+  assert.ok(yaml.startsWith("openapi: 3.1.0\n"));
+  assert.match(yaml, /info:\n {2}title: Test\n {2}version: 1\.0\.0\n/);
+  assert.match(yaml, /paths:\n {2}\/users\/\{id\}:/);
+  assert.match(yaml, /parameters:\n {8}- name: id\n {10}in: path\n/);
+  assert.match(yaml, /components:\n {2}schemas: \{\}\n/);
+});
+
+test("openapiToYAML quotes reserved words, numerics, and special characters", () => {
+  const yaml = openapiToYAML({
+    yes: "no",
+    one: "1.0",
+    hash: "# not a comment",
+    empty: "",
+    arr: [],
+    obj: {},
+    nested: [null, true, 42, "ok"],
+    nestedArr: [[1, 2]],
+    emptyObjInArr: [{}],
+    multiline: "line1\nline2",
+  });
+  assert.match(yaml, /"yes": "no"\n/);
+  assert.match(yaml, /one: "1\.0"\n/);
+  assert.match(yaml, /hash: "# not a comment"\n/);
+  assert.match(yaml, /empty: ""\n/);
+  assert.match(yaml, /arr: \[\]\n/);
+  assert.match(yaml, /obj: \{\}\n/);
+  assert.match(yaml, /nested:\n {2}- null\n {2}- true\n {2}- 42\n {2}- ok\n/);
+  assert.match(yaml, /nestedArr:\n {2}-\n {4}- 1\n {4}- 2\n/);
+  assert.match(yaml, /emptyObjInArr:\n {2}- \{\}\n/);
+  assert.match(yaml, /multiline: "line1\\nline2"\n/);
+});
+
+test("App.docs mounts /openapi.yaml alongside /openapi.json by default", async () => {
+  const yamlApp = new App({ docs: true });
+  const res = await yamlApp.fetch(new Request("http://localhost/openapi.yaml"));
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get("content-type") ?? "", /application\/yaml/);
+  const text = await res.text();
+  assert.ok(text.startsWith("openapi: 3.1.0\n"));
+  assert.match(text, /info:\n/);
+});
+
+test("App.docs with openapiYamlPath: false disables the YAML route", async () => {
+  const yamlApp = new App({ docs: { openapiYamlPath: false } });
+  const res = await yamlApp.fetch(new Request("http://localhost/openapi.yaml"));
+  assert.equal(res.status, 404);
+});
+
+test("App.docs honours a custom openapiYamlPath", async () => {
+  const yamlApp = new App({
+    docs: { openapiYamlPath: "/swagger/v1/swagger.yaml" },
+  });
+  const res = await yamlApp.fetch(
+    new Request("http://localhost/swagger/v1/swagger.yaml"),
+  );
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get("content-type") ?? "", /application\/yaml/);
 });

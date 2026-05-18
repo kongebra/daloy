@@ -429,3 +429,105 @@ function zodFallback(z: any): unknown {
       return {};
   }
 }
+
+// ---------------------------------------------------------------------------
+// YAML serializer for OpenAPI documents
+// ---------------------------------------------------------------------------
+
+const YAML_RESERVED = /^(true|false|null|yes|no|on|off|~)$/i;
+const YAML_NUMERIC = /^-?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
+const YAML_SPECIAL_FIRST = /^[\s\-?:,\[\]{}#&*!|>'"%@`]/;
+
+function yamlNeedsQuoting(s: string): boolean {
+  if (s === "") return true;
+  if (YAML_SPECIAL_FIRST.test(s)) return true;
+  if (/[:#\n\r\t]/.test(s)) return true;
+  if (/\s$/.test(s)) return true;
+  if (YAML_RESERVED.test(s)) return true;
+  if (YAML_NUMERIC.test(s)) return true;
+  return false;
+}
+
+function yamlQuote(s: string): string {
+  return `"${s
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "\\r")
+    .replace(/\t/g, "\\t")}"`;
+}
+
+function yamlScalar(v: unknown): string {
+  if (v === null || v === undefined) return "null";
+  if (typeof v === "boolean") return v ? "true" : "false";
+  if (typeof v === "number") return Number.isFinite(v) ? String(v) : "null";
+  if (typeof v === "string") return yamlNeedsQuoting(v) ? yamlQuote(v) : v;
+  return yamlQuote(String(v));
+}
+
+function yamlKey(k: string): string {
+  return yamlNeedsQuoting(k) ? yamlQuote(k) : k;
+}
+
+function yamlRenderKV(k: string, v: unknown, prefix: string, childIndent: string): string {
+  const key = yamlKey(k);
+  if (v !== null && typeof v === "object") {
+    const isEmpty = Array.isArray(v) ? v.length === 0 : Object.keys(v as object).length === 0;
+    if (isEmpty) {
+      return `${prefix}${key}: ${Array.isArray(v) ? "[]" : "{}"}\n`;
+    }
+    return `${prefix}${key}:${yamlEmit(v, childIndent)}`;
+  }
+  return `${prefix}${key}: ${yamlScalar(v)}\n`;
+}
+
+function yamlEmit(value: unknown, indent: string): string {
+  if (Array.isArray(value)) {
+    if (value.length === 0) return " []\n";
+    let out = "\n";
+    for (const item of value) {
+      if (item !== null && typeof item === "object" && !Array.isArray(item)) {
+        const entries = Object.entries(item as Record<string, unknown>);
+        if (entries.length === 0) {
+          out += `${indent}- {}\n`;
+          continue;
+        }
+        let first = true;
+        for (const [k, v] of entries) {
+          const prefix = first ? `${indent}- ` : `${indent}  `;
+          first = false;
+          out += yamlRenderKV(k, v, prefix, indent + "    ");
+        }
+      } else if (Array.isArray(item)) {
+        out += `${indent}-${yamlEmit(item, indent + "  ")}`;
+      } else {
+        out += `${indent}- ${yamlScalar(item)}\n`;
+      }
+    }
+    return out;
+  }
+  if (value !== null && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (entries.length === 0) return " {}\n";
+    let out = "\n";
+    for (const [k, v] of entries) {
+      out += yamlRenderKV(k, v, indent, indent + "  ");
+    }
+    return out;
+  }
+  return ` ${yamlScalar(value)}\n`;
+}
+
+/**
+ * Serialize an OpenAPI document (or any JSON-safe object) as YAML 1.2.
+ *
+ * Pure function with no runtime dependency. Output is the canonical form
+ * consumed by Swagger UI's `/swagger.yaml` style endpoints.
+ *
+ * @since 0.13.1
+ */
+export function openapiToYAML(doc: Record<string, unknown>): string {
+  const result = yamlEmit(doc, "");
+  return result.startsWith("\n") ? result.slice(1) : result;
+}
+

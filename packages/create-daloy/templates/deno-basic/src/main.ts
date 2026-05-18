@@ -13,6 +13,7 @@ serve(app, {
       // daloy-minimal:strip-start docs
       { label: "API docs", url: `${url}/docs` },
       { label: "OpenAPI JSON", url: `${url}/openapi.json` },
+      { label: "OpenAPI YAML", url: `${url}/openapi.yaml` },
       // daloy-minimal:strip-end docs
       { label: "Health", url: `${url}/healthz` },
     ];

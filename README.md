@@ -8,7 +8,7 @@
 
 > A **runtime-portable TypeScript web framework** with built-in **contract-first routing**, **validation**, **OpenAPI (Hey API)**, **typed client generation**, **large-scale maintainability**, and **security-focused runtime plus supply-chain posture**.
 
-**One-line API docs.** `new App({ openapi: { info: ... }, docs: true })` auto-mounts `GET /docs` (Scalar) and `GET /openapi.json` — the same DX as FastAPI, without leaving TypeScript.
+**One-line API docs.** `new App({ openapi: { info: ... }, docs: true })` auto-mounts `GET /docs` (Scalar), `GET /openapi.json`, and `GET /openapi.yaml` — the same DX as FastAPI, without leaving TypeScript.
 
 DaloyJS is maintained in the GitHub organization at <https://github.com/daloyjs>; the canonical framework repository is <https://github.com/daloyjs/daloy>.
 
@@ -186,7 +186,7 @@ const r = await client.getBookById({ params: { id: "1" } });
 
 ## Built-in docs UI (Scalar / Swagger UI)
 
-FastAPI-style. One line on the `App` constructor mounts `GET /docs` and `GET /openapi.json` for you,
+FastAPI-style. One line on the `App` constructor mounts `GET /docs`, `GET /openapi.json`, and `GET /openapi.yaml` for you,
 with a strict CSP and CDN-hosted assets:
 
 ```ts
@@ -194,7 +194,7 @@ import { App } from "@daloyjs/core";
 
 const app = new App({
   openapi: { info: { title: "My API", version: "1.0.0" } },
-  docs: true, // mounts GET /docs (Scalar) and GET /openapi.json
+  docs: true, // mounts GET /docs (Scalar), GET /openapi.json, GET /openapi.yaml
 });
 ```
 
@@ -203,7 +203,13 @@ Use `docs: "auto"` to mount only when `production: false`, or the object form fo
 ```ts
 new App({
   openapi: { info: { title: "My API", version: "1.0.0" } },
-  docs: { ui: "swagger", path: "/reference", openapiPath: "/spec.json", tags: ["Docs"] },
+  docs: {
+    ui: "swagger",
+    path: "/reference",
+    openapiPath: "/spec.json",
+    openapiYamlPath: "/spec.yaml", // or `false` to disable the YAML route
+    tags: ["Docs"],
+  },
 });
 ```
 
@@ -371,6 +377,7 @@ What works today, at a glance:
 - In-process test client (`app.request()`), contract-test runner, in-process typed client, and Hey API codegen via `pnpm gen`.
 - One-command watch loop: `daloy dev` delegates to the host runtime's native watcher (`node --import tsx --watch`, `bun --hot`, or `deno run --watch`) with a `--runtime` override for cross-runtime `package.json` scripts.
 - Zero-config OpenAPI `info` autofill from `package.json` (Node / Bun) or `deno.json` / `deno.jsonc` (Deno) — explicit `openapi.info` values always win.
+- Live OpenAPI 3.1 spec served as both JSON (`GET /openapi.json`) and YAML (`GET /openapi.yaml`) when `docs: true` — covers Swagger UI's `swagger.yaml` convention out of the box.
 - `pnpm create daloy` scaffolder with Node, Bun, Deno, Cloudflare Worker, and Vercel Edge templates, plus optional `--with-ci` GitHub Actions / Dependabot / CODEOWNERS / SECURITY.md hardening.
 - Plugin encapsulation, decorators, structured logging, request-id propagation, lifecycle events (`onPluginInstalled`, `onShutdown`, `onClose`), and graceful shutdown.
 - Integration guides for transactional email providers — AWS SES, SendGrid, Resend, Postmark, Mailgun, and Mailtrap — with a common `EmailSender` plugin pattern and runtime-compatibility matrix.
