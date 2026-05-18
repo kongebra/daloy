@@ -131,6 +131,25 @@ existing routes keep working unchanged.
 
 ---
 
+## Soon — `0.14.0`+ ("secure-by-default initiative")
+
+Converts Daloy's existing security middleware from opt-in to opt-out where
+exactly one correct default exists, and adds a small set of high-value
+primitives. Full plan with risk matrix, breaking-change boundaries, and per-wave
+test surface in [`otherdocs/secure-by-default-plan.md`](./otherdocs/secure-by-default-plan.md).
+Awaiting owner sign-off before implementation begins.
+
+- [ ] **Wave 1 — additive (target `0.13.x` patch line):** default log redaction (authorization / cookie / set-cookie / x-api-key / password / token / JWT-shaped), strip `Server` and `X-Powered-By`, reject duplicate `Host` / `Content-Length`, `argon2id` helper, webhook HMAC verify helper, explicit `app({ env: "production" })` option with mismatch warning. **Non-breaking.**
+- [ ] **Wave 2 — flip defaults (target `0.14.0`, breaking):** auto-apply `secureHeaders`, secure cookie defaults, CORS deny-by-default for state-changing cross-origin, Content-Type allowlist enforced at the framework. Single master opt-out `app({ secureDefaults: false })` plus per-feature opt-outs. Migration guide + `create-daloy` template bump in the same release.
+- [ ] **Wave 3 — boot/first-request guards (target `0.14.0`):** refuse-to-boot on weak HMAC/JWT secrets in prod, refuse-to-boot on `session()` + state-changing route without `csrf()`, refuse-to-boot on `cors({ origin: "*" })` in prod, first-request 500 on unconfigured `X-Forwarded-*` (prevents IP spoofing through the rate limiter).
+- [ ] **Wave 4 — lifecycle & health (target `0.15.0`):** connection-draining graceful shutdown, crash-on-unhandled-rejection in prod, `app.health()` / `app.ready()` primitives rate-limited + auth-required by default.
+- [ ] **Wave 5 — opt-in one-liners (target `0.16.x`):** `wsRateLimit()` and `graphqlRateLimit()` adapters, `loginThrottle()` preset, `rotateSession()` helper, file-upload MIME + magic-byte + size guard.
+
+Out of scope for this initiative (policy decisions, kept as documented recipes):
+JWT/JWK/OAuth/OIDC strategies, RBAC/ABAC models, AES recipe, DI guards/interceptors model.
+
+---
+
 ## Stabilization — `1.0.0` ("public API freeze")
 
 Ship date target: when the items below are simultaneously true. We'd rather
