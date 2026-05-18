@@ -1,23 +1,23 @@
-import { getDocsSearchSections } from "@/lib/docs-search"
-import { DocsPageCopyButton } from "@/components/docs-page-copy-button"
-import { DocsSearch } from "../../components/docs-search"
-import { DocsSidebar } from "../../components/docs-sidebar"
+import { getDocsSearchSections } from "@/lib/docs-search";
+import { DocsPageCopyButton } from "@/components/docs-page-copy-button";
+import { DocsSearch } from "../../components/docs-search";
+import { DocsSidebar } from "../../components/docs-sidebar";
 
 export default async function DocsLayout({
   children,
 }: {
-  children: React.ReactNode
+  children: React.ReactNode;
 }) {
-  const searchSections = await getDocsSearchSections()
+  const searchSections = await getDocsSearchSections();
 
   return (
     <div className="mx-auto w-full max-w-7xl flex-1 px-4 sm:px-6 lg:px-8">
       <div className="pt-6 lg:pt-8">
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div className="w-full max-w-xl">
-            {/* <DocsSearch sections={searchSections} /> */}
+            <DocsSearch sections={searchSections} />
           </div>
-          {/* <DocsPageCopyButton /> */}
+          <DocsPageCopyButton />
         </div>
       </div>
 
@@ -49,5 +49,5 @@ export default async function DocsLayout({
         </main>
       </div>
     </div>
-  )
+  );
 }

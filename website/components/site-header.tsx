@@ -136,7 +136,7 @@ export function SiteHeader() {
               <PackageIcon className="size-4" />
             </Link>
 
-            {/* <ThemeSwitcher /> */}
+            <ThemeSwitcher />
 
             <div className="hidden items-center gap-2 xl:flex">
               {socialLinks.map((link) => {
