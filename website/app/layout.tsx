@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist_Mono, Noto_Sans, Playfair_Display } from "next/font/google";
+import Link from "next/link";
 import "./globals.css";
 import { RouteTransition } from "@/components/route-transition";
 import { SiteHeader } from "@/components/site-header";
@@ -108,7 +109,8 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
                 <a className="underline" href="https://pnpm.io/motivation" target="_blank" rel="noreferrer">
                   pnpm
                 </a>
-                {" "}· <a className="underline underline-offset-4" href="/about-the-name">About the name</a>
+                {" "}· <Link className="underline underline-offset-4" href="/blog">Blog</Link>
+                {" "}· <Link className="underline underline-offset-4" href="/about-the-name">About the name</Link>
               </p>
               <p className="text-center sm:text-right">
                 <a className="underline underline-offset-4" href="mailto:daloyjs@gmail.com">

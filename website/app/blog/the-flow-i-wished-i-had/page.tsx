@@ -15,7 +15,7 @@ const POST = {
   author: "Devlin Duldulao",
   authorRole: "Fullstack engineer, 10+ years",
   authorBio:
-    "Filipino dev living in Norway. Spends summers debugging, winters debugging — only the lighting changes.",
+    "Filipino dev living in Norway. Spends summers debugging, winters debugging; only the lighting changes.",
 };
 
 export const metadata = buildMetadata({
@@ -89,7 +89,7 @@ const result = await api.getBookById({ params: { id: "42" } });
 if (result.status === 200) {
   console.log(result.body.title); // string — typed.
 } else {
-  console.log("not found, lakas maka-404"); // 404 branch, also typed.
+  console.log("not found"); // 404 branch, also typed.
 }`;
 
 const RUNTIME_PORTABLE = `// node
@@ -168,7 +168,7 @@ export default function BlogPostPage() {
 
         <div className="docs-prose max-w-full">
           <p>
-            Kumusta. I&apos;m Devlin — a Filipino developer who has been writing fullstack web apps
+            I&apos;m Devlin — a Filipino developer who has been writing fullstack web apps
             for a little over ten years, and who now does it from a small flat in Norway where the
             sun, depending on the season, either refuses to set or refuses to show up. I drink a
             lot of coffee. I&apos;ve also shipped a lot of bad APIs, which is the more relevant
@@ -180,12 +180,11 @@ export default function BlogPostPage() {
             web framework, really? Why? My short answer is: yes, really, because after a decade of
             Express, then Koa, then Fastify, then Nest, then Hono, then writing my own &quot;just a
             tiny layer&quot; libraries six different times, I got tired of the same three problems.
-            So we built DaloyJS to solve them. That&apos;s it. That&apos;s the pitch. Salamat,
-            goodnight.
+            So we built DaloyJS to solve them. That&apos;s the pitch.
           </p>
 
           <p>
-            Okay fine, longer version below. Bring coffee. Or kape. Or in my case, a very expensive
+            Okay fine, longer version below. Bring coffee. Or in my case, a very expensive
             Norwegian cup of something that costs more than my first PC mouse.
           </p>
 
@@ -193,8 +192,7 @@ export default function BlogPostPage() {
 
           <p>
             In ten years of fullstack work, across startups, consultancies, and one bank that shall
-            remain nameless (you know who you are), the same three problems followed me around like
-            a clingy aso:
+            remain nameless, the same three problems kept showing up:
           </p>
 
           <ol>
@@ -306,8 +304,8 @@ export default function BlogPostPage() {
             That <code>if (result.status === 200)</code> branch is a real discriminated union.
             TypeScript will yell at you, in red, in your editor, before you even reach for{" "}
             <code>git commit</code>, if you try to read <code>result.body.title</code> from the
-            404 branch. This is the part where I, in my head, do a little victory dance. You
-            cannot see it. It&apos;s for the best.
+            404 branch. This is the part where I quietly celebrate and pretend it was always this
+            simple.
           </p>
 
           <h2>Runtime portability without the PowerPoint slides</h2>
@@ -412,8 +410,8 @@ pnpm dev`} />
           </p>
 
           <p>
-            Salamat for reading. Now if you&apos;ll excuse me, the sun in Norway just set at 11pm
-            and I have to go pretend that&apos;s normal.
+            Thanks for reading. Now if you&apos;ll excuse me, the sun in Norway just set at 11pm,
+            and I still have not emotionally accepted that as a normal thing.
           </p>
 
           <p>

@@ -9,6 +9,7 @@ import { CORE_PACKAGE_VERSION } from "@/lib/seo";
 
 const primaryNav = [
   { href: "/docs", label: "Docs" },
+  { href: "/blog", label: "Blog" },
   { href: "/docs/getting-started", label: "Getting started" },
   { href: "/docs/tutorials/bookstore", label: "Tutorials" },
   { href: "/docs/api-reference", label: "API" },
