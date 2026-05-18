@@ -26,6 +26,12 @@ function getPublishedCorePackageVersion() {
 const nextConfig = {
   experimental: {
     viewTransition: true,
+    // Tree-shake/inline these packages into the importer's chunk so they
+    // don't end up as standalone vendor chunks with random hash names that
+    // some corporate web filters (Zscaler/Umbrella/Forcepoint) block as
+    // suspicious-looking files. See `webpack` hook below for the matching
+    // deterministic chunk-name configuration.
+    optimizePackageImports: ["cmdk", "@phosphor-icons/react"],
   },
   // Pin the workspace root to this site so Next.js doesn't walk up into the
   // framework's `src/` (which has a `middleware.ts` that is NOT a Next.js
@@ -34,6 +40,22 @@ const nextConfig = {
   outputFileTracingRoot: __dirname,
   env: {
     NEXT_PUBLIC_CORE_PACKAGE_VERSION: getPublishedCorePackageVersion(),
+  },
+  // Force deterministic, human-readable chunk filenames. The default hashed
+  // IDs (e.g. `0z914mjk4kksg.js`) look like DGA/obfuscated payloads to many
+  // corporate proxies and get blocked with a 403 before reaching the browser.
+  // Named chunks like `vendor-cmdk-<hash>.js` reliably pass those filters.
+  // NOTE: only applied when building with webpack (`next build --webpack`).
+  // Turbopack production builds use their own chunk naming.
+  webpack(config, { dev }) {
+    if (!dev) {
+      config.optimization = {
+        ...config.optimization,
+        chunkIds: "named",
+        moduleIds: "named",
+      }
+    }
+    return config
   },
   async redirects() {
     return [
