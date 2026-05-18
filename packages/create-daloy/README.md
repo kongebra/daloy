@@ -44,10 +44,10 @@ pnpm create daloy@latest my-api \
 | `--template <name>` | `node-basic` (default), `vercel-edge`, `cloudflare-worker`, `bun-basic`, or `deno-basic`. |
 | `--package-manager <pm>` | `pnpm` (default), `npm`, `yarn`, or `bun`. Ignored for `deno-basic`. |
 | `--list-templates` | Print available templates with descriptions. |
-| `--install` / `--no-install` | Install dependencies after scaffolding. Defaults to interactive. |
+| `--install` / `--no-install` | Install dependencies after scaffolding. Defaults to **Y** for npm/yarn/bun and **N** for pnpm (so first-time runs are not blocked by the 24h `minimumReleaseAge` embargo or the `pnpm.onlyBuiltDependencies` allowlist required by the hardened `.npmrc`). |
 | `--git` / `--no-git` | Initialize a git repository. Defaults to interactive. |
 | `--minimal` | Strip the bookstore demo route and the built-in `/docs` + `/openapi.json` routes so only the framework bootstrap and `/healthz` ship. |
-| `--with-ci` / `--no-ci` | Add the hardened GitHub Actions, Dependabot, CODEOWNERS, SECURITY.md, and lockfile-source verification bundle. |
+| `--with-ci` / `--no-ci` | Add the hardened GitHub Actions, Dependabot, CODEOWNERS, SECURITY.md, and lockfile-source verification bundle. **Defaults to Y** so scaffolded projects are secure by default. |
 | `--code-owner <owner>` | Replace the CODEOWNERS placeholder when `--with-ci` is used, for example `@acme/security`. |
 | `--force` | Overwrite an existing non-empty directory. |
 | `--yes` | Accept all defaults; never prompt. |
