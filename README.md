@@ -16,13 +16,13 @@ DaloyJS is maintained in the GitHub organization at <https://github.com/daloyjs>
 
 DaloyJS exists to be the framework you'd build if you took the best ideas from each modern stack:
 
-| You want                                                | Today's best-of                                       | What DaloyJS gives you                                                                                                       |
-| ------------------------------------------------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| You want                                                | Today's best-of                                       | What DaloyJS gives you                                                                                                                               |
+| ------------------------------------------------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Best **OpenAPI ergonomics**                             | [FastAPI](https://fastapi.tiangolo.com)               | First-class OpenAPI 3.1 generation from a single route definition; one-line `docs: true` auto-mounts `/docs` and `/openapi.json`.                                                           |
-| Best **Vercel / serverless / edge fit**                 | [Hono](https://hono.dev/docs/)                        | Web-standard `Request → Response` core, multi-runtime adapters.                                                              |
-| Mature **Swagger / docs / ops** in Node                 | [Fastify](https://fastify.dev/docs/latest/Reference/) | Encapsulated plugins, structured logger, graceful shutdown, request ids, hooks.                                              |
-| Modern **TS-first DX**, Bun acceptable                  | [Elysia](https://elysiajs.com/at-glance.html)         | End-to-end typed handlers, typed context, typed client.                                                                      |
-| Best-in-class **typed client codegen** for any consumer | [Hey API](https://heyapi.dev/openapi-ts/get-started)  | One command (`pnpm gen`) emits a fully-typed fetch SDK from your spec.                                                       |
+| Best **Vercel / serverless / edge fit**                 | [Hono](https://hono.dev/docs/)                        | Web-standard `Request → Response` core, multi-runtime adapters.                                                                                      |
+| Mature **Swagger / docs / ops** in Node                 | [Fastify](https://fastify.dev/docs/latest/Reference/) | Encapsulated plugins, structured logger, graceful shutdown, request ids, hooks.                                                                       |
+| Modern **TS-first DX**, Bun acceptable                  | [Elysia](https://elysiajs.com/at-glance.html)         | End-to-end typed handlers, typed context, typed client.                                                                                              |
+| Best-in-class **typed client codegen** for any consumer | [Hey API](https://heyapi.dev/openapi-ts/get-started)  | One command (`pnpm gen`) emits a fully-typed fetch SDK from your spec.                                                                                 |
 | **Supply-chain-hardened installs and publishing**       | [pnpm](https://pnpm.io/motivation) + hardened CI/CD   | `ignore-scripts`, release-age cooldown, explicit build allowlist, SHA-pinned actions, isolated OIDC publish with provenance. |
 
 ```
@@ -204,14 +204,24 @@ Use `docs: "auto"` to mount only when `production: false`, or the object form fo
 new App({
   openapi: { info: { title: "My API", version: "1.0.0" } },
   docs: {
-    ui: "swagger",
+    ui: "scalar",
     path: "/reference",
     openapiPath: "/spec.json",
     openapiYamlPath: "/spec.yaml", // or `false` to disable the YAML route
+    scalar: {
+      theme: "kepler",
+      customCss: ":root { --scalar-color-accent: #2563eb; }",
+      hideTestRequestButton: true,
+    },
     tags: ["Docs"],
   },
 });
 ```
+
+The `scalar` option is forwarded to Scalar's HTML API as JSON configuration,
+with Daloy keeping the live `openapiPath` as the source. Use it for themes,
+custom CSS, layout, auth defaults, and client visibility without copying the
+HTML helper.
 
 Prefer to mount manually? Import the helpers directly:
 
@@ -264,9 +274,9 @@ deployment.
 | **Slow-loris / hung handlers**   | Core `requestTimeoutMs` aborts handlers (default 30 s); Node adapter sets `requestTimeout` + `headersTimeout` + `maxHeaderSize`.                                                                                      |
 | **MIME sniffing**                | First-party `secureHeaders()` sets `X-Content-Type-Options: nosniff`; scaffolded apps enable it.                                                                                                                      |
 | **Clickjacking**                 | First-party `secureHeaders()` sets `X-Frame-Options: DENY` + CSP `frame-ancestors 'none'`; scaffolded apps enable it.                                                                                                 |
-| **XSS via injected scripts**     | First-party `secureHeaders()` provides a strict CSP `default-src 'self'` baseline; the directives-object form supports per-request **nonces** and **Trusted Types** (`require-trusted-types-for 'script'`).                                              |
+| **XSS via injected scripts**     | First-party `secureHeaders()` provides a strict CSP `default-src 'self'` baseline; the directives-object form supports per-request **nonces** and **Trusted Types** (`require-trusted-types-for 'script'`).           |
 | **Cross-origin leakage**         | First-party `secureHeaders()` sets `cross-origin-opener-policy` + `cross-origin-resource-policy` to `same-origin`; scaffolded apps enable it.                                                                         |
-| **CSRF**                         | First-party `csrf()` ships two strategies: **double-submit cookie** (default) and **Fetch-Metadata** (`Sec-Fetch-Site`-based, tokenless); both with timing-safe verification.                                                              |
+| **CSRF**                         | First-party `csrf()` ships two strategies: **double-submit cookie** (default) and **Fetch-Metadata** (`Sec-Fetch-Site`-based, tokenless); both with timing-safe verification.                                         |
 | **Information disclosure (5xx)** | Production mode strips `detail` from 5xx problem+json automatically.                                                                                                                                                  |
 | **Credential timing attacks**    | First-party `timingSafeEqual()` helper for tokens & signatures.                                                                                                                                                       |
 | **Brute-force / scraping**       | First-party `rateLimit()` with token-bucket + `Retry-After`; Node/Bun/Deno scaffolded apps enable it.                                                                                                                 |
@@ -377,7 +387,7 @@ What works today, at a glance:
 - In-process test client (`app.request()`), contract-test runner, in-process typed client, and Hey API codegen via `pnpm gen`.
 - One-command watch loop: `daloy dev` delegates to the host runtime's native watcher (`node --import tsx --watch`, `bun --hot`, or `deno run --watch`) with a `--runtime` override for cross-runtime `package.json` scripts.
 - Zero-config OpenAPI `info` autofill from `package.json` (Node / Bun) or `deno.json` / `deno.jsonc` (Deno) — explicit `openapi.info` values always win.
-- Live OpenAPI 3.1 spec served as both JSON (`GET /openapi.json`) and YAML (`GET /openapi.yaml`) when `docs: true` — covers Swagger UI's `swagger.yaml` convention out of the box.
+- Live OpenAPI 3.1 spec served as both JSON (`GET /openapi.json`) and YAML (`GET /openapi.yaml`) when `docs: true`, with Scalar UI theming/custom CSS via `docs.scalar` — covers Swagger UI's `swagger.yaml` convention out of the box.
 - `pnpm create daloy` scaffolder with Node, Bun, Deno, Cloudflare Worker, and Vercel Edge templates, plus optional `--with-ci` GitHub Actions / Dependabot / CODEOWNERS / SECURITY.md hardening.
 - Plugin encapsulation, decorators, structured logging, request-id propagation, lifecycle events (`onPluginInstalled`, `onShutdown`, `onClose`), and graceful shutdown.
 - Integration guides for transactional email providers — AWS SES, SendGrid, Resend, Postmark, Mailgun, and Mailtrap — with a common `EmailSender` plugin pattern and runtime-compatibility matrix.

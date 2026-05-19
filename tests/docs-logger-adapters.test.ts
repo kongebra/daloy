@@ -10,6 +10,21 @@ import { serve as serveDeno } from "../src/adapters/deno.js";
 import { toFastlyHandler, installFastlyListener } from "../src/adapters/fastly.js";
 import { toLambdaHandler } from "../src/adapters/lambda.js";
 
+function decodeHtmlAttribute(value: string): string {
+  return value
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+}
+
+function scalarConfigurationFrom(html: string): Record<string, unknown> {
+  const match = html.match(/data-configuration='([^']+)'/);
+  assert.ok(match);
+  return JSON.parse(decodeHtmlAttribute(match[1]!));
+}
+
 test("docs HTML escapes untrusted title and spec URL", () => {
   const scalar = scalarHtml({ title: "<img>", specUrl: "/openapi.json?x=<script>" });
   assert.match(scalar, /&lt;img&gt;/);
@@ -41,6 +56,48 @@ test("docs helpers support self-hosted assets and nonce-based scripts", () => {
   assert.match(swagger, /href="\/docs-assets\/swagger-ui\.css"/);
   assert.match(swagger, /src="\/docs-assets\/swagger-ui\.js"/);
   assert.match(swagger, /nonce="nonce-123"/);
+});
+
+test("scalarHtml serializes custom Scalar UI configuration safely", () => {
+  const html = scalarHtml({
+    title: "Docs",
+    specUrl: "/openapi.json?x=<tag>&ok=1",
+    configuration: {
+      theme: "mars",
+      darkMode: true,
+      hideTestRequestButton: true,
+      customCss: `:root { --brand-content: "A&B"; }`,
+    },
+  });
+  const configuration = scalarConfigurationFrom(html);
+  assert.equal(configuration.url, "/openapi.json?x=<tag>&ok=1");
+  assert.equal(configuration.theme, "mars");
+  assert.equal(configuration.darkMode, true);
+  assert.equal(configuration.hideTestRequestButton, true);
+  assert.equal(configuration.customCss, `:root { --brand-content: "A&B"; }`);
+  assert.match(html, /data-url="\/openapi\.json\?x=&lt;tag&gt;&amp;ok=1"/);
+  assert.doesNotMatch(html, /<tag>/);
+});
+
+test("scalarHtml keeps the Daloy spec URL when runtime source fields are present", () => {
+  const html = scalarHtml({
+    specUrl: "/openapi.json",
+    configuration: {
+      theme: "kepler",
+      content: "{}",
+      plugins: [],
+      sources: [{ url: "/ignored.json" }],
+      spec: { url: "/ignored.json" },
+      url: "/ignored.json",
+    } as any,
+  });
+  const configuration = scalarConfigurationFrom(html);
+  assert.equal(configuration.url, "/openapi.json");
+  assert.equal(configuration.theme, "kepler");
+  assert.equal(configuration.content, undefined);
+  assert.equal(configuration.plugins, undefined);
+  assert.equal(configuration.sources, undefined);
+  assert.equal(configuration.spec, undefined);
 });
 
 test("htmlResponse sets HTML content type and strict docs headers", async () => {
@@ -435,7 +492,10 @@ test("lambda adapter preserves a set-cookie header without Headers.getSetCookie"
     assert.deepEqual(result.cookies, ["fallback=1; Path=/"]);
   } finally {
     if (previousGetSetCookie) {
-      Object.defineProperty(headersPrototype, "getSetCookie", { configurable: true, value: previousGetSetCookie });
+      Object.defineProperty(headersPrototype, "getSetCookie", {
+        configurable: true,
+        value: previousGetSetCookie,
+      });
     } else {
       delete headersPrototype.getSetCookie;
     }

@@ -65,12 +65,24 @@ const app = new App({
     path: "/reference",              // default: "/docs"
     openapiPath: "/spec.json",       // default: "/openapi.json"
     openapiYamlPath: "/spec.yaml",   // default: "/openapi.yaml"; false disables it
-    ui: "swagger",                    // "scalar" (default) | "swagger"
+    ui: "scalar",                     // "scalar" (default) | "swagger"
+    scalar: {
+      theme: "kepler",
+      customCss: ":root { --scalar-color-accent: #2563eb; }",
+      hideTestRequestButton: true,
+    },
     tags: ["Docs"],                   // default: ["Docs"], pass [] to omit
     enabled: "auto",                  // true | false | "auto" (off in production)
   },
 });`}
       />
+
+      <p>
+        The <code>scalar</code> object is forwarded to Scalar&apos;s HTML API as
+        JSON configuration while Daloy keeps the live <code>openapiPath</code>{" "}
+        as the source. Use it for themes, custom CSS, layout, auth defaults, and
+        client visibility without copying the docs HTML.
+      </p>
 
       <h2>Advanced: generate the spec manually</h2>
       <p>
@@ -99,7 +111,11 @@ app.route({
   operationId: "docs",
   responses: { 200: { description: "API reference" } },
   handler: async () => {
-    const html = scalarHtml({ specUrl: "/openapi.json", title: "My API" });
+    const html = scalarHtml({
+      specUrl: "/openapi.json",
+      title: "My API",
+      configuration: { theme: "kepler" },
+    });
     const res = htmlResponse(html);
     return { status: 200, body: await res.text(), headers: Object.fromEntries(res.headers) };
   },

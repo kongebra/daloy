@@ -90,6 +90,35 @@ test("docs: { ui: 'swagger' } selects Swagger UI", async () => {
   assert.match(html, /Swagger Demo/);
 });
 
+test("docs: { scalar } forwards Scalar UI configuration", async () => {
+  const app = withRoute(
+    new App({
+      logger: false,
+      docs: {
+        path: "/reference",
+        openapiPath: "/reference/openapi.json",
+        scalar: {
+          theme: "kepler",
+          layout: "classic",
+          customCss: ":root { --scalar-color-accent: #2563eb; }",
+          hideTestRequestButton: true,
+        },
+      },
+      title: "Styled Docs",
+      version: "2.0.0",
+    }),
+  );
+
+  const docs = await app.request("/reference");
+  assert.equal(docs.status, 200);
+  const html = await docs.text();
+  assert.match(html, /data-configuration='/);
+  assert.match(html, /&quot;theme&quot;:&quot;kepler&quot;/);
+  assert.match(html, /&quot;layout&quot;:&quot;classic&quot;/);
+  assert.match(html, /&quot;hideTestRequestButton&quot;:true/);
+  assert.match(html, /&quot;url&quot;:&quot;\/reference\/openapi\.json&quot;/);
+});
+
 test("docs: { path, openapiPath } honours custom mount points", async () => {
   const app = withRoute(
     new App({
@@ -454,4 +483,3 @@ test("docs: malformed manifest is swallowed and returns empty autofill", async (
     rmSync(dir, { recursive: true, force: true });
   }
 });
-

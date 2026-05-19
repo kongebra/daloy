@@ -83,6 +83,13 @@ export type {
 export { createLogger, noopLogger } from "./logger.js";
 export type { Logger, LogLevel, ConsoleLoggerOptions } from "./logger.js";
 
+export type {
+  ScalarJsonPrimitive,
+  ScalarJsonValue,
+  ScalarReferenceConfiguration,
+  ScalarTheme,
+} from "./docs.js";
+
 export { formatStartupBanner, printStartupBanner } from "./banner.js";
 export type { StartupBannerLink, StartupBannerOptions } from "./banner.js";
 

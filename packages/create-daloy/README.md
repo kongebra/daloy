@@ -67,6 +67,8 @@ A production-ready Node.js HTTP server using `@daloyjs/core` with:
 - `secureHeaders`, `requestId`, and `rateLimit` enabled by default (`rateLimit` is global until you configure `keyGenerator` or trusted proxy headers).
 - A sample `GET /healthz` and contract-first `GET /books/:id` route with Zod validation.
 - `pnpm gen` wired to emit OpenAPI 3.1 + a typed Hey API client.
+- Auto-mounted Scalar docs can be branded by changing `docs: true` to
+  `docs: { scalar: { theme, customCss } }`.
 
 ### `cloudflare-worker`
 

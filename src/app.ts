@@ -34,6 +34,7 @@ import {
   scalarHtml,
   swaggerUiHtml,
   type DocsContentSecurityPolicyOptions,
+  type ScalarReferenceConfiguration,
 } from "./docs.js";
 
 /**
@@ -117,8 +118,8 @@ export interface AppOptions {
    *   is a "secure by default" choice: production deployments should opt in
    *   explicitly so internal APIs do not accidentally publish a browsable
    *   schema.
-   * - object — full configuration (custom paths, UI choice, title, CSP
-   *   overrides). The `enabled` field on the object can override the
+    * - object — full configuration (custom paths, UI choice, title, Scalar UI
+    *   config, CSP overrides). The `enabled` field on the object can override the
    *   auto/prod rule.
    *
    * The default is `false` so adding a new `App({ ... })` to an existing app
@@ -165,6 +166,8 @@ export interface DocsRouteOptions {
   openapiYamlPath?: PathString | false;
   /** Which built-in UI to render. Default `"scalar"` (smaller payload, modern UI). */
   ui?: "scalar" | "swagger";
+  /** Scalar API reference UI configuration. Ignored when `ui: "swagger"`. */
+  scalar?: ScalarReferenceConfiguration;
   /** Page `<title>`. Defaults to the resolved OpenAPI `info.title`. */
   title?: string;
   /**
@@ -475,7 +478,11 @@ export class App {
         const html =
           ui === "swagger"
             ? swaggerUiHtml({ specUrl: openapiPath, title })
-            : scalarHtml({ specUrl: openapiPath, title });
+            : scalarHtml({
+                specUrl: openapiPath,
+                title,
+                configuration: opts.scalar,
+              });
         return {
           status: 200 as const,
           body: html,

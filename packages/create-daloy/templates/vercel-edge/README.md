@@ -19,14 +19,16 @@ curl http://localhost:3000/books/1
 ```
 
 <!-- daloy-minimal:strip-start docs -->
+
 ## API documentation
 
 - API docs (Scalar): <http://localhost:3000/docs>
 - OpenAPI 3.1 JSON: <http://localhost:3000/openapi.json>
 - OpenAPI 3.1 YAML: <http://localhost:3000/openapi.yaml>
-- OpenAPI 3.1 YAML: <http://localhost:3000/openapi.yaml>
 
 After deploying, the same routes serve `/docs`, `/openapi.json`, and `/openapi.yaml` from your Vercel Edge URL.
+To brand Scalar, change `docs: true` in `api/[...path].ts` to `docs: { scalar: { theme, customCss } }`.
+
 <!-- daloy-minimal:strip-end docs -->
 
 ## Deploy
@@ -61,7 +63,7 @@ That catch-all API route lets DaloyJS own routing while Vercel handles the runti
 - Smaller edge-friendly body and timeout limits in the generated app.
 <!-- daloy-minimal:strip-start books -->
 - A health route and a contract-first `/books/:id` route with Zod validation.
-<!-- daloy-minimal:strip-end books -->
-<!-- daloy-minimal:strip-start docs -->
+  <!-- daloy-minimal:strip-end books -->
+  <!-- daloy-minimal:strip-start docs -->
 - A Scalar API reference UI at `/docs`, plus live OpenAPI 3.1 specs at `/openapi.json` and `/openapi.yaml`.
 <!-- daloy-minimal:strip-end docs -->
