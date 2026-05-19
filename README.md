@@ -396,6 +396,14 @@ What works today, at a glance:
 
 Roadmap, version-by-version plan, and shipped/in-progress checklists live in [ROADMAP.md](./ROADMAP.md).
 
+## Contributing
+
+DaloyJS is **public and MIT-licensed, but contributions-closed**. Pull requests
+from accounts that are not invited maintainers or explicit repository
+collaborators are closed automatically. Bug reports, feature requests, and
+security disclosures are very welcome; see [CONTRIBUTING.md](./CONTRIBUTING.md)
+and [SECURITY.md](./SECURITY.md) for the channels that *are* open.
+
 ## License
 
 MIT

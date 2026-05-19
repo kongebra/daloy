@@ -2,8 +2,10 @@
 #
 # Hardening notes (see otherdocs/security-incidence.md and
 # https://tanstack.com/blog/incident-followup):
-#   * No `pull_request_target` anywhere — fork PRs run with the safe `pull_request`
-#     trigger and have no write access to repo secrets, caches, or the registry.
+#   * CI does not use `pull_request_target`: fork PRs run with the safe
+#     `pull_request` trigger and have no write access to repo secrets, caches,
+#     or the registry. The close-uninvited-PR workflow is the only narrow
+#     exception, and it never checks out or runs fork code.
 #   * Top-level `permissions: {}` denies everything; jobs opt back in to the
 #     minimum they need.
 #   * `step-security/harden-runner` blocks unexpected egress and reports tampering.

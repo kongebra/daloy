@@ -82,14 +82,37 @@ test("ci workflow avoids privileged fork-pr and cache-poisoning patterns", async
   assert.match(workflow, /actions\/setup-node@[0-9a-f]{40}\s+# v6/);
 });
 
-test("all workflows avoid pull_request_target and zizmor is enforced", async () => {
+test("all workflows avoid unsafe pull_request_target and zizmor is enforced", async () => {
   const workflowDir = new URL("../.github/workflows/", import.meta.url);
   const workflowFiles = (await readdir(workflowDir)).filter((file) => /\.ya?ml$/.test(file));
+  const pullRequestTargetWorkflows: string[] = [];
 
   for (const file of workflowFiles) {
     const workflow = await readWorkspaceFile(`.github/workflows/${file}`);
-    assert.doesNotMatch(workflow, /^\s*pull_request_target:/m, `${file} must not use pull_request_target`);
+    if (/^\s*pull_request_target:/m.test(workflow)) {
+      pullRequestTargetWorkflows.push(file);
+    }
   }
+
+  assert.deepEqual(pullRequestTargetWorkflows, ["close-external-prs.yml"]);
+
+  const closeExternalPrs = await readWorkspaceFile(".github/workflows/close-external-prs.yml");
+  assert.doesNotMatch(closeExternalPrs, /^\s*uses:\s*/m);
+  assert.doesNotMatch(closeExternalPrs, /^\s*id-token:\s*write\s*$/m);
+  assert.doesNotMatch(closeExternalPrs, /^\s*actions:\s*write\s*$/m);
+  assert.doesNotMatch(closeExternalPrs, /^\s*packages:\s*write\s*$/m);
+  assert.doesNotMatch(closeExternalPrs, /^\s*issues:\s*write\s*$/m);
+  assert.doesNotMatch(closeExternalPrs, /^\s*contents:\s*write\s*$/m);
+  assert.match(closeExternalPrs, /^\s*contents:\s*read\s*$/m);
+  assert.match(closeExternalPrs, /^\s*pull-requests:\s*write\s*$/m);
+  assert.match(closeExternalPrs, /github\.repository == 'daloyjs\/daloy'/);
+  assert.match(closeExternalPrs, /^\s*timeout-minutes:\s*5\s*$/m);
+  assert.match(closeExternalPrs, /author_association != 'OWNER'/);
+  assert.match(closeExternalPrs, /author_association != 'MEMBER'/);
+  assert.match(closeExternalPrs, /author_association != 'COLLABORATOR'/);
+  assert.match(closeExternalPrs, /user\.login != 'dependabot\[bot\]'/);
+  assert.match(closeExternalPrs, /gh pr comment/);
+  assert.match(closeExternalPrs, /gh pr close/);
 
   const zizmor = await readWorkspaceFile(".github/workflows/zizmor.yml");
   assert.match(zizmor, /^\s*pull_request:\s*$/m);

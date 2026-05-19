@@ -1,0 +1,71 @@
+name: Close uninvited PRs
+
+# DaloyJS is MIT-licensed and publicly readable, but contributions-closed:
+# only invited maintainers and explicit repository collaborators may open
+# pull requests. This workflow closes any PR opened by someone whose
+# author_association is not OWNER / MEMBER / COLLABORATOR. The only bot
+# exception is Dependabot, which is repository-controlled maintenance
+# automation configured in .github/dependabot.yml.
+#
+# This is the repo's narrow pull_request_target exception. It deliberately
+# does not check out, evaluate, install, or run any code from the PR; it only
+# calls the GitHub REST API with GITHUB_TOKEN.
+
+on:
+  pull_request_target:
+    types: [opened, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: close-external-prs-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  close:
+    # Hard-gate to the upstream repo so a fork that copies this workflow
+    # cannot run it against PRs to the fork using the fork's GITHUB_TOKEN.
+    if: >-
+      github.repository == 'daloyjs/daloy' &&
+      github.event.pull_request.author_association != 'OWNER' &&
+      github.event.pull_request.author_association != 'MEMBER' &&
+      github.event.pull_request.author_association != 'COLLABORATOR' &&
+      github.event.pull_request.user.login != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Comment and close
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          body=$(cat <<EOF
+          Hi @${PR_AUTHOR}, and thanks for the interest in DaloyJS.
+
+          This repository is **public and MIT-licensed, but contributions-closed**:
+          it does not accept pull requests from accounts that are not invited
+          maintainers or explicit repository collaborators. See
+          [CONTRIBUTING.md](https://github.com/${REPO}/blob/main/CONTRIBUTING.md)
+          for the reasoning and for the channels that *are* open:
+
+          - **Security issues**: please follow [SECURITY.md](https://github.com/${REPO}/blob/main/SECURITY.md)
+            (private vulnerability reporting).
+          - **Bug reports and feature requests**: open a regular Issue.
+          - **Questions and ideas**: use Discussions if enabled, otherwise an Issue.
+
+          This PR is being closed automatically. No judgment on the change
+          itself - the policy applies to every external PR. You're very
+          welcome to keep your fork and to file an Issue describing the
+          problem you were trying to solve; that's the most useful signal
+          for the maintainers.
+          EOF
+          )
+
+          gh pr comment "$PR_NUMBER" --repo "$REPO" --body "$body"
+          gh pr close   "$PR_NUMBER" --repo "$REPO"
