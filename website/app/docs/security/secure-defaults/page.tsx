@@ -54,7 +54,7 @@ const app = new App();
       <p>
         If you call <code>app.use(secureHeaders(...))</code> with your own
         configuration, the auto-installed instance is automatically removed so
-        your overrides win instead of being silently shadowed by the framework's
+        your overrides win instead of being silently shadowed by the framework&apos;s
         defaults.
       </p>
       <CodeBlock
@@ -147,7 +147,7 @@ app.use(cors({ origin: ["https://app.example.com"] }));
 
       <h2>The master escape hatch</h2>
       <p>
-        If you're upgrading from <code>0.15.x</code> and need to ship the
+        If you&apos;re upgrading from <code>0.15.x</code> and need to ship the
         upgrade without any behavior changes, pass{" "}
         <code>secureDefaults: false</code> to restore the pre-0.16 behavior
         wholesale:
@@ -219,14 +219,14 @@ export function myCustomHeaders() {
       </ul>
 
       <h2>
-        What's <em>not</em> in this slice
+        What&apos;s <em>not</em> in this slice
       </h2>
       <p>
         The full Wave 2 plan in the roadmap lists many additional flips (CSP
         nonces default-on, per-content-type body caps, response-schema
         validation in development, conditional
         <code>/openapi.json</code> in production,{" "}
-        <code>frame-ancestors 'none'</code> as immovable, trailing-slash
+        <code>frame-ancestors &apos;none&apos;</code> as immovable, trailing-slash
         canonicalization, etc.). Those will land in additive <code>0.16.x</code>{" "}
         patches and follow-up minor releases. The four-item slice above is what
         shipped first because it is the

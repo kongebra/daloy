@@ -217,6 +217,97 @@ export function assertNoDuplicateSingletonHeaders(headers: Headers): void {
   }
 }
 
+/**
+ * Minimum acceptable secret length in bytes for HMAC / signing material in
+ * production (Wave 3 boot guard). Matches the OWASP "Secret Management"
+ * cheat sheet floor of 256 bits for symmetric keys.
+ *
+ * @since 0.17.0
+ */
+export const MIN_PROD_SECRET_BYTES = 32;
+
+/**
+ * Lowercased list of well-known weak secret values (defaults, tutorial
+ * placeholders, common bad guesses). Used by {@link assertStrongSecret} to
+ * refuse-to-boot when the developer ships a sample secret to production.
+ *
+ * @since 0.17.0
+ */
+export const WEAK_SECRET_STRINGS: readonly string[] = Object.freeze([
+  "secret",
+  "secrets",
+  "password",
+  "passw0rd",
+  "changeme",
+  "change-me",
+  "default",
+  "test",
+  "testtest",
+  "example",
+  "placeholder",
+  "replace-this-with-a-strong-secret",
+  "supersecret",
+  "topsecret",
+  "letmein",
+  "your-secret",
+  "your-jwt-secret",
+  "your-session-secret",
+  "your-session-secret-for-production",
+  "it-is-very-secret",
+  "your-secret-key",
+  "very-secret",
+  "do-not-use",
+  "do_not_use",
+  "0000000000000000",
+  "1111111111111111",
+  "aaaaaaaaaaaaaaaa",
+]);
+
+const WEAK_SECRET_SET = new Set(WEAK_SECRET_STRINGS.map((s) => s.toLowerCase()));
+
+/**
+ * Throw when `secret` is unfit for production HMAC / signing duty. Used by
+ * Wave 3 boot guards on `session()` / future `jwt()` helpers when the App
+ * runs in production. The check rejects:
+ *
+ * - empty / non-string values;
+ * - exact matches against {@link WEAK_SECRET_STRINGS} (case-insensitive);
+ * - secrets shorter than {@link MIN_PROD_SECRET_BYTES} UTF-8 bytes;
+ * - obvious low-entropy patterns (all identical / sequential characters).
+ *
+ * The thrown `Error` includes the `scope` argument (e.g. `"session"`) so
+ * the developer sees which subsystem rejected the secret.
+ *
+ * @since 0.17.0
+ */
+export function assertStrongSecret(secret: unknown, scope: string): void {
+  if (typeof secret !== "string" || secret.length === 0) {
+    throw new Error(
+      `${scope}(): production secret is missing or not a string.`,
+    );
+  }
+  const lower = secret.toLowerCase();
+  if (WEAK_SECRET_SET.has(lower)) {
+    throw new Error(
+      `${scope}(): production secret matches a well-known placeholder (${secret.slice(0, 4)}…). ` +
+        `Replace it with a real random value loaded from an env var or secret manager.`,
+    );
+  }
+  const bytes = new TextEncoder().encode(secret).byteLength;
+  if (bytes < MIN_PROD_SECRET_BYTES) {
+    throw new Error(
+      `${scope}(): production secret is too short (${bytes} bytes; require >= ${MIN_PROD_SECRET_BYTES}). ` +
+        `Generate one with \`openssl rand -base64 48\` and load it from an env var.`,
+    );
+  }
+  // Reject all-identical-character secrets ("aaaaaaaa…", "00000000…").
+  if (/^(.)\1+$/.test(secret)) {
+    throw new Error(
+      `${scope}(): production secret is a single repeated character (${secret[0]}…) — refuse-to-boot.`,
+    );
+  }
+}
+
 const HEX_RE = /^[0-9a-fA-F]+$/;
 
 const WEBHOOK_HMAC_ALGORITHMS: Record<

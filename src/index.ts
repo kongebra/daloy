@@ -62,6 +62,9 @@ export {
   SMUGGLING_SINGLETON_HEADERS,
   verifyWebhookSignature,
   signWebhookPayload,
+  assertStrongSecret,
+  MIN_PROD_SECRET_BYTES,
+  WEAK_SECRET_STRINGS,
 } from "./security.js";
 export type { WebhookHmacAlgorithm } from "./security.js";
 
@@ -72,11 +75,13 @@ export {
   cors,
   CORS_HOOK_MARKER,
   CORS_ORIGIN_ALLOW_MARKER,
+  CORS_WILDCARD_ORIGIN_MARKER,
   rateLimit,
   timing,
   bearerAuth,
   basicAuth,
   csrf,
+  CSRF_HOOK_MARKER,
 } from "./middleware.js";
 export type {
   RequestIdOptions,
@@ -162,6 +167,8 @@ export {
   signValue,
   verifySignedValue,
   MemorySessionStore,
+  SESSION_HOOK_MARKER,
+  SESSION_SECRETS_MARKER,
 } from "./session.js";
 export type {
   SessionOptions,

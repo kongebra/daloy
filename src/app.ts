@@ -13,7 +13,7 @@ import {
   ValidationError,
 } from "./errors.js";
 import { validate } from "./schema.js";
-import { readBodyLimited, safeJsonParse, randomId, assertNoDuplicateSingletonHeaders } from "./security.js";
+import { readBodyLimited, safeJsonParse, randomId, assertNoDuplicateSingletonHeaders, assertStrongSecret } from "./security.js";
 import { createLogger, noopLogger, type Logger } from "./logger.js";
 import type {
   BaseContext,
@@ -41,10 +41,16 @@ import {
   secureHeaders as secureHeadersMiddleware,
   CORS_HOOK_MARKER,
   CORS_ORIGIN_ALLOW_MARKER,
+  CORS_WILDCARD_ORIGIN_MARKER,
+  CSRF_HOOK_MARKER,
   SECURE_HEADERS_MARKER,
   type CorsOriginAllow,
   type SecureHeadersOptions,
 } from "./middleware.js";
+import {
+  SESSION_HOOK_MARKER,
+  SESSION_SECRETS_MARKER,
+} from "./session.js";
 
 const AUTO_SECURE_HEADERS_MARKER: unique symbol = Symbol.for(
   "daloyjs.app.autoSecureHeaders",
@@ -153,6 +159,44 @@ export interface AppOptions {
    * @since 0.16.0
    */
   corsCrossOriginGuard?: boolean;
+
+  /**
+   * Declare whether the application sits behind a trusted reverse proxy
+   * that populates `X-Forwarded-*` headers (load balancer, CDN, Vercel,
+   * Cloudflare, AWS ALB, etc.). The value is opt-in tri-state for the
+   * Wave 3 first-request guard:
+   *
+   * - `undefined` (default) — *unconfigured*. The framework returns
+   *   `500 problem+json` on the first request that carries an
+   *   `X-Forwarded-*` header so a misconfigured proxy chain cannot silently
+   *   leak spoofed client IPs to the rate limiter, audit logs, or
+   *   request-id propagation. Disabled when {@link AppOptions.secureDefaults}
+   *   is `false`.
+   * - `true` — *trust*. The framework reads `X-Forwarded-*` without
+   *   suspicion. Use only when every request passes through a proxy chain
+   *   you control.
+   * - `false` — *explicitly do not trust*. The framework ignores
+   *   `X-Forwarded-*` even when present and silences the unconfigured-proxy
+   *   guard. Use when the application is exposed directly to the public
+   *   internet on purpose.
+   *
+   * @since 0.17.0
+   */
+  trustProxy?: boolean;
+
+  /**
+   * Opt-out for the Wave 3 boot guard that refuses to start an App which
+   * registers {@link session} and any state-changing route without a
+   * matching {@link csrf} hook. Set to `"off"` to acknowledge that you
+   * intentionally accept cookie-authenticated POST / PUT / PATCH / DELETE
+   * requests without CSRF protection (SPA + bearer-token apps, internal
+   * services on a private network, etc.). Leave unset (the default) for
+   * any browser-facing API: the boot error includes one-line copy-paste
+   * remediation. Disabled when {@link AppOptions.secureDefaults} is `false`.
+   *
+   * @since 0.17.0
+   */
+  csrf?: "off";
   /** Pluggable logger. Default: structured JSON logger at "info" (or noop in test). */
   logger?:
     | Logger
@@ -316,6 +360,18 @@ interface CompiledRoute {
   corsOriginAllows: CorsOriginAllow[];
 }
 
+interface RouteSecurityMarkers {
+  method: HttpMethod;
+  path: string;
+  hasSession: boolean;
+  hasCsrf: boolean;
+}
+
+interface Wave3BootGuardCache {
+  checked: boolean;
+  error?: Error;
+}
+
 const DEFAULTS = {
   bodyLimitBytes: 1024 * 1024,
   requestTimeoutMs: 30_000,
@@ -390,6 +446,8 @@ export class App {
   private groupHooks: Hooks[] = [];
   private groupTags: string[] = [];
   private groupAuth?: RouteDefinition["auth"];
+  /** Effective security markers for each registered route hook chain. */
+  private routeSecurityMarkers: RouteSecurityMarkers[] = [];
   /** Decorator bag merged into ctx.state on every request. */
   private decorations: Record<string, unknown> = {};
   private installedPlugins = new Set<string>();
@@ -414,6 +472,22 @@ export class App {
    */
     private corsOriginAllows: CorsOriginAllow[] = [];
 
+  /**
+   * Whether the Wave 3 once-only boot guard has run (session + CSRF +
+   * state-changing-route check). The check is deferred to first request
+   * because route registration and `app.use(csrf(...))` can happen in any
+   * order after construction; doing it on first `fetch()` is the latest
+   * point we still get a 500 before any handler ever runs.
+   */
+  private wave3BootGuard: Wave3BootGuardCache = { checked: false };
+
+  /**
+   * Latched marker stamped after the framework has reported the first
+   * unconfigured-proxy request. Logged once at `warn` level so production
+   * dashboards see the misconfiguration without flooding on every retry.
+   */
+  private trustProxyWarned = false;
+
   constructor(options: AppOptions = {}) {
     this.options = {
       validateResponses:
@@ -431,6 +505,7 @@ export class App {
           : createLogger({ level: (options.logger as any)?.level ?? "info" });
 
     this.warnOnEnvMismatch();
+    if (this.options.hooks) this.assertSecureHookConfig(this.options.hooks);
     this.installSecureDefaults();
     this.maybeMountDocs();
   }
@@ -544,6 +619,132 @@ export class App {
       `Cross-origin ${method} from "${originUrl.origin}" rejected: no registered cors() policy allows that origin. ` +
         `Register cors({ origin: [...] }) via app.use(...) to allow it, or pass ` +
         `app({ corsCrossOriginGuard: false }) / app({ secureDefaults: false }) to disable this guard.`,
+    );
+  }
+
+  /**
+   * Wave 3 sync boot guard. Inspects a hook layer being installed via
+   * {@link App.use} and refuses-to-boot when:
+   *
+   *  - `cors({ origin: "*" })` is registered while resolved environment is
+   *    `production`;
+   *  - `session({ secret })` is registered while resolved environment is
+   *    `production` and any secret fails {@link assertStrongSecret}.
+   *
+   * Disabled when `secureDefaults: false`. Thrown errors propagate out of
+   * `app.use(...)` so the process exits during startup rather than serving
+   * a misconfigured surface.
+   */
+  private assertSecureHookConfig(hooks: Hooks): void {
+    if (this.options.secureDefaults === false) return;
+    if (!this.isProduction()) return;
+    const record = hooks as Record<PropertyKey, unknown>;
+    if (record[CORS_WILDCARD_ORIGIN_MARKER] === true) {
+      throw new Error(
+        'cors({ origin: "*" }) refused in production: a wildcard CORS origin exposes every state-changing route cross-origin. ' +
+          "Replace the wildcard with an explicit allowlist (string[] or predicate), or pass " +
+          "app({ secureDefaults: false }) to disable this guard.",
+      );
+    }
+    if (record[SESSION_HOOK_MARKER] === true) {
+      const secrets = record[SESSION_SECRETS_MARKER];
+      if (Array.isArray(secrets)) {
+        for (const s of secrets) {
+          assertStrongSecret(s, "session");
+        }
+      }
+    }
+  }
+
+  private resetWave3BootGuardCache(): void {
+    this.wave3BootGuard.checked = false;
+    this.wave3BootGuard.error = undefined;
+  }
+
+  /**
+   * Wave 3 first-request boot guard. Verifies that the assembled hook
+   * chain + route table is internally consistent before any user handler
+   * runs. Currently checks: when `session()` is installed and any route
+   * accepts a state-changing method (`POST` / `PUT` / `PATCH` / `DELETE`),
+   * a `csrf()` hook (or third-party equivalent stamped with
+   * {@link CSRF_HOOK_MARKER}) must also be present in that route's effective
+   * hook chain. Opt out with `app({ csrf: "off" })` or
+   * `app({ secureDefaults: false })`. Runs once per App between registration
+   * changes; the result is cached so the fast path is a single boolean check.
+   */
+  private assertWave3BootGuards(): void {
+    if (this.wave3BootGuard.checked) {
+      if (this.wave3BootGuard.error) throw this.wave3BootGuard.error;
+      return;
+    }
+    this.wave3BootGuard.checked = true;
+    if (this.options.secureDefaults === false) return;
+    if (this.options.csrf === "off") return;
+    // Per the risk register: boot guards only fire in production so CI /
+    // staging surfaces that ship sample secrets / no CSRF token while
+    // iterating do not pay the refuse-to-boot cost.
+    if (!this.isProduction()) return;
+
+    const stateChanging = this.routeSecurityMarkers.find(
+      (r) =>
+        isStateChangingMethod(r.method) && r.hasSession && !r.hasCsrf,
+    );
+    if (!stateChanging) return;
+
+    const err = new Error(
+      `session() is registered in the hook chain for a state-changing route ` +
+        `(${stateChanging.method} ${stateChanging.path}) but no csrf() hook is installed. ` +
+        `Register csrf() via app.use(csrf({ strategy: "fetch-metadata", allowedOrigins: [...] })), ` +
+        `or pass app({ csrf: "off" }) to acknowledge that this app is not browser-facing.`,
+    );
+    this.wave3BootGuard.error = err;
+    throw err;
+  }
+
+  /**
+   * Wave 3 per-request guard for spoofed proxy headers. When the App was
+   * constructed without an explicit {@link AppOptions.trustProxy} value
+   * and a request arrives carrying an `X-Forwarded-*` header, refuse to
+   * dispatch it: the rate limiter, audit log, and request-id propagation
+   * would otherwise honour the attacker-supplied IP. Returns a structured
+   * `500 problem+json` so the failure is loud at the network boundary.
+   * Disabled when `secureDefaults: false` or when `trustProxy` is set to
+   * `true` or `false` explicitly.
+   */
+  private assertTrustProxyConfigured(request: Request): void {
+    if (this.options.secureDefaults === false) return;
+    if (this.options.trustProxy !== undefined) return;
+    // Same risk-register clause as the session/CSRF guard: only enforce
+    // in production. Dev/CI surfaces routinely test forwarded headers
+    // without configuring a reverse-proxy posture.
+    if (!this.isProduction()) return;
+    const headers = request.headers;
+    let found: string | undefined;
+    for (const name of [
+      "x-forwarded-for",
+      "x-forwarded-host",
+      "x-forwarded-proto",
+      "x-forwarded-port",
+      "x-real-ip",
+    ]) {
+      if (headers.has(name)) {
+        found = name;
+        break;
+      }
+    }
+    if (!found) return;
+    if (!this.trustProxyWarned) {
+      this.trustProxyWarned = true;
+      this.log.warn(
+        { event: "trust-proxy.unconfigured", header: found },
+        `Request carried ${found} but app({ trustProxy }) is unset; refusing to honour spoofable proxy headers.`,
+      );
+    }
+    throw new InternalError(
+      `Refusing to dispatch request: ${found} header is present but app({ trustProxy }) is unconfigured. ` +
+        `Pass app({ trustProxy: true }) when running behind a trusted reverse proxy, ` +
+        `or app({ trustProxy: false }) to ignore forwarded headers, ` +
+        `or app({ secureDefaults: false }) to disable this guard.`,
     );
   }
 
@@ -721,6 +922,7 @@ export class App {
     Req extends RequestSchemas | undefined,
     Res extends ResponsesMap,
   >(def: RouteDefinition<P, M, Req, Res>): this {
+    if (def.hooks) this.assertSecureHookConfig(def.hooks);
     const fullPath = joinPath(this.prefix, def.path) as PathString;
     const merged: RouteDefinition<any, any, any, any> = {
       ...def,
@@ -731,6 +933,10 @@ export class App {
     const sources: Hooks[] = [...this.groupHooks, def.hooks ?? {}];
     const hooks = mergeHooks(sources);
     const corsOriginAllows = corsOriginAllowsFromHooks(sources);
+    const securityMarkers = securityMarkersFromHooks([
+      this.options.hooks ?? {},
+      ...sources,
+    ]);
     this.router.add(
       def.method,
       fullPath,
@@ -738,6 +944,12 @@ export class App {
       def.operationId,
     );
     this.routes.push(merged);
+    this.routeSecurityMarkers.push({
+      method: merged.method,
+      path: merged.path,
+      ...securityMarkers,
+    });
+    this.resetWave3BootGuardCache();
     return this;
   }
 
@@ -790,6 +1002,7 @@ export class App {
     config: { tags?: string[]; hooks?: Hooks; auth?: RouteDefinition["auth"] },
     register: (app: App) => void,
   ): this {
+    if (config.hooks) this.assertSecureHookConfig(config.hooks);
     // Child apps share the parent's router/routes/etc. Disable docs auto-mount
     // on the child so it does not re-register the parent's `/openapi.json` and
     // `/docs` routes (which would throw "Duplicate route").
@@ -797,6 +1010,8 @@ export class App {
     (child as any).router = this.router;
     (child as any).routes = this.routes;
     (child as any).webSocketRoutes = this.webSocketRoutes;
+    (child as any).routeSecurityMarkers = this.routeSecurityMarkers;
+    (child as any).wave3BootGuard = this.wave3BootGuard;
     (child as any).log = this.log;
     (child as any).prefix = joinPath(this.prefix, prefix);
     (child as any).groupHooks = [
@@ -836,6 +1051,12 @@ export class App {
    * @returns This `App` instance for chaining.
    */
   use(hooks: Hooks): this {
+    // Wave 3 boot guards: refuse to start when the new hook layer is a
+    // known-misconfigured security primitive in production. These checks
+    // run synchronously at registration time so the developer sees the
+    // failure during boot, not on first request.
+    this.assertSecureHookConfig(hooks);
+
     // If the developer installs their own secureHeaders(), drop the
     // Wave 2 auto-installed instance so the user's overrides win instead of
     // being shadowed (the auto one runs first and the per-header
@@ -855,6 +1076,7 @@ export class App {
     if ((hooks as Record<PropertyKey, unknown>)[CORS_HOOK_MARKER] === true) {
       this.corsOriginAllows = corsOriginAllowsFromHooks(this.groupHooks);
     }
+    this.resetWave3BootGuardCache();
     return this;
   }
 
@@ -1077,6 +1299,8 @@ export class App {
 
     try {
       assertNoDuplicateSingletonHeaders(request.headers);
+      this.assertTrustProxyConfigured(request);
+      this.assertWave3BootGuards();
       await globalHooks.onRequest?.(request);
 
       const url = new URL(request.url);
@@ -1348,6 +1572,28 @@ function corsOriginAllowsFromHooks(layers: Hooks[]): CorsOriginAllow[] {
     }
   }
   return allows;
+}
+
+function securityMarkersFromHooks(
+  layers: Hooks[],
+): Pick<RouteSecurityMarkers, "hasSession" | "hasCsrf"> {
+  let hasSession = false;
+  let hasCsrf = false;
+  for (const hooks of layers) {
+    const record = hooks as Record<PropertyKey, unknown>;
+    if (record[SESSION_HOOK_MARKER] === true) hasSession = true;
+    if (record[CSRF_HOOK_MARKER] === true) hasCsrf = true;
+  }
+  return { hasSession, hasCsrf };
+}
+
+function isStateChangingMethod(method: HttpMethod): boolean {
+  return (
+    method === "POST" ||
+    method === "PUT" ||
+    method === "PATCH" ||
+    method === "DELETE"
+  );
 }
 
 function mergeHooks(layers: Hooks[]): Hooks {

@@ -281,6 +281,36 @@ export const CORS_ORIGIN_ALLOW_MARKER: unique symbol = Symbol.for(
   "daloyjs.middleware.cors.originAllow",
 );
 
+/**
+ * Marker stamped on the `Hooks` object returned by {@link cors} when the
+ * configured `origin` permits the wildcard `"*"`. Used by the Wave 3
+ * boot-time refuse-to-boot guard: a wildcard CORS origin in production is
+ * almost always a misconfiguration, so `App` constructed with
+ * `secureDefaults: true` (the 0.16+ default) and resolved to
+ * `production` throws at `app.use(cors({ origin: "*" }))` time rather than
+ * silently exposing every state-changing endpoint cross-origin.
+ *
+ * @since 0.17.0
+ */
+export const CORS_WILDCARD_ORIGIN_MARKER: unique symbol = Symbol.for(
+  "daloyjs.middleware.cors.wildcardOrigin",
+);
+
+/**
+ * Marker stamped on the `Hooks` object returned by {@link csrf}. Used by
+ * the Wave 3 boot-time refuse-to-boot guard: when `session()` is registered
+ * on a `secureDefaults: true` App that also exposes any state-changing
+ * route, the framework requires a matching `csrf()` hook somewhere in the
+ * hook chain so an attacker cannot forge a cross-site request that mutates
+ * the authenticated session. Third-party CSRF helpers can opt into the
+ * guard by stamping the same marker on their returned hooks.
+ *
+ * @since 0.17.0
+ */
+export const CSRF_HOOK_MARKER: unique symbol = Symbol.for(
+  "daloyjs.middleware.csrf",
+);
+
 export type CorsOriginAllow = (origin: string) => boolean;
 
 export interface CorsOptions {
@@ -381,6 +411,12 @@ export function cors(opts: CorsOptions): Hooks {
   (hooks as Record<PropertyKey, unknown>)[CORS_ORIGIN_ALLOW_MARKER] = (
     origin: string,
   ) => allow(origin) !== null;
+  const hasWildcard =
+    opts.origin === "*" ||
+    (Array.isArray(opts.origin) && opts.origin.includes("*"));
+  if (hasWildcard) {
+    (hooks as Record<PropertyKey, unknown>)[CORS_WILDCARD_ORIGIN_MARKER] = true;
+  }
   return hooks;
 }
 
@@ -798,7 +834,7 @@ export function csrf(opts: CsrfOptions = {}): Hooks {
   };
   if (wantsDoubleSubmit) validateCsrfCookieOptions(cookieName, cookieOpts);
 
-  return {
+  const hooks: Hooks = {
     beforeHandle(ctx) {
       const method = ctx.request.method.toUpperCase();
       const isSafe = ignore.has(method);
@@ -838,6 +874,8 @@ export function csrf(opts: CsrfOptions = {}): Hooks {
       return undefined;
     },
   };
+  (hooks as Record<PropertyKey, unknown>)[CSRF_HOOK_MARKER] = true;
+  return hooks;
 }
 
 // ---------- Basic auth ----------
