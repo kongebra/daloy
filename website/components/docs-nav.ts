@@ -19,6 +19,7 @@ export const docsNav: DocsNavSection[] = [
     items: [
       { title: "Routing", href: "/docs/routing" },
       { title: "Validation", href: "/docs/validation" },
+      { title: "Validation with Valibot", href: "/docs/validation/valibot" },
       { title: "Plugins & encapsulation", href: "/docs/plugins" },
       { title: "Errors & problem+json", href: "/docs/errors" },
       { title: "File uploads (multipart)", href: "/docs/multipart" },

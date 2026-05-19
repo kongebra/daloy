@@ -86,6 +86,10 @@ const Body = type({ sku: "string", qty: "1<=number.integer" });
 import { Type } from "@sinclair/typebox";
 const Body = Type.Object({ sku: Type.String(), qty: Type.Integer({ minimum: 1 }) });`} />
       <p>All four expose a <code>~standard</code> property that DaloyJS picks up automatically.</p>
+      <p>
+        For a full walkthrough of using Valibot end-to-end — params, query, discriminated unions, and
+        OpenAPI output — see <a href="/docs/validation/valibot">Validation with Valibot</a>.
+      </p>
 
       <h2>Type inference</h2>
       <p>
