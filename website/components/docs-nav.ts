@@ -101,6 +101,7 @@ export const docsNav: DocsNavSection[] = [
       { title: "Security", href: "/docs/security" },
       { title: "Secure-by-default (0.16.0)", href: "/docs/security/secure-defaults" },
       { title: "Boot guards (0.17.0)", href: "/docs/security/boot-guards" },
+      { title: "Lifecycle & health (0.18.0)", href: "/docs/security/lifecycle-health" },
       { title: "CSRF protection", href: "/docs/security/csrf" },
       { title: "Sessions", href: "/docs/security/session" },
       {

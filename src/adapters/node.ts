@@ -88,6 +88,15 @@ export function serve(app: App, opts: NodeServerOptions = {}): NodeServerHandle 
   }
   const port = opts.port ?? 3000;
   server.listen(port, opts.hostname ?? "0.0.0.0");
+  // Wave 4: kill idle keep-alive sockets immediately when draining begins.
+  // In-flight requests keep their socket because Node's
+  // `closeIdleConnections()` is a no-op for sockets with an in-flight request.
+  app._registerIdleConnectionCloseHook(() => {
+    const s = server as Server & { closeIdleConnections?: () => void };
+    if (typeof s.closeIdleConnections === "function") {
+      s.closeIdleConnections();
+    }
+  });
   let closed = false;
   const close = async () => {
     if (closed) return;

@@ -9,11 +9,13 @@ import {
   NotFoundError,
   PayloadTooLargeError,
   RequestTimeoutError,
+  TooManyRequestsError,
+  UnauthorizedError,
   UnsupportedMediaTypeError,
   ValidationError,
 } from "./errors.js";
 import { validate } from "./schema.js";
-import { readBodyLimited, safeJsonParse, randomId, assertNoDuplicateSingletonHeaders, assertStrongSecret } from "./security.js";
+import { readBodyLimited, safeJsonParse, randomId, assertNoDuplicateSingletonHeaders, assertStrongSecret, timingSafeEqual } from "./security.js";
 import { createLogger, noopLogger, type Logger } from "./logger.js";
 import type {
   BaseContext,
@@ -55,6 +57,23 @@ import {
 const AUTO_SECURE_HEADERS_MARKER: unique symbol = Symbol.for(
   "daloyjs.app.autoSecureHeaders",
 );
+
+/**
+ * Module-level latch shared across every {@link App} constructed in the same
+ * process. Ensures `unhandledRejection` / `uncaughtException` handlers are
+ * registered at most once — installing them twice would log the same crash
+ * twice (and once per listener thereafter), polluting the final exit signal.
+ */
+let crashHandlersInstalled = false;
+let activeCrashLogger: Logger | undefined;
+function setActiveCrashLogger(log: Logger): void {
+  activeCrashLogger = log;
+}
+/** @internal Test-only helper to reset the latch between tests. */
+export function _resetCrashHandlersForTests(): void {
+  crashHandlersInstalled = false;
+  activeCrashLogger = undefined;
+}
 
 /**
  * Configuration accepted by {@link App}'s constructor. Every field is
@@ -197,6 +216,22 @@ export interface AppOptions {
    * @since 0.17.0
    */
   csrf?: "off";
+
+  /**
+   * Install Node-process-level crash handlers for `unhandledRejection` and
+   * `uncaughtException` that log the error through the pluggable logger at
+   * `fatal` and exit with code `1`. Idempotent across multiple `new App()`
+   * calls in the same process — handlers are installed once per process via
+   * a module-level latch and re-use the most recently constructed App's
+   * logger. Default: `true` in production when
+   * {@link AppOptions.secureDefaults} is not `false`. Pass `false` to opt
+   * out (long-running CLI processes / test harnesses that intentionally
+   * swallow rejections may want this). No-op on runtimes without
+   * `process.on` (Cloudflare Workers / Vercel Edge / Fastly).
+   *
+   * @since 0.18.0
+   */
+  crashOnUnhandledRejection?: boolean;
   /** Pluggable logger. Default: structured JSON logger at "info" (or noop in test). */
   logger?:
     | Logger
@@ -320,6 +355,34 @@ export interface ShutdownEvent {
   reason?: string;
   /** Drain timeout (ms) the shutdown will use after listeners finish. */
   timeoutMs: number;
+}
+
+/**
+ * Configuration accepted by {@link App.healthcheck} and
+ * {@link App.readinesscheck}. All fields are optional.
+ *
+ * @since 0.18.0
+ */
+export interface HealthRouteOptions {
+  /** Override the default path (`/healthz` or `/readyz`). */
+  path?: PathString;
+  /**
+   * Require `Authorization: Bearer <token>` on the probe request. Compared
+   * via {@link timingSafeEqual}. When set in production with
+   * `secureDefaults: true`, no further opt-in is required.
+   */
+  token?: string;
+  /**
+   * Per-IP fixed-window rate limit. Defaults to `{ limit: 60, windowMs:
+   * 60_000 }` (in-memory, per-process). Pass `false` to disable.
+   */
+  rateLimit?: { limit?: number; windowMs?: number } | false;
+  /**
+   * Acknowledge that the probe is intentionally reachable without
+   * credentials in production. Required when `secureDefaults` is on and
+   * `token` is omitted; otherwise registration throws.
+   */
+  acknowledgeUnauthenticated?: boolean;
 }
 
 /**
@@ -453,6 +516,8 @@ export class App {
   private installedPlugins = new Set<string>();
   private closeHooks: Array<() => void | Promise<void>> = [];
   private closeHooksRun = false;
+  /** Wave 4 idle-connection close hooks (adapter-registered, sync). */
+  private idleConnectionCloseHooks: Array<() => void> = [];
   private pluginInstalledListeners: Array<
     (info: PluginInstalledEvent) => void | Promise<void>
   > = [];
@@ -460,7 +525,11 @@ export class App {
     (info: ShutdownEvent) => void | Promise<void>
   > = [];
   private shutdownListenersRun = false;
-  private pendingPlugins: Promise<unknown>[] = [];
+  private pendingPlugins = new Set<Promise<unknown>>();
+  private pluginBootError: { failed: boolean; error: unknown } = {
+    failed: false,
+    error: undefined,
+  };
   /** In-flight request count for graceful shutdown. */
   private inflight = 0;
   private draining = false;
@@ -507,6 +576,7 @@ export class App {
     this.warnOnEnvMismatch();
     if (this.options.hooks) this.assertSecureHookConfig(this.options.hooks);
     this.installSecureDefaults();
+    this.maybeInstallCrashHandlers();
     this.maybeMountDocs();
   }
 
@@ -533,6 +603,56 @@ export class App {
       (auto as Record<PropertyKey, unknown>)[AUTO_SECURE_HEADERS_MARKER] = true;
       this.groupHooks.push(auto);
     }
+  }
+
+  /**
+   * Wave 4 crash-on-unrecoverable-error guard. Installs Node-process-level
+   * listeners for `unhandledRejection` and `uncaughtException` that log
+   * through the pluggable logger and call `process.exit(1)`. Idempotent via
+   * a module-level latch so multiple `new App()` instantiations in the same
+   * process do not double-register; the most recently constructed App's
+   * logger is used. No-op on runtimes without `process.on` (Workers / Edge
+   * / Fastly), in non-production by default, and when
+   * `crashOnUnhandledRejection: false` or `secureDefaults: false`.
+   */
+  private maybeInstallCrashHandlers(): void {
+    if (this.options.crashOnUnhandledRejection === false) return;
+    if (
+      this.options.crashOnUnhandledRejection === undefined &&
+      (this.options.secureDefaults === false || !this.isProduction())
+    ) {
+      return;
+    }
+    if (typeof process === "undefined" || typeof process.on !== "function") {
+      return;
+    }
+    setActiveCrashLogger(this.log);
+    if (crashHandlersInstalled) return;
+    crashHandlersInstalled = true;
+    process.on("unhandledRejection", (reason: unknown) => {
+      const log = activeCrashLogger ?? this.log;
+      try {
+        log.fatal(
+          { event: "process.unhandledRejection", err: serializeErr(reason) },
+          "Unhandled promise rejection — exiting (crashOnUnhandledRejection)",
+        );
+      } catch {
+        /* swallow logger failure so we still exit */
+      }
+      process.exit(1);
+    });
+    process.on("uncaughtException", (err: unknown) => {
+      const log = activeCrashLogger ?? this.log;
+      try {
+        log.fatal(
+          { event: "process.uncaughtException", err: serializeErr(err) },
+          "Uncaught exception — exiting (crashOnUnhandledRejection)",
+        );
+      } catch {
+        /* swallow logger failure so we still exit */
+      }
+      process.exit(1);
+    });
   }
 
   /**
@@ -974,6 +1094,159 @@ export class App {
   }
 
   /**
+   * Register a liveness probe route. Returns `200 {"status":"ok"}` while
+   * the process is alive, regardless of plugin readiness. Use this for
+   * container orchestrator `livenessProbe` configuration — a failing
+   * liveness probe restarts the container.
+   *
+   * Defaults (Wave 4 secure-by-default):
+   *  - path: `/healthz`
+   *  - rate-limit: 60 req/min per remote IP, in-memory (per-process)
+   *  - auth: opt-in via `token`. In production with `secureDefaults: true`,
+   *    registration refuses to add the route without a `token` unless
+   *    `acknowledgeUnauthenticated: true` is set, so an unguarded
+   *    healthcheck cannot ship to production by accident.
+   *
+   * @example
+   * ```ts
+   * app.healthcheck({ token: process.env.HEALTH_TOKEN! });
+   * ```
+   *
+   * @since 0.18.0
+   */
+  healthcheck(opts: HealthRouteOptions = {}): this {
+    this.registerHealthRoute("healthcheck", opts, () => ({
+      status: 200 as const,
+      body: { status: "ok" as const },
+    }));
+    return this;
+  }
+
+  /**
+   * Register a readiness probe route. Returns `200 {"status":"ready"}`
+   * once every async plugin has resolved AND the app is not draining.
+   * Returns `503` otherwise. Use this for container orchestrator
+   * `readinessProbe` configuration — a failing readiness probe removes
+   * the pod from load-balancer rotation without restarting it.
+   *
+   * Defaults match {@link App.healthcheck} (path defaults to `/readyz`).
+   *
+   * @since 0.18.0
+   */
+  readinesscheck(opts: HealthRouteOptions = {}): this {
+    this.registerHealthRoute("readinesscheck", opts, () => {
+      if (
+        this.draining ||
+        this.pendingPlugins.size > 0 ||
+        this.pluginBootError.failed
+      ) {
+        return {
+          status: 503 as const,
+          body: { status: "not-ready" as const },
+          headers: { "retry-after": "5" },
+        };
+      }
+      return {
+        status: 200 as const,
+        body: { status: "ready" as const },
+      };
+    });
+    return this;
+  }
+
+  private registerHealthRoute(
+    kind: "healthcheck" | "readinesscheck",
+    opts: HealthRouteOptions,
+    handler: () => {
+      status: 200 | 503;
+      body: { status: string };
+      headers?: Record<string, string>;
+    },
+  ): void {
+    const isHealth = kind === "healthcheck";
+    const defaultPath = (isHealth ? "/healthz" : "/readyz") as PathString;
+    const path = (opts.path ?? defaultPath) as PathString;
+    const rateLimitConfig =
+      opts.rateLimit === false
+        ? null
+        : { limit: 60, windowMs: 60_000, ...(opts.rateLimit ?? {}) };
+    const token = opts.token;
+
+    // Wave 4 refuse-to-boot: unauthenticated health/ready probes in
+    // production are a documented info-disclosure surface (process uptime,
+    // plugin-ready transitions, internal hostnames in some shops). Force
+    // an explicit acknowledgement.
+    if (
+      this.options.secureDefaults !== false &&
+      this.isProduction() &&
+      token === undefined &&
+      opts.acknowledgeUnauthenticated !== true
+    ) {
+      throw new Error(
+        `app.${kind}() refused in production: provide opts.token to require ` +
+          `Authorization: Bearer <token>, or pass acknowledgeUnauthenticated: true ` +
+          `to acknowledge that this probe is reachable without credentials.`,
+      );
+    }
+
+    const buckets = rateLimitConfig
+      ? new Map<string, { count: number; resetMs: number }>()
+      : null;
+
+    this.route({
+      method: "GET",
+      path,
+      operationId: isHealth ? "healthcheck" : "readinesscheck",
+      tags: ["Health"],
+      summary: isHealth ? "Liveness probe" : "Readiness probe",
+      handler: async ({ request }: BaseContext<any, any>) => {
+        if (buckets && rateLimitConfig) {
+          const key = healthRouteKey(request);
+          const now = Date.now();
+          const entry = buckets.get(key);
+          if (!entry || entry.resetMs <= now) {
+            buckets.set(key, { count: 1, resetMs: now + rateLimitConfig.windowMs });
+          } else {
+            entry.count++;
+            if (entry.count > rateLimitConfig.limit) {
+              throw new TooManyRequestsError(
+                Math.ceil((entry.resetMs - now) / 1000),
+              );
+            }
+          }
+        }
+        if (token !== undefined) {
+          const h = request.headers.get("authorization") ?? "";
+          const m = /^Bearer\s+(.+)$/i.exec(h);
+          if (!m) {
+            throw new HttpError(
+              401,
+              {
+                type: "https://daloyjs.dev/errors/unauthorized",
+                title: "Unauthorized",
+                detail: "Health probe requires a bearer token.",
+              },
+              { "www-authenticate": 'Bearer realm="health"' },
+            );
+          }
+          if (!timingSafeEqual(m[1]!, token)) {
+            throw new ForbiddenError("Invalid health probe token.");
+          }
+        }
+        return handler();
+      },
+      responses: {
+        200: {
+          description: isHealth ? "Service is alive." : "Service is ready.",
+        },
+        503: {
+          description: "Service is not ready.",
+        },
+      },
+    });
+  }
+
+  /**
    * Mount a group of routes under a shared prefix with shared tags, hooks,
    * and authentication. The `register` callback receives an encapsulated
    * child `App` whose `route()` calls inherit the prefix and group config.
@@ -1026,9 +1299,11 @@ export class App {
     (child as any).decorations = this.decorations;
     (child as any).installedPlugins = this.installedPlugins;
     (child as any).closeHooks = this.closeHooks;
+    (child as any).idleConnectionCloseHooks = this.idleConnectionCloseHooks;
     (child as any).pluginInstalledListeners = this.pluginInstalledListeners;
     (child as any).shutdownListeners = this.shutdownListeners;
     (child as any).pendingPlugins = this.pendingPlugins;
+    (child as any).pluginBootError = this.pluginBootError;
     register(child);
     return this;
   }
@@ -1179,8 +1454,8 @@ export class App {
     this.group(prefix, config, (child) => {
       const r = fn(child);
       if (r && typeof (r as Promise<unknown>).then === "function") {
-        // Plugin is async — caller should await app.ready().
-        this.pendingPlugins.push(
+        // Plugin is async - caller should await app.ready().
+        this.trackPendingPlugin(
           (r as Promise<unknown>).then(() => this.firePluginInstalled(event)),
         );
       } else {
@@ -1188,11 +1463,21 @@ export class App {
         // listener is collected so `app.ready()` can await observers too.
         const pending = this.firePluginInstalled(event);
         if (pending) {
-          this.pendingPlugins.push(pending);
+          this.trackPendingPlugin(pending);
         }
       }
     });
     return this;
+  }
+
+  private trackPendingPlugin(promise: Promise<unknown>): void {
+    const tracked = promise.catch((err) => {
+      this.pluginBootError.failed = true;
+      this.pluginBootError.error = err;
+      throw err;
+    });
+    this.pendingPlugins.add(tracked);
+    void tracked.finally(() => this.pendingPlugins.delete(tracked)).catch(() => {});
   }
 
   private firePluginInstalled(
@@ -1243,8 +1528,11 @@ export class App {
    * @returns Promise that resolves once all pending plugins have settled.
    */
   ready(): Promise<void> {
-    if (this.pendingPlugins.length === 0) return Promise.resolve();
-    const pending = this.pendingPlugins.splice(0);
+    if (this.pluginBootError.failed) {
+      return Promise.reject(this.pluginBootError.error);
+    }
+    if (this.pendingPlugins.size === 0) return Promise.resolve();
+    const pending = Array.from(this.pendingPlugins);
     return Promise.all(pending).then(() => undefined);
   }
   /**
@@ -1267,6 +1555,17 @@ export class App {
    *   to RFC 9457 `application/problem+json` automatically.
    */
   fetch = async (request: Request): Promise<Response> => {
+    const response = await this.dispatch(request);
+    // In-flight responses that finish during draining advertise
+    // `Connection: close` so HTTP/1.1 load balancers stop re-using the
+    // socket for new requests. Wave 4 connection-draining.
+    if (this.draining && !response.headers.has("connection")) {
+      response.headers.set("connection", "close");
+    }
+    return response;
+  };
+
+  private dispatch = async (request: Request): Promise<Response> => {
     if (this.draining) {
       return new Response(
         JSON.stringify({
@@ -1279,6 +1578,10 @@ export class App {
           headers: {
             "content-type": "application/problem+json",
             "retry-after": "5",
+            // Tell HTTP/1.1 load balancers to close the keep-alive socket
+            // immediately so the next request lands on a healthy instance
+            // rather than coming back to a dying one. Wave 4.
+            connection: "close",
           },
         },
       );
@@ -1534,6 +1837,16 @@ export class App {
         }
       }
     }
+    // Wave 4: kill idle keep-alive connections immediately so they cannot
+    // be re-used for a new request that would race with the drain. Adapters
+    // (Node) register a hook here. In-flight requests are unaffected.
+    for (const hook of this.idleConnectionCloseHooks) {
+      try {
+        hook();
+      } catch (err) {
+        this.log.error({ err }, "idleConnectionCloseHook failed");
+      }
+    }
     const start = Date.now();
     while (this.inflight > 0 && Date.now() - start < timeoutMs) {
       await new Promise((r) => setTimeout(r, 25));
@@ -1546,6 +1859,32 @@ export class App {
     }
     this.log.info({ inflight: this.inflight }, "DaloyJS shutdown complete");
   }
+
+  /**
+   * Alias for {@link App.shutdown}. Matches the Node `Server.close()` shape
+   * and reads more naturally from adapters that want a single "stop"
+   * method.
+   *
+   * @since 0.18.0
+   */
+  async close(timeoutMs = 10_000, reason?: string): Promise<void> {
+    return this.shutdown(timeoutMs, reason);
+  }
+
+  /**
+   * Adapter-private hook to register a callback that runs synchronously
+   * when {@link App.shutdown} begins draining. The Node adapter uses this
+   * to invoke `server.closeIdleConnections()` so keep-alive sockets without
+   * an in-flight request are killed immediately instead of being held open
+   * until the OS / load balancer notices.
+   *
+   * Not part of the documented public API surface: subject to change.
+   *
+   * @internal
+   */
+  _registerIdleConnectionCloseHook(hook: () => void): void {
+    this.idleConnectionCloseHooks.push(hook);
+  }
 }
 
 // ---------- helpers ----------
@@ -1555,6 +1894,19 @@ function joinPath(a: string, b: string): string {
   const right = b.startsWith("/") ? b : `/${b}`;
   const joined = `${left}${right}`;
   return joined === "" ? "/" : joined;
+}
+
+function healthRouteKey(request: Request): string {
+  // The probe rate limit deliberately does NOT honour `X-Forwarded-For` —
+  // health probes typically arrive directly from a sidecar / orchestrator,
+  // so even apps that trust forwarded headers should not let an attacker
+  // bypass the per-IP cap by spoofing the header. Fall back to a constant
+  // key when no proxy header is available (single shared bucket).
+  return (
+    request.headers.get("x-real-ip") ??
+    request.headers.get("fly-client-ip") ??
+    "global"
+  );
 }
 
 function corsOriginAllowsFromHooks(layers: Hooks[]): CorsOriginAllow[] {
