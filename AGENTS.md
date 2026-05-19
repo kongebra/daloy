@@ -26,6 +26,17 @@
 - Any new features should be well documenbted in the `website` documentation, and the documentation should be updated to reflect any changes in behavior or new capabilities introduced by the feature
 - Making the repo and the app itself secure are top priorities; any change that has security implications must be carefully reviewed for potential vulnerabilities and should include updates to `SECURITY.md` or related documentation when relevant
 
+## Website and Blog Authoring
+
+The marketing/docs site lives in [`website/`](website) and has its own agent guide at [`website/AGENTS.md`](website/AGENTS.md). **Always read it before editing anything under `website/`** — it is the source of truth for:
+
+- Voice and tone rules for new blog posts (author persona, humor, English-only prose, no Tagalog/Norwegian).
+- Required stack assumptions for examples (latest Next.js App Router + React 19 + Tailwind v4 + shadcn/ui).
+- The mandatory checklist for adding a blog post: create `app/blog/<slug>/page.tsx`, use the **current real date**, add the post to [`website/app/blog/page.tsx`](website/app/blog/page.tsx), and add a matching entry to [`website/app/sitemap.ts`](website/app/sitemap.ts).
+- Docs navigation/search files that must be updated when adding or moving doc routes.
+
+If a task involves writing or editing a blog post, treat `website/AGENTS.md` as required reading, not optional context.
+
 ## Release Coordination
 
 `@daloyjs/core` and `create-daloy` ship together. Any change that publishes a new `@daloyjs/core` version MUST also publish a matching `create-daloy` so scaffolded projects pin the latest peer.

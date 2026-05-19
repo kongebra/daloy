@@ -12,7 +12,7 @@ const POST = {
     "AI-Friendly Route Metadata: Machine-Readable Examples for Codegen Agents",
   description:
     "DaloyJS 0.14.1 adds an optional meta field on every route() — structured examples, extra description copy, and free-form x-* extensions — validated against your Standard Schema at build time and surfaced into OpenAPI 3.1 (examples, x-daloy-*) plus a sibling routes.json via daloy inspect --ai. Additive, non-breaking, and built so Hey API, Claude, GPT, and home-grown codegen agents can write correct call sites on the first try.",
-  date: "2026-06-07",
+  date: "2026-06-08",
   readingTime: "11 min read",
   author: "Devlin Duldulao",
   authorRole: "Fullstack cloud engineer",

@@ -20,6 +20,33 @@ Run `pnpm lint` and `pnpm typecheck` before finishing code changes when relevant
 - Docs navigation, sitemap entries, and search discovery are manually maintained. When changing docs routes, check [components/docs-sidebar.tsx](components/docs-sidebar.tsx), [components/docs-nav.ts](components/docs-nav.ts), [app/sitemap.ts](app/sitemap.ts), and [lib/docs-search.ts](lib/docs-search.ts).
 - Database docs split SQL ORMs (`/docs/orm`) from ODMs (`/docs/odm`); Supabase is treated as a platform client, not an ORM.
 
+## Blog authoring
+
+When writing a new blog post under `app/blog/<slug>/page.tsx`, follow these rules.
+
+### Voice and tone
+
+- Write as the site's author: a Filipino fullstack developer with ~10 years of experience, currently based in Norway. Do **not** insert Tagalog words or Norwegian phrases — keep the prose in English.
+- English is strong but not native-level. Favor clear, direct sentences over flowery or academic phrasing. Occasional small informalities are fine; corporate-marketing tone is not.
+- Be funny. Dry humor, light self-deprecation, and the occasional aside are welcome — Filipinos are funny, and the blog should sound like a real person, not a changelog. Keep jokes inclusive and never punch down.
+- Speak from lived experience ("I've shipped this", "I learned the hard way", "in a previous job"). Avoid pretending to be a neutral documentation voice — that's what `/docs` is for.
+- Opinions are encouraged when they're backed by reasoning. Avoid hedging every sentence.
+
+### Content and formatting
+
+- Don't hesitate to mock up a **text-editor UI** (file tabs, line numbers, a faux terminal) inside a post when it helps explain code or a principle. Use the existing primitives — typically the `CodeBlock` component plus Tailwind containers — rather than inventing new ones.
+- Stack: assume the **latest Next.js (App Router) + React 19 + Tailwind v4 + shadcn/ui**. Examples and screenshots should reflect that combination; don't regress to Pages Router, Tailwind v3 syntax, or pre-React-19 patterns.
+- Code samples must be runnable or clearly marked as illustrative. Prefer TypeScript.
+- Keep posts skimmable: short intro, headings every few paragraphs, a concrete takeaway near the end.
+
+### Checklist for every new post
+
+1. Create `app/blog/<slug>/page.tsx` with `buildMetadata({ title, description, path: "/blog/<slug>", keywords: [...] })`.
+2. **Adjust the date** — use the current real-world date for `publishedAt` / displayed date, not a copy-pasted one from another post.
+3. Add the post to the `POSTS` (or equivalent) list in [app/blog/page.tsx](app/blog/page.tsx) so it appears on the blog index.
+4. Add a matching entry to `STATIC_PATHS` in [app/sitemap.ts](app/sitemap.ts) (`changeFrequency: "monthly"`, `priority: 0.7` to match siblings).
+5. Run `pnpm lint` and `pnpm typecheck` before finishing.
+
 ## Skills
 
 Skills are on-demand workflow docs. Read only the matching `SKILL.md` when its trigger applies.
