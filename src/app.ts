@@ -2,6 +2,7 @@ import { Router } from "./router.js";
 import { WebSocketRegistry, type WebSocketHandler } from "./websocket.js";
 import {
   BadRequestError,
+  ForbiddenError,
   HttpError,
   InternalError,
   MethodNotAllowedError,
@@ -36,6 +37,18 @@ import {
   type DocsContentSecurityPolicyOptions,
   type ScalarReferenceConfiguration,
 } from "./docs.js";
+import {
+  secureHeaders as secureHeadersMiddleware,
+  CORS_HOOK_MARKER,
+  CORS_ORIGIN_ALLOW_MARKER,
+  SECURE_HEADERS_MARKER,
+  type CorsOriginAllow,
+  type SecureHeadersOptions,
+} from "./middleware.js";
+
+const AUTO_SECURE_HEADERS_MARKER: unique symbol = Symbol.for(
+  "daloyjs.app.autoSecureHeaders",
+);
 
 /**
  * Configuration accepted by {@link App}'s constructor. Every field is
@@ -100,6 +113,46 @@ export interface AppOptions {
    * @since 0.15.0
    */
   stripServerHeaders?: boolean;
+
+  /**
+   * Master switch for the secure-by-default Wave 2 surface (auto-applied
+   * {@link secureHeaders}, cross-origin guard for state-changing requests
+    * when no {@link cors} hook allows the request origin). Defaults to `true`
+    * in `@daloyjs/core@0.16.0` and later. Per-feature opt-outs
+   * (`secureHeaders: false`, `corsCrossOriginGuard: false`) remain available
+   * when this is left on. Pass `false` to restore the pre-0.16 behavior
+   * wholesale.
+   *
+   * @since 0.16.0
+   */
+  secureDefaults?: boolean;
+
+  /**
+   * Auto-install {@link secureHeaders} as a global hook so every response
+   * carries hardened defaults (HSTS, X-Frame-Options, nosniff, strict
+   * referrer, COOP/CORP, default CSP, etc.). Active when
+   * {@link AppOptions.secureDefaults} is not `false`. Pass `false` to skip
+   * the auto-install (you may still register your own `secureHeaders()` via
+   * `app.use(...)`). Pass an options object to override the defaults of the
+   * auto-installed instance.
+   *
+   * @since 0.16.0
+   */
+  secureHeaders?: SecureHeadersOptions | false;
+
+  /**
+   * Reject state-changing requests (`POST`, `PUT`, `PATCH`, `DELETE`) that
+    * carry a cross-origin `Origin` header when no {@link cors} hook in the
+    * matched route's hook chain allows that origin. Active when
+    * {@link AppOptions.secureDefaults} is not `false`. Returns
+    * `403 application/problem+json` so the rejection is loud at the network
+    * boundary instead of silently allowing a CSRF / SSRF surface. Set to
+    * `false` if you intentionally serve a cross-origin API without `cors()`
+    * (rare; almost always a misconfiguration).
+   *
+   * @since 0.16.0
+   */
+  corsCrossOriginGuard?: boolean;
   /** Pluggable logger. Default: structured JSON logger at "info" (or noop in test). */
   logger?:
     | Logger
@@ -259,6 +312,8 @@ export interface IntrospectedRoute {
 interface CompiledRoute {
   def: RouteDefinition<any, any, any, any>;
   hooks: Hooks;
+  /** CORS origin allowlist predicates captured from group and route-level hooks. */
+  corsOriginAllows: CorsOriginAllow[];
 }
 
 const DEFAULTS = {
@@ -351,6 +406,13 @@ export class App {
   /** In-flight request count for graceful shutdown. */
   private inflight = 0;
   private draining = false;
+  /**
+    * CORS origin allowlist predicates from the currently active group-level
+    * hooks. Used for unmatched routes; matched routes use the snapshot stored
+    * on their compiled route so later `app.use(cors(...))` calls do not
+    * retroactively loosen earlier routes.
+   */
+    private corsOriginAllows: CorsOriginAllow[] = [];
 
   constructor(options: AppOptions = {}) {
     this.options = {
@@ -369,7 +431,33 @@ export class App {
           : createLogger({ level: (options.logger as any)?.level ?? "info" });
 
     this.warnOnEnvMismatch();
+    this.installSecureDefaults();
     this.maybeMountDocs();
+  }
+
+  /**
+   * Install the Wave 2 secure-by-default global hooks. Currently:
+   *  - {@link secureHeaders} as a group-level hook so every response carries
+   *    the hardened baseline (HSTS, X-Frame-Options, nosniff, default CSP).
+   *
+   * Called once during construction — the CORS cross-origin guard lives
+   * inside {@link App.fetch} because it needs the live request to decide.
+   * The auto-installed `secureHeaders` instance only sets headers when the
+   * response does not already carry them, so user-supplied
+   * `app.use(secureHeaders({...}))` still wins per-header.
+   */
+  private installSecureDefaults(): void {
+    if (this.options.secureDefaults === false) return;
+    if (this.options.secureHeaders !== false) {
+      const opts =
+        this.options.secureHeaders &&
+        typeof this.options.secureHeaders === "object"
+          ? this.options.secureHeaders
+          : {};
+      const auto = secureHeadersMiddleware(opts);
+      (auto as Record<PropertyKey, unknown>)[AUTO_SECURE_HEADERS_MARKER] = true;
+      this.groupHooks.push(auto);
+    }
   }
 
   /**
@@ -405,6 +493,57 @@ export class App {
       typeof process !== "undefined" &&
       typeof process.env !== "undefined" &&
       process.env.NODE_ENV === "production"
+    );
+  }
+
+  /**
+   * Wave 2 cross-origin guard. Rejects state-changing requests (`POST` /
+   * `PUT` / `PATCH` / `DELETE`) that carry an `Origin` header pointing at a
+   * different origin than the request URL when no {@link cors} hook is
+   * registered (neither at the app level nor on the matched route). Throws
+   * a {@link ForbiddenError} that surfaces as `403 application/problem+json`
+   * so the rejection is loud rather than silently allowing the unintended
+   * cross-origin write.
+   *
+   * Disabled when {@link AppOptions.secureDefaults} is `false` or
+   * {@link AppOptions.corsCrossOriginGuard} is `false`. Same-origin
+   * requests, GET / HEAD / OPTIONS, requests with no `Origin` header, and
+   * routes whose hook chain includes a `cors()` policy allowing the origin
+   * are unaffected.
+   */
+  private assertCrossOriginAllowed(
+    request: Request,
+    url: URL,
+    method: HttpMethod,
+    corsOriginAllows: CorsOriginAllow[],
+  ): void {
+    if (this.options.secureDefaults === false) return;
+    if (this.options.corsCrossOriginGuard === false) return;
+    if (
+      method !== "POST" &&
+      method !== "PUT" &&
+      method !== "PATCH" &&
+      method !== "DELETE"
+    ) {
+      return;
+    }
+    const origin = request.headers.get("origin");
+    if (!origin || origin === "null") return;
+    let originUrl: URL;
+    try {
+      originUrl = new URL(origin);
+    } catch {
+      // Malformed Origin header — refuse loudly.
+      throw new ForbiddenError(
+        "Cross-origin state-changing request rejected: malformed Origin header.",
+      );
+    }
+    if (originUrl.origin === url.origin) return;
+    if (corsOriginAllows.some((allows) => allows(origin))) return;
+    throw new ForbiddenError(
+      `Cross-origin ${method} from "${originUrl.origin}" rejected: no registered cors() policy allows that origin. ` +
+        `Register cors({ origin: [...] }) via app.use(...) to allow it, or pass ` +
+        `app({ corsCrossOriginGuard: false }) / app({ secureDefaults: false }) to disable this guard.`,
     );
   }
 
@@ -589,11 +728,13 @@ export class App {
       tags: [...(this.groupTags ?? []), ...(def.tags ?? [])],
       auth: def.auth ?? this.groupAuth,
     };
-    const hooks = mergeHooks([...this.groupHooks, def.hooks ?? {}]);
+    const sources: Hooks[] = [...this.groupHooks, def.hooks ?? {}];
+    const hooks = mergeHooks(sources);
+    const corsOriginAllows = corsOriginAllowsFromHooks(sources);
     this.router.add(
       def.method,
       fullPath,
-      { def: merged, hooks },
+      { def: merged, hooks, corsOriginAllows },
       def.operationId,
     );
     this.routes.push(merged);
@@ -662,6 +803,9 @@ export class App {
       ...this.groupHooks,
       ...(config.hooks ? [config.hooks] : []),
     ];
+    (child as any).corsOriginAllows = corsOriginAllowsFromHooks(
+      (child as any).groupHooks,
+    );
     (child as any).groupTags = [...this.groupTags, ...(config.tags ?? [])];
     (child as any).groupAuth = config.auth ?? this.groupAuth;
     (child as any).decorations = this.decorations;
@@ -692,7 +836,25 @@ export class App {
    * @returns This `App` instance for chaining.
    */
   use(hooks: Hooks): this {
+    // If the developer installs their own secureHeaders(), drop the
+    // Wave 2 auto-installed instance so the user's overrides win instead of
+    // being shadowed (the auto one runs first and the per-header
+    // "set only if absent" semantics mean the second installation would be
+    // a silent no-op).
+    if (
+      (hooks as Record<PropertyKey, unknown>)[SECURE_HEADERS_MARKER] === true
+    ) {
+      const autoIdx = this.groupHooks.findIndex(
+        (h) =>
+          (h as Record<PropertyKey, unknown>)[AUTO_SECURE_HEADERS_MARKER] ===
+          true,
+      );
+      if (autoIdx >= 0) this.groupHooks.splice(autoIdx, 1);
+    }
     this.groupHooks.push(hooks);
+    if ((hooks as Record<PropertyKey, unknown>)[CORS_HOOK_MARKER] === true) {
+      this.corsOriginAllows = corsOriginAllowsFromHooks(this.groupHooks);
+    }
     return this;
   }
 
@@ -923,6 +1085,16 @@ export class App {
       const match =
         this.router.find(method, url.pathname) ??
         (headFallback ? this.router.find("GET", url.pathname) : undefined);
+
+      this.assertCrossOriginAllowed(
+        request,
+        url,
+        method,
+        [
+          ...corsOriginAllowsFromHooks([this.options.hooks ?? {}]),
+          ...(match ? match.handler.corsOriginAllows : this.corsOriginAllows),
+        ],
+      );
 
       if (!match) {
         const allowed = this.router.allowedMethods(url.pathname);
@@ -1161,6 +1333,23 @@ function joinPath(a: string, b: string): string {
   return joined === "" ? "/" : joined;
 }
 
+function corsOriginAllowsFromHooks(layers: Hooks[]): CorsOriginAllow[] {
+  const allows: CorsOriginAllow[] = [];
+  for (const hooks of layers) {
+    const record = hooks as Record<PropertyKey, unknown>;
+    const allow = record[CORS_ORIGIN_ALLOW_MARKER];
+    if (typeof allow === "function") {
+      allows.push(allow as CorsOriginAllow);
+    } else if (record[CORS_HOOK_MARKER] === true) {
+      // Third-party CORS helpers can still opt out of the guard with the
+      // original marker. The first-party cors() stamps a stricter predicate
+      // above, so disallowed origins are rejected before the handler runs.
+      allows.push(() => true);
+    }
+  }
+  return allows;
+}
+
 function mergeHooks(layers: Hooks[]): Hooks {
   const pick = <K extends keyof Hooks>(key: K): NonNullable<Hooks[K]>[] =>
     layers
@@ -1290,7 +1479,7 @@ async function buildContext(
   }
   if (def.request?.body) {
     const ct = (request.headers.get("content-type") ?? "").toLowerCase();
-    const allowed = opts.allowedContentTypes ?? [
+    const allowed = def.accepts ?? opts.allowedContentTypes ?? [
       "application/json",
       "application/x-www-form-urlencoded",
       "multipart/form-data",

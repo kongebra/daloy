@@ -146,6 +146,7 @@ const STATIC_PATHS: Array<{
   },
   { path: "/docs/security", changeFrequency: "monthly", priority: 0.8 },
   { path: "/docs/security/csrf", changeFrequency: "monthly", priority: 0.7 },
+  { path: "/docs/security/secure-defaults", changeFrequency: "monthly", priority: 0.7 },
   { path: "/docs/security/session", changeFrequency: "monthly", priority: 0.7 },
   { path: "/docs/adapters", changeFrequency: "monthly", priority: 0.8 },
   { path: "/docs/deployment", changeFrequency: "monthly", priority: 0.8 },

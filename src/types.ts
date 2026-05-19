@@ -348,6 +348,31 @@ export interface RouteDefinition<
   auth?: AuthSpec;
 
   /**
+   * Per-route Content-Type allowlist. When the route declares a `body`
+   * schema, the framework compares the inbound `Content-Type` against this
+   * list (substring match) before parsing. Overrides the global
+   * `app({ allowedContentTypes })` value. Use it to opt a single route in
+   * to `application/x-www-form-urlencoded`, `text/xml`, or any other media
+   * type that the secure-by-default global allowlist excludes, without
+   * loosening the policy for the rest of the API.
+   *
+   * @example
+   * ```ts
+   * app.route({
+   *   method: "POST",
+   *   path: "/legacy-form",
+   *   accepts: ["application/x-www-form-urlencoded"],
+   *   request: { body: legacyFormSchema },
+   *   responses: { 200: { description: "OK" } },
+   *   handler: ({ body }) => ({ status: 200, body: { ok: true, body } }),
+   * });
+   * ```
+   *
+   * @since 0.16.0
+   */
+  accepts?: string[];
+
+  /**
    * Optional OpenAPI 3.1 callbacks (out-of-band requests this operation may
    * trigger on the consumer). Each callback name maps to one or more runtime
    * expressions (e.g. `"{$request.body#/callbackUrl}"`); each expression maps

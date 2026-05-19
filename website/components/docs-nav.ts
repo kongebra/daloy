@@ -99,6 +99,7 @@ export const docsNav: DocsNavSection[] = [
     title: "Production",
     items: [
       { title: "Security", href: "/docs/security" },
+      { title: "Secure-by-default (0.16.0)", href: "/docs/security/secure-defaults" },
       { title: "CSRF protection", href: "/docs/security/csrf" },
       { title: "Sessions", href: "/docs/security/session" },
       {

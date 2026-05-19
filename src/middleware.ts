@@ -173,6 +173,20 @@ function buildCspHeader(opt: CspDirectivesOptions, nonce: string | undefined): s
  * @returns A {@link Hooks} bundle ready for `app.use(...)`.
  * @since 0.1.0
  */
+/**
+ * Marker stamped on the `Hooks` object returned by {@link secureHeaders} so
+ * the framework can detect that a developer has installed their own
+ * `secureHeaders()` and remove the auto-installed Wave 2 instance to avoid
+ * shadowing the user's overrides. Exported so wrapper helpers can stamp
+ * their own returned hooks (`(hooks as any)[SECURE_HEADERS_MARKER] = true`)
+ * and get the same replace-not-stack behavior.
+ *
+ * @since 0.16.0
+ */
+export const SECURE_HEADERS_MARKER: unique symbol = Symbol.for(
+  "daloyjs.middleware.secureHeaders",
+);
+
 export function secureHeaders(opts: SecureHeadersOptions = {}): Hooks {
   const headers: Record<string, string> = {};
   const cspOpt = opts.contentSecurityPolicy ?? "default-src 'self'; frame-ancestors 'none'";
@@ -208,7 +222,7 @@ export function secureHeaders(opts: SecureHeadersOptions = {}): Hooks {
   if (opts.noSniff !== false) headers["x-content-type-options"] = "nosniff";
   if (opts.xssProtection ?? false) headers["x-xss-protection"] = "0"; // modern guidance
 
-  return {
+  const hooks: Hooks = {
     beforeHandle(ctx) {
       if (cspIsDynamic && (cspOpt as CspDirectivesOptions).nonce) {
         (ctx.state as Record<string, unknown>)[CSP_NONCE_STATE] = generateCspNonce();
@@ -230,10 +244,45 @@ export function secureHeaders(opts: SecureHeadersOptions = {}): Hooks {
       }
     },
   };
+  (hooks as Record<PropertyKey, unknown>)[SECURE_HEADERS_MARKER] = true;
+  return hooks;
 }
 
 const DEFAULT_CORS_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"];
 const DEFAULT_CORS_ALLOWED_HEADERS = ["content-type", "authorization"];
+
+/**
+ * Marker stamped on the `Hooks` object returned by {@link cors} so the
+ * framework can detect that a CORS policy has been installed. Used by the
+ * Wave 2 secure-defaults cross-origin guard: if `App` is constructed with
+ * `secureDefaults: true` (the 0.16+ default) and no route hook chain carries
+ * a CORS policy that allows the request origin, state-changing requests with
+ * a cross-origin `Origin` header are rejected with `403`. Exported so
+ * third-party CORS helpers can opt out of the guard by stamping their own
+ * returned hooks (`(hooks as any)[CORS_HOOK_MARKER] = true`); stamp
+ * {@link CORS_ORIGIN_ALLOW_MARKER} as well when the helper has a real
+ * allowlist predicate.
+ *
+ * @since 0.16.0
+ */
+export const CORS_HOOK_MARKER: unique symbol = Symbol.for(
+  "daloyjs.middleware.cors",
+);
+
+/**
+ * Marker stamped on the `Hooks` object returned by {@link cors} with the
+ * origin predicate used by the Wave 2 cross-origin guard. Third-party CORS
+ * wrappers can stamp the same function so Daloy can reject state-changing
+ * requests whose `Origin` header is outside the registered allowlist.
+ *
+ * @since 0.16.0
+ */
+export const CORS_ORIGIN_ALLOW_MARKER: unique symbol = Symbol.for(
+  "daloyjs.middleware.cors.originAllow",
+);
+
+export type CorsOriginAllow = (origin: string) => boolean;
+
 export interface CorsOptions {
   origin: string | string[] | ((origin: string) => boolean);
   methods?: string[];
@@ -298,7 +347,7 @@ export function cors(opts: CorsOptions): Hooks {
   const exposed = opts.exposedHeaders?.join(", ");
   const maxAge = String(opts.maxAgeSeconds ?? 600);
 
-  return {
+  const hooks: Hooks = {
     beforeHandle(ctx) {
       const origin = ctx.request.headers.get("origin");
       const allowed = allow(origin);
@@ -328,6 +377,11 @@ export function cors(opts: CorsOptions): Hooks {
       void res;
     },
   };
+  (hooks as Record<PropertyKey, unknown>)[CORS_HOOK_MARKER] = true;
+  (hooks as Record<PropertyKey, unknown>)[CORS_ORIGIN_ALLOW_MARKER] = (
+    origin: string,
+  ) => allow(origin) !== null;
+  return hooks;
 }
 
 // ---------- Rate limit ----------

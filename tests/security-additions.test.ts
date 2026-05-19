@@ -200,7 +200,11 @@ test("secureHeaders: nonce throws when WebCrypto is unavailable", async () => {
 // ============================================================================
 
 function makeFetchMetaApp(opts?: Parameters<typeof csrf>[0]) {
-  const app = new App({ logger: false });
+  // csrf({ strategy: "fetch-metadata" }) handles cross-origin admission on
+  // its own, so opt out of the Wave 2 `corsCrossOriginGuard` for this
+  // helper — otherwise its cross-origin allowlist tests would be rejected
+  // by the framework-level guard before csrf() sees them.
+  const app = new App({ logger: false, corsCrossOriginGuard: false });
   app.use(csrf({ strategy: "fetch-metadata", ...opts }));
   app.route({
     method: "GET",

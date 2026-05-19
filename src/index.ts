@@ -68,7 +68,10 @@ export type { WebhookHmacAlgorithm } from "./security.js";
 export {
   requestId,
   secureHeaders,
+  SECURE_HEADERS_MARKER,
   cors,
+  CORS_HOOK_MARKER,
+  CORS_ORIGIN_ALLOW_MARKER,
   rateLimit,
   timing,
   bearerAuth,
@@ -80,6 +83,7 @@ export type {
   SecureHeadersOptions,
   CspDirectivesOptions,
   CorsOptions,
+  CorsOriginAllow,
   RateLimitOptions,
   RateLimitStore,
   CsrfOptions,

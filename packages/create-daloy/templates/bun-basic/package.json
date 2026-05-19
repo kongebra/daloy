@@ -16,7 +16,7 @@
     "gen": "pnpm gen:openapi && pnpm gen:client"
   },
   "dependencies": {
-    "@daloyjs/core": "^0.15.0",
+    "@daloyjs/core": "^0.16.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
