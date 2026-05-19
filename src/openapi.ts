@@ -17,6 +17,7 @@ import type {
   HttpMethod,
   RequestSchemas,
   ResponsesMap,
+  RouteMeta,
   RouteDefinition,
 } from "./types.js";
 import type { StandardSchemaV1 } from "./schema.js";
@@ -196,11 +197,15 @@ function buildOperation(
   route: OperationLike,
   path?: string
 ): Record<string, unknown> {
+  const meta = (route as { meta?: RouteMeta }).meta;
+  const mergedTags = mergeTags(route.tags, meta?.tags);
   const op: Record<string, unknown> = {
     ...(route.operationId ? { operationId: route.operationId } : {}),
-    ...(route.summary ? { summary: route.summary } : {}),
-    ...(route.description ? { description: route.description } : {}),
-    ...(route.tags?.length ? { tags: route.tags } : {}),
+    ...(route.summary ?? meta?.summary ? { summary: route.summary ?? meta?.summary } : {}),
+    ...(route.description ?? meta?.description
+      ? { description: route.description ?? meta?.description }
+      : {}),
+    ...(mergedTags.length ? { tags: mergedTags } : {}),
     ...(route.deprecated ? { deprecated: true } : {}),
   };
 
@@ -274,11 +279,14 @@ function buildOperation(
         },
       };
     } else {
+      const bodyContent: Record<string, unknown> = {
+        schema: toJsonSchema(route.request.body) ?? {},
+      };
+      const requestExamples = collectRequestBodyExamples(meta);
+      if (requestExamples) bodyContent.examples = requestExamples;
       op.requestBody = {
         required: true,
-        content: {
-          "application/json": { schema: toJsonSchema(route.request.body) ?? {} },
-        },
+        content: { "application/json": bodyContent },
       };
     }
   }
@@ -290,6 +298,11 @@ function buildOperation(
   ]>;
   for (const [status, spec] of responseEntries) {
     if (!spec) continue;
+    const metaResponseExamples = collectResponseExamples(meta, Number(status));
+    const mergedExamples =
+      spec.examples || metaResponseExamples
+        ? { ...(metaResponseExamples ?? {}), ...(spec.examples ?? {}) }
+        : undefined;
     responses[status] = {
       description: spec.description,
       ...(spec.body
@@ -297,7 +310,7 @@ function buildOperation(
             content: {
               "application/json": {
                 schema: toJsonSchema(spec.body) ?? {},
-                ...(spec.examples ? { examples: spec.examples } : {}),
+                ...(mergedExamples ? { examples: mergedExamples } : {}),
               },
             },
           }
@@ -315,7 +328,61 @@ function buildOperation(
   );
   if (callbacks) op.callbacks = callbacks;
 
+  if (meta?.extensions) {
+    for (const [k, v] of Object.entries(meta.extensions)) {
+      const key = k.startsWith("x-") ? k : `x-${k}`;
+      op[key] = v;
+    }
+  }
+  if (meta?.examples && Object.keys(meta.examples).length > 0) {
+    op["x-daloy-examples"] = meta.examples;
+  }
+
   return op;
+}
+
+function mergeTags(routeTags: string[] | undefined, metaTags: string[] | undefined): string[] {
+  if (!routeTags && !metaTags) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const t of [...(routeTags ?? []), ...(metaTags ?? [])]) {
+    if (!seen.has(t)) {
+      seen.add(t);
+      out.push(t);
+    }
+  }
+  return out;
+}
+
+function collectRequestBodyExamples(meta: RouteMeta | undefined): Record<string, unknown> | undefined {
+  if (!meta?.examples) return undefined;
+  const out: Record<string, unknown> = {};
+  for (const [name, ex] of Object.entries(meta.examples)) {
+    if (ex.request?.body === undefined) continue;
+    const entry: Record<string, unknown> = { value: ex.request.body };
+    if (ex.summary) entry.summary = ex.summary;
+    if (ex.description) entry.description = ex.description;
+    out[name] = entry;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function collectResponseExamples(
+  meta: RouteMeta | undefined,
+  status: number
+): Record<string, unknown> | undefined {
+  if (!meta?.examples) return undefined;
+  const out: Record<string, unknown> = {};
+  for (const [name, ex] of Object.entries(meta.examples)) {
+    if (!ex.response || ex.response.status !== status || ex.response.body === undefined) {
+      continue;
+    }
+    const entry: Record<string, unknown> = { value: ex.response.body };
+    if (ex.summary) entry.summary = ex.summary;
+    if (ex.description) entry.description = ex.description;
+    out[name] = entry;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 function buildCallbacks(

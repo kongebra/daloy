@@ -28,6 +28,8 @@ export type {
   CallbackDefinition,
   CallbackMap,
   CallbackOperation,
+  RouteExample,
+  RouteMeta,
 } from "./types.js";
 
 export {

@@ -28,6 +28,7 @@ export const docsNav: DocsNavSection[] = [
     title: "Contracts & clients",
     items: [
       { title: "OpenAPI generation", href: "/docs/openapi" },
+      { title: "AI-friendly route metadata", href: "/docs/ai-metadata" },
       { title: "Typed clients (Hey API)", href: "/docs/typed-client" },
       { title: "Streaming (SSE & NDJSON)", href: "/docs/streaming" },
       { title: "WebSocket primitives", href: "/docs/websocket" },

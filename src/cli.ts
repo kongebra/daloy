@@ -13,6 +13,7 @@
 import type { App, IntrospectedRoute } from "./app.js";
 import { runContractTests } from "./contract.js";
 import { generateOpenAPI } from "./openapi.js";
+import type { RouteDefinition, RouteMeta } from "./types.js";
 
 export interface CliIO {
   stdout: (chunk: string) => void;
@@ -43,6 +44,7 @@ export interface CliOptions {
   check: boolean;
   schemas: boolean;
   openapi: boolean;
+  ai: boolean;
   tag?: string;
   method?: string;
   entry?: string;
@@ -68,6 +70,10 @@ Options:
   --check                Run the contract test suite; exit 1 on errors.
   --schemas              Include per-route schema presence (body/query/...).
   --openapi              Print the OpenAPI 3.1 document for the App.
+  --ai                   Print an AI/codegen-friendly JSON dump of the
+                         route catalog with schemas and meta examples
+                         (suitable for feeding to an LLM or for writing
+                         to a sibling routes.json).
   --tag <tag>            Only show routes that declare this tag.
   --method <method>      Only show routes for this HTTP method.
   --runtime <r>          (dev) Force the runtime: node | bun | deno.
@@ -204,6 +210,7 @@ export function parseArgs(argv: readonly string[]): { command: string; opts: Cli
     check: false,
     schemas: false,
     openapi: false,
+    ai: false,
     help: false,
     version: false,
   };
@@ -228,6 +235,9 @@ export function parseArgs(argv: readonly string[]): { command: string; opts: Cli
         break;
       case "--openapi":
         opts.openapi = true;
+        break;
+      case "--ai":
+        opts.ai = true;
         break;
       case "--tag":
         opts.tag = readFlagValue(argv, ++i, "--tag");
@@ -310,6 +320,12 @@ export async function runCli(argv: readonly string[], io: CliIO): Promise<CliRes
     return { exitCode: 0 };
   }
 
+  if (opts.ai) {
+    const dump = buildAiDump(app, opts);
+    io.stdout(`${JSON.stringify(dump, null, opts.json ? 0 : 2)}\n`);
+    return { exitCode: 0 };
+  }
+
   const all = app.introspect();
   const routes = filterRoutes(all, opts);
 
@@ -332,12 +348,22 @@ export async function runCli(argv: readonly string[], io: CliIO): Promise<CliRes
 }
 
 function filterRoutes(routes: IntrospectedRoute[], opts: CliOptions): IntrospectedRoute[] {
-  return routes.filter(
-    (r) =>
-      (!opts.method || r.method === opts.method) &&
-      (!opts.tag || Boolean(r.tags?.includes(opts.tag))),
-  );
+  return routes
+    .filter(
+      (r) =>
+        (!opts.method || r.method === opts.method) &&
+        (!opts.tag || effectiveTags(r).includes(opts.tag)),
+    )
+    .map((r) => {
+      const tags = effectiveTags(r);
+      return tags.length > 0 ? { ...r, tags } : r;
+    });
 }
+
+function effectiveTags(route: IntrospectedRoute): string[] {
+  return dedupeTags(route.tags, route.meta?.tags);
+}
+
 function formatTable(routes: IntrospectedRoute[], includeSchemas: boolean): string {
   if (routes.length === 0) {
     return "No routes registered (or none matched the filter).\n";
@@ -348,7 +374,7 @@ function formatTable(routes: IntrospectedRoute[], includeSchemas: boolean): stri
   const rows: string[][] = [header];
   for (const r of routes) {
     const opId = r.operationId ?? "-";
-    const tags = r.tags?.join(",") ?? "-";
+    const tags = effectiveTags(r).join(",") || "-";
     const responses = r.responses.length === 0 ? "-" : r.responses.sort((a, b) => a - b).join(",");
     if (includeSchemas) {
       const flags = `${r.hasBody ? "B" : "-"}${r.hasQuery ? "Q" : "-"}${r.hasParams ? "P" : "-"}${r.hasHeaders ? "H" : "-"}`;
@@ -411,6 +437,102 @@ async function runDev(opts: CliOptions, io: CliIO): Promise<CliResult> {
     io.stderr(`daloy dev: failed to start: ${(err as Error).message}\n`);
     return { exitCode: 1 };
   }
+}
+
+/**
+ * Build the `daloy inspect --ai` payload: the registered route catalog
+ * paired with JSON-Schema dumps of every request/response schema and any
+ * `meta.examples` declared on the route. The payload is intentionally
+ * stable and self-describing so LLMs and SDK builders can consume it
+ * without round-tripping through OpenAPI.
+ *
+ * @since 0.14.0
+ */
+export function buildAiDump(app: App, opts: CliOptions): Record<string, unknown> {
+  const introspected = filterRoutes(app.introspect(), opts);
+  const indexById = new Map<string, IntrospectedRoute>();
+  for (const r of introspected) indexById.set(`${r.method} ${r.path}`, r);
+
+  const routes: Record<string, unknown>[] = [];
+  for (const def of app.routes as RouteDefinition[]) {
+    const id = `${def.method} ${def.path}`;
+    if (!indexById.has(id)) continue;
+    const meta: RouteMeta | undefined = (def as { meta?: RouteMeta }).meta;
+    const entry: Record<string, unknown> = {
+      method: def.method,
+      path: def.path,
+      ...(def.operationId ? { operationId: def.operationId } : {}),
+      ...(def.summary ?? meta?.summary
+        ? { summary: def.summary ?? meta?.summary }
+        : {}),
+      ...(def.description ?? meta?.description
+        ? { description: def.description ?? meta?.description }
+        : {}),
+      tags: dedupeTags(def.tags, meta?.tags),
+      ...(def.deprecated ? { deprecated: true } : {}),
+      ...(def.auth ? { auth: def.auth } : {}),
+      request: aiRequest(def.request),
+      responses: aiResponses(def.responses),
+    };
+    if (meta?.examples) entry.examples = meta.examples;
+    if (meta?.extensions) entry.extensions = meta.extensions;
+    routes.push(entry);
+  }
+
+  return {
+    daloy: { ai: 1 },
+    generatedAt: new Date().toISOString(),
+    routeCount: routes.length,
+    routes,
+  };
+}
+
+function dedupeTags(a: string[] | undefined, b: string[] | undefined): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const t of [...(a ?? []), ...(b ?? [])]) {
+    if (!seen.has(t)) {
+      seen.add(t);
+      out.push(t);
+    }
+  }
+  return out;
+}
+
+function aiRequest(req: RouteDefinition["request"]): Record<string, unknown> {
+  if (!req) return {};
+  const out: Record<string, unknown> = {};
+  for (const part of ["params", "query", "headers", "body"] as const) {
+    const schema = req[part];
+    if (schema) out[part] = aiSchema(schema);
+  }
+  return out;
+}
+
+function aiResponses(
+  responses: RouteDefinition["responses"]
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [status, spec] of Object.entries(responses)) {
+    if (!spec) continue;
+    const entry: Record<string, unknown> = { description: spec.description };
+    if (spec.body) entry.body = aiSchema(spec.body);
+    if (spec.examples) entry.examples = spec.examples;
+    out[status] = entry;
+  }
+  return out;
+}
+
+function aiSchema(schema: unknown): unknown {
+  const anySchema = schema as { toJSONSchema?: () => unknown };
+  if (typeof anySchema?.toJSONSchema === "function") {
+    try {
+      return anySchema.toJSONSchema();
+    } catch {
+      /* fall through */
+    }
+  }
+  return {};
 }
 
 async function loadApp(entry: string | undefined, io: CliIO): Promise<App> {

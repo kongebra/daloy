@@ -224,6 +224,14 @@ export interface IntrospectedRoute {
   hasHeaders: boolean;
   responses: number[];
   auth?: { scheme: string; scopes?: string[] };
+  /**
+   * Optional AI-friendly metadata declared via `route({ meta: ... })`.
+   * Same shape published in OpenAPI as `x-daloy-*` and consumed by
+   * `daloy inspect --ai`.
+   *
+   * @since 0.14.0
+   */
+  meta?: import("./types.js").RouteMeta;
 }
 
 interface CompiledRoute {
@@ -1048,6 +1056,7 @@ export class App {
       if (r.description !== undefined) route.description = r.description;
       if (r.deprecated !== undefined) route.deprecated = r.deprecated;
       if (r.auth !== undefined) route.auth = r.auth;
+      if (r.meta !== undefined) route.meta = r.meta;
       return route;
     });
   }

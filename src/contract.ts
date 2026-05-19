@@ -100,6 +100,55 @@ export async function runContractTests(
         }
       }
     }
+
+    // Validate meta.examples against request/response schemas.
+    const meta = r.meta;
+    if (meta?.examples) {
+      for (const [name, ex] of Object.entries(meta.examples)) {
+        if (ex.request) {
+          const checks: Array<[string, import("./schema.js").StandardSchemaV1 | undefined, unknown]> = [
+            ["request.body", r.request?.body, ex.request.body],
+            ["request.query", r.request?.query, ex.request.query],
+            ["request.params", r.request?.params, ex.request.params],
+            ["request.headers", r.request?.headers, ex.request.headers],
+          ];
+          for (const [label, schema, value] of checks) {
+            if (!schema || value === undefined) continue;
+            const result = await validate(schema, value);
+            if (result.issues) {
+              issues.push({
+                level: "error",
+                route: id,
+                message: `meta.examples["${name}"].${label} violates schema: ${result.issues
+                  .map((i) => i.message)
+                  .join("; ")}`,
+              });
+            }
+          }
+        }
+        if (ex.response) {
+          const respSpec = r.responses[ex.response.status as keyof typeof r.responses];
+          if (!respSpec) {
+            issues.push({
+              level: "error",
+              route: id,
+              message: `meta.examples["${name}"].response.status ${ex.response.status} is not declared in responses`,
+            });
+          } else if (ex.response.body !== undefined && respSpec.body) {
+            const result = await validate(respSpec.body, ex.response.body);
+            if (result.issues) {
+              issues.push({
+                level: "error",
+                route: id,
+                message: `meta.examples["${name}"].response.body violates schema for ${ex.response.status}: ${result.issues
+                  .map((i) => i.message)
+                  .join("; ")}`,
+              });
+            }
+          }
+        }
+      }
+    }
   }
 
   return {

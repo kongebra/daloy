@@ -126,10 +126,10 @@ is small (optional fields on existing `route()` calls) and lands cleanly before
 the `1.0.0` freeze. Does **not** change how routes or handlers are written —
 existing routes keep working unchanged.
 
-- [ ] **`meta` field on route definitions** (optional): structured `examples`, `summary`, `description`, `tags`, free-form `x-*` extensions, all surfaced into the generated OpenAPI doc as `examples` / `x-daloy-*` vendor extensions.
-- [ ] **Machine-readable usage examples**: request/response example pairs validated against the route's Standard Schema at build time, emitted into OpenAPI `examples` and into a sibling `routes.json` consumable by codegen agents and SDK builders.
-- [ ] **`daloy inspect --ai`**: dumps the route catalog + examples + schemas as a single JSON document suitable for feeding to an LLM or codegen tool.
-- [ ] Docs page in `website/app/docs/` showing how to author examples and how Hey API / agent tooling consumes them.
+- [x] **`meta` field on route definitions** (optional): structured `examples`, `summary`, `description`, `tags`, free-form `x-*` extensions, all surfaced into the generated OpenAPI doc as `examples` / `x-daloy-*` vendor extensions.
+- [x] **Machine-readable usage examples**: request/response example pairs validated against the route's Standard Schema at build time, emitted into OpenAPI `examples` and into a sibling `routes.json` consumable by codegen agents and SDK builders (`daloy inspect --ai > routes.json`).
+- [x] **`daloy inspect --ai`**: dumps the route catalog + examples + schemas as a single JSON document suitable for feeding to an LLM or codegen tool.
+- [x] Docs page in `website/app/docs/ai-metadata/` showing how to author examples and how Hey API / agent tooling consumes them.
 
 ---
 

@@ -357,6 +357,15 @@ export interface RouteDefinition<
    */
   callbacks?: CallbackMap;
 
+  /**
+   * Optional AI-friendly metadata. Surfaces into OpenAPI as `examples`
+   * (request body + per response) and `x-daloy-*` vendor extensions; also
+   * dumped by `daloy inspect --ai` for LLM/codegen consumption.
+   *
+   * @since 0.14.0
+   */
+  meta?: RouteMeta;
+
   hooks?: Hooks;
 
   handler: (
@@ -402,4 +411,59 @@ export type CallbackDefinition = Record<
 /** A named map of OpenAPI Callback Objects. */
 export interface CallbackMap {
   [name: string]: CallbackDefinition;
+}
+
+// ---------- AI-friendly route metadata ----------
+
+/**
+ * One machine-readable usage example for a route. Both halves are optional;
+ * a request-only example documents how to call the endpoint, a response-only
+ * example documents a representative payload, and a complete pair lets
+ * codegen tools and LLM SDK builders produce realistic fixtures.
+ *
+ * Example payloads (`request.body`, `response.body`) are validated against
+ * the route's declared Standard Schemas by `runContractTests()`; mismatches
+ * surface as errors so the OpenAPI document never publishes a sample that
+ * does not match the schema.
+ *
+ * @since 0.14.0
+ */
+export interface RouteExample {
+  summary?: string;
+  description?: string;
+  request?: {
+    params?: Record<string, string>;
+    query?: Record<string, unknown>;
+    headers?: Record<string, string>;
+    body?: unknown;
+  };
+  response?: {
+    status: number;
+    body?: unknown;
+    headers?: Record<string, string>;
+  };
+}
+
+/**
+ * Optional AI-friendly route metadata. Surfaces into the generated OpenAPI
+ * document as `examples` (per request body and per response) and as
+ * `x-daloy-*` vendor extensions; the same payload is dumped by
+ * `daloy inspect --ai` for LLM and codegen consumption.
+ *
+ * - `summary` / `description` / `tags` — augment the route-level fields of
+ *   the same name. Route-level values win when both are set.
+ * - `examples` — named request/response example pairs, validated at build
+ *   time against the route's declared Standard Schemas.
+ * - `extensions` — free-form key/value bag emitted as `x-<key>` properties
+ *   on the OpenAPI Operation Object. Keys without an `x-` prefix are
+ *   prefixed automatically for OpenAPI compliance.
+ *
+ * @since 0.14.0
+ */
+export interface RouteMeta {
+  summary?: string;
+  description?: string;
+  tags?: string[];
+  examples?: Record<string, RouteExample>;
+  extensions?: Record<string, unknown>;
 }
