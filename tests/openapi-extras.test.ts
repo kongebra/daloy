@@ -511,6 +511,26 @@ test("openapiToYAML quotes reserved words, numerics, and special characters", ()
   assert.match(yaml, /multiline: "line1\\nline2"\n/);
 });
 
+test("openapiToYAML coerces non-finite numbers and exotic scalars", () => {
+  const yaml = openapiToYAML({
+    nan: Number.NaN,
+    inf: Number.POSITIVE_INFINITY,
+    ninf: Number.NEGATIVE_INFINITY,
+    big: 10n,
+    undef: undefined,
+    arrScalars: [Number.NaN, undefined, 1n],
+  });
+  // Non-finite numbers and `undefined` collapse to YAML null.
+  assert.match(yaml, /nan: null\n/);
+  assert.match(yaml, /inf: null\n/);
+  assert.match(yaml, /ninf: null\n/);
+  assert.match(yaml, /undef: null\n/);
+  // BigInt falls through the typeof-string/number/boolean cases and is
+  // String()-coerced + quoted.
+  assert.match(yaml, /big: "10"\n/);
+  assert.match(yaml, /arrScalars:\n {2}- null\n {2}- null\n {2}- "1"\n/);
+});
+
 test("App.docs mounts /openapi.yaml alongside /openapi.json by default", async () => {
   const yamlApp = new App({ docs: true });
   const res = await yamlApp.fetch(new Request("http://localhost/openapi.yaml"));
