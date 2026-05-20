@@ -149,6 +149,22 @@ export type {
   JwkSource,
   JwkVerifyHook,
 } from "./jwk.js";
+export {
+  serializeCookie,
+  serializeClearCookie,
+  assertCookieAttributes,
+  readRequestCookie,
+} from "./cookie.js";
+export type { CookieAttributes, CookieSameSite } from "./cookie.js";
+export {
+  assertTemporalClaims,
+  TemporalClaimError,
+} from "./time-claims.js";
+export type {
+  TemporalClaims,
+  TemporalClaimErrorCode,
+  AssertTemporalClaimsOptions,
+} from "./time-claims.js";
 export { every, some, except } from "./combine.js";
 export type { ExceptPredicate } from "./combine.js";
 export { ipRestriction } from "./ip-restriction.js";

@@ -18,6 +18,8 @@
  * @since 0.21.0
  */
 
+import { assertTemporalClaims, TemporalClaimError } from "./time-claims.js";
+
 /** Algorithms understood by the helper. SHA-1 / `none` are deliberately absent. */
 export type JwtAlgorithm =
   | "HS256"
@@ -576,30 +578,16 @@ async function verifyInternal(token: string, r: ResolvedVerifier): Promise<JwtVe
   }
 
   const now = r.now();
-  const skew = r.clockSkewSeconds;
-  if (payload.exp !== undefined) {
-    if (typeof payload.exp !== "number" || !Number.isFinite(payload.exp)) {
-      throw new JwtError("invalid_exp", "jwt(): payload.exp is not a finite number.");
+  try {
+    assertTemporalClaims(payload as { exp?: unknown; nbf?: unknown; iat?: unknown }, {
+      now,
+      clockSkewSeconds: r.clockSkewSeconds,
+    });
+  } catch (err) {
+    if (err instanceof TemporalClaimError) {
+      throw new JwtError(err.code, `jwt(): ${err.message}`);
     }
-    if (now > payload.exp + skew) {
-      throw new JwtError("token_expired", "jwt(): token has expired (exp).");
-    }
-  }
-  if (payload.nbf !== undefined) {
-    if (typeof payload.nbf !== "number" || !Number.isFinite(payload.nbf)) {
-      throw new JwtError("invalid_nbf", "jwt(): payload.nbf is not a finite number.");
-    }
-    if (now + skew < payload.nbf) {
-      throw new JwtError("token_not_yet_valid", "jwt(): token is not yet valid (nbf).");
-    }
-  }
-  if (payload.iat !== undefined) {
-    if (typeof payload.iat !== "number" || !Number.isFinite(payload.iat)) {
-      throw new JwtError("invalid_iat", "jwt(): payload.iat is not a finite number.");
-    }
-    if (payload.iat - skew > now) {
-      throw new JwtError("iat_in_future", "jwt(): payload.iat is in the future.");
-    }
+    throw err;
   }
   if (r.issuers) {
     const iss = payload.iss;

@@ -6,6 +6,7 @@
  */
 
 import type { Hooks, BaseContext } from "./types.js";
+import { assertCookieAttributes, readRequestCookie, serializeCookie } from "./cookie.js";
 import { TooManyRequestsError, ForbiddenError } from "./errors.js";
 import { randomId, sanitizeHeaderName, timingSafeEqual } from "./security.js";
 
@@ -1045,7 +1046,6 @@ export interface CsrfOptions {
 
 const CSRF_STATE_TOKEN = "csrfToken";
 const CSRF_STATE_ISSUED = "__csrfIssued";
-const CSRF_COOKIE_NAME_RE = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
 
 function generateCsrfToken(): string {
   const cryptoApi: Crypto | undefined = (globalThis as any).crypto;
@@ -1058,63 +1058,16 @@ function generateCsrfToken(): string {
   throw new Error("csrf(): WebCrypto is required for the default token generator. Pass a custom generator to csrf({ generator }).");
 }
 
-function validateCookieSegment(kind: "path" | "domain", value: string): void {
-  if (/[;\r\n\0]/.test(value)) throw new Error(`csrf(): cookieOptions.${kind} contains an invalid character.`);
-}
-
-function validateCsrfCookieOptions(cookieName: string, opts: Required<CsrfCookieOptions>): void {
-  if (!CSRF_COOKIE_NAME_RE.test(cookieName)) throw new Error("csrf(): cookieName is not a valid cookie name.");
-  if (opts.sameSite !== "Strict" && opts.sameSite !== "Lax" && opts.sameSite !== "None") {
-    throw new Error('csrf(): cookieOptions.sameSite must be "Strict", "Lax", or "None".');
-  }
-  if (!opts.path.startsWith("/")) throw new Error('csrf(): cookieOptions.path must start with "/".');
-  validateCookieSegment("path", opts.path);
-  if (opts.domain) validateCookieSegment("domain", opts.domain);
-  if (!Number.isInteger(opts.maxAgeSeconds) || opts.maxAgeSeconds < 0) {
-    throw new Error("csrf(): cookieOptions.maxAgeSeconds must be a non-negative integer.");
-  }
-  if (cookieName.startsWith("__Host-")) {
-    if (!opts.secure || opts.path !== "/" || opts.domain) {
-      throw new Error(
-        'csrf(): "__Host-" cookie names require secure: true, path: "/", and no domain. ' +
-          "Pass an explicit cookieName or relax cookieOptions to use a non-prefixed cookie.",
-      );
-    }
-  }
-  if (opts.sameSite === "None" && !opts.secure) {
-    throw new Error('csrf(): cookieOptions.sameSite: "None" requires secure: true.');
-  }
-}
-
-function parseCookieValue(header: string | null, name: string): string | null {
-  if (!header) return null;
-  const parts = header.split(";");
-  for (let i = 0; i < parts.length; i++) {
-    const part = parts[i]!;
-    const eq = part.indexOf("=");
-    if (eq < 0) continue;
-    const k = part.slice(0, eq).trim();
-    if (k === name) {
-      const v = part.slice(eq + 1).trim();
-      try {
-        return decodeURIComponent(v);
-      } catch {
-        return v;
-      }
-    }
-  }
-  return null;
-}
-
-function buildCsrfSetCookie(name: string, value: string, opts: Required<CsrfCookieOptions>): string {
-  let s = `${name}=${encodeURIComponent(value)}`;
-  s += `; Path=${opts.path}`;
-  s += `; SameSite=${opts.sameSite}`;
-  if (opts.secure) s += "; Secure";
-  if (opts.domain) s += `; Domain=${opts.domain}`;
-  if (opts.maxAgeSeconds > 0) s += `; Max-Age=${opts.maxAgeSeconds}`;
-  if (opts.partitioned) s += "; Partitioned";
-  return s;
+function csrfCookieAttributes(opts: Required<CsrfCookieOptions>): CsrfCookieOptions & { httpOnly: false } {
+  return {
+    sameSite: opts.sameSite,
+    secure: opts.secure,
+    path: opts.path,
+    domain: opts.domain || undefined,
+    maxAgeSeconds: opts.maxAgeSeconds,
+    partitioned: opts.partitioned,
+    httpOnly: false,
+  };
 }
 
 /**
@@ -1198,7 +1151,13 @@ export function csrf(opts: CsrfOptions = {}): Hooks {
     maxAgeSeconds: cookieOverrides.maxAgeSeconds ?? 0,
     partitioned: cookieOverrides.partitioned ?? false,
   };
-  if (wantsDoubleSubmit) validateCsrfCookieOptions(cookieName, cookieOpts);
+  if (wantsDoubleSubmit) {
+    assertCookieAttributes({
+      scope: "csrf()",
+      name: cookieName,
+      attributes: csrfCookieAttributes(cookieOpts),
+    });
+  }
 
   const hooks: Hooks = {
     beforeHandle(ctx) {
@@ -1211,7 +1170,7 @@ export function csrf(opts: CsrfOptions = {}): Hooks {
 
       if (!wantsDoubleSubmit) return undefined;
 
-      const existing = parseCookieValue(ctx.request.headers.get("cookie"), cookieName);
+      const existing = readRequestCookie(ctx.request.headers.get("cookie"), cookieName);
 
       if (isSafe) {
         if (existing) {
@@ -1236,7 +1195,7 @@ export function csrf(opts: CsrfOptions = {}): Hooks {
       if (!ctx || !wantsDoubleSubmit) return undefined;
       const issued = (ctx.state as Record<string, unknown>)[CSRF_STATE_ISSUED] as string | undefined;
       if (!issued) return undefined;
-      res.headers.append("set-cookie", buildCsrfSetCookie(cookieName, issued, cookieOpts));
+      res.headers.append("set-cookie", serializeCookie(cookieName, issued, csrfCookieAttributes(cookieOpts)));
       return undefined;
     },
   };

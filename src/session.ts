@@ -17,6 +17,12 @@
  */
 
 import type { BaseContext, Hooks } from "./types.js";
+import {
+  assertCookieAttributes,
+  readRequestCookie,
+  serializeClearCookie,
+  serializeCookie,
+} from "./cookie.js";
 import { timingSafeEqual } from "./security.js";
 
 const DEFAULT_COOKIE_NAME = "__Host-daloy.sid";
@@ -135,7 +141,6 @@ export type SessionContext = {
   regenerate(opts?: { keepData?: boolean }): Promise<string>;
 }; const STATE_KEY = "session"; const STATE_INTERNAL = "__sessionInternal";
 // ---------- Implementation ----------
-const COOKIE_NAME_RE = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
 
 interface SessionInternal {
   cookieName: string;
@@ -226,76 +231,16 @@ function generateSessionId(): string {
   return bytesToBase64Url(buf);
 }
 
-function validateCookieSegment(kind: "path" | "domain", value: string): void {
-  if (/[;\r\n\0]/.test(value)) throw new Error(`session(): cookieOptions.${kind} contains an invalid character.`);
-}
-
-function validateCookieOptions(cookieName: string, opts: Required<SessionCookieOptions>): void {
-  if (!COOKIE_NAME_RE.test(cookieName)) throw new Error("session(): cookieName is not a valid cookie name.");
-  if (opts.sameSite !== "Strict" && opts.sameSite !== "Lax" && opts.sameSite !== "None") {
-    throw new Error('session(): cookieOptions.sameSite must be "Strict", "Lax", or "None".');
-  }
-  if (!opts.path.startsWith("/")) throw new Error('session(): cookieOptions.path must start with "/".');
-  validateCookieSegment("path", opts.path);
-  if (opts.domain) validateCookieSegment("domain", opts.domain);
-  if (!Number.isInteger(opts.maxAgeSeconds) || opts.maxAgeSeconds < 0) {
-    throw new Error("session(): cookieOptions.maxAgeSeconds must be a non-negative integer.");
-  }
-  if (cookieName.startsWith("__Host-")) {
-    if (!opts.secure || opts.path !== "/" || opts.domain) {
-      throw new Error(
-        'session(): "__Host-" cookie names require secure: true, path: "/", and no domain. ' +
-          "Pass an explicit cookieName or relax cookieOptions to use a non-prefixed cookie.",
-      );
-    }
-  }
-  if (opts.sameSite === "None" && !opts.secure) {
-    throw new Error('session(): cookieOptions.sameSite: "None" requires secure: true.');
-  }
-}
-
-function readCookie(header: string | null, name: string): string | null {
-  if (!header) return null;
-  const parts = header.split(";");
-  for (let i = 0; i < parts.length; i++) {
-    const part = parts[i]!;
-    const eq = part.indexOf("=");
-    if (eq < 0) continue;
-    const k = part.slice(0, eq).trim();
-    if (k === name) {
-      const v = part.slice(eq + 1).trim();
-      try {
-        return decodeURIComponent(v);
-      } catch {
-        return v;
-      }
-    }
-  }
-  return null;
-}
-
-function buildSetCookie(name: string, value: string, opts: Required<SessionCookieOptions>): string {
-  let s = `${name}=${encodeURIComponent(value)}`;
-  s += `; Path=${opts.path}`;
-  s += `; SameSite=${opts.sameSite}`;
-  if (opts.secure) s += "; Secure";
-  if (opts.httpOnly) s += "; HttpOnly";
-  if (opts.domain) s += `; Domain=${opts.domain}`;
-  if (opts.maxAgeSeconds > 0) s += `; Max-Age=${opts.maxAgeSeconds}`;
-  if (opts.partitioned) s += "; Partitioned";
-  return s;
-}
-
-function buildClearCookie(name: string, opts: Required<SessionCookieOptions>): string {
-  let s = `${name}=`;
-  s += `; Path=${opts.path}`;
-  s += `; SameSite=${opts.sameSite}`;
-  if (opts.secure) s += "; Secure";
-  if (opts.httpOnly) s += "; HttpOnly";
-  if (opts.domain) s += `; Domain=${opts.domain}`;
-  s += "; Max-Age=0";
-  if (opts.partitioned) s += "; Partitioned";
-  return s;
+function sessionCookieAttributes(opts: Required<SessionCookieOptions>): SessionCookieOptions {
+  return {
+    sameSite: opts.sameSite,
+    secure: opts.secure,
+    path: opts.path,
+    domain: opts.domain || undefined,
+    maxAgeSeconds: opts.maxAgeSeconds,
+    partitioned: opts.partitioned,
+    httpOnly: opts.httpOnly,
+  };
 }
 
 function markDirty(internal: SessionInternal): void {
@@ -437,7 +382,11 @@ export function session(opts: SessionOptions): Hooks {
     partitioned: cookieOverrides.partitioned ?? false,
     httpOnly: cookieOverrides.httpOnly ?? true,
   };
-  validateCookieOptions(cookieName, cookieOpts);
+  assertCookieAttributes({
+    scope: "session()",
+    name: cookieName,
+    attributes: sessionCookieAttributes(cookieOpts),
+  });
 
   const ttlSeconds = opts.ttlSeconds ?? 86_400;
   if (!Number.isInteger(ttlSeconds) || ttlSeconds <= 0) {
@@ -469,7 +418,7 @@ export function session(opts: SessionOptions): Hooks {
         created: false,
       };
 
-      const raw = readCookie(ctx.request.headers.get("cookie"), cookieName);
+      const raw = readRequestCookie(ctx.request.headers.get("cookie"), cookieName);
       internal.hadCookie = raw !== null;
       let data: Record<string, unknown> = {};
       let id: string | null = null;
@@ -537,7 +486,13 @@ export function session(opts: SessionOptions): Hooks {
         if (internal.originalId) await store.destroy(internal.originalId);
         // Clear stale or malformed client cookies too, not only verified sessions.
         if (internal.hadCookie) {
-          res.headers.append("set-cookie", buildClearCookie(internal.cookieName, internal.cookieOpts));
+          res.headers.append(
+            "set-cookie",
+            serializeClearCookie(
+              internal.cookieName,
+              sessionCookieAttributes(internal.cookieOpts),
+            ),
+          );
         }
         return undefined;
       }
@@ -573,7 +528,11 @@ export function session(opts: SessionOptions): Hooks {
       const sig = await signer.sign(sid);
       res.headers.append(
         "set-cookie",
-        buildSetCookie(internal.cookieName, `${sid}.${sig}`, internal.cookieOpts),
+        serializeCookie(
+          internal.cookieName,
+          `${sid}.${sig}`,
+          sessionCookieAttributes(internal.cookieOpts),
+        ),
       );
       return undefined;
     },

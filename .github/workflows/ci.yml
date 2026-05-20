@@ -80,6 +80,12 @@ jobs:
       - name: Verify lockfile sources
         run: pnpm verify:lockfile
 
+      - name: Verify zero runtime dependencies (Wave 8 governance gate)
+        run: pnpm verify:no-runtime-deps
+
+      - name: Verify secret-comparison single source of truth (Wave 8 governance gate)
+        run: pnpm verify:secret-comparisons
+
       - name: Typecheck
         run: pnpm typecheck
 
