@@ -517,6 +517,24 @@ test("compression: refuses non-finite minimumSize", () => {
   );
 });
 
+test("compression: rejects infinite minimumSize", () => {
+  assert.throws(
+    () => compression({ minimumSize: Number.POSITIVE_INFINITY }),
+    /minimumSize/,
+  );
+});
+
+test("compression: rejects non-string option tokens", () => {
+  assert.throws(
+    () => compression({ excludeContentTypes: [123 as never] }),
+    /excludeContentTypes/,
+  );
+  assert.throws(
+    () => compression({ authCookieNames: [null as never] }),
+    /authCookieNames/,
+  );
+});
+
 test("compression: refuses compressLevel knob", () => {
   assert.throws(
     () => compression({ compressLevel: 9 as never }),

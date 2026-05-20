@@ -67,6 +67,58 @@ test("lockfile does not contain git or non-registry tarball dependency sources",
   ]);
 });
 
+test("lockfile scanner rejects every forbidden git and tarball source with line numbers", () => {
+  const lockfile = [
+    "packages:",
+    "  dep-a:",
+    "    specifier: github:owner/project",
+    "  dep-b:",
+    "    resolution: git+ssh://git@github.com/owner/project.git",
+    "  dep-c:",
+    "    specifier: git@github.com:owner/project.git",
+    "  dep-d:",
+    "    resolution: {tarball: https://cdn.example.com/pkg.tgz}",
+  ].join("\n");
+
+  assert.deepEqual(findForbiddenLockfileSources(lockfile), [
+    {
+      line: 3,
+      reason: "git dependency source",
+      text: "specifier: github:owner/project",
+    },
+    {
+      line: 5,
+      reason: "git dependency source",
+      text: "resolution: git+ssh://git@github.com/owner/project.git",
+    },
+    {
+      line: 7,
+      reason: "git dependency source",
+      text: "specifier: git@github.com:owner/project.git",
+    },
+    {
+      line: 9,
+      reason: "non-registry tarball source",
+      text: "resolution: {tarball: https://cdn.example.com/pkg.tgz}",
+    },
+  ]);
+});
+
+test("lockfile scanner rejects registry lookalike tarball hosts", () => {
+  const lockfile = [
+    "resolution: {tarball: https://registry.npmjs.org/pkg/-/pkg-1.0.0.tgz}",
+    "resolution: {tarball: https://registry.npmjs.org.evil.example/pkg.tgz}",
+  ].join("\n");
+
+  assert.deepEqual(findForbiddenLockfileSources(lockfile), [
+    {
+      line: 2,
+      reason: "non-registry tarball source",
+      text: "resolution: {tarball: https://registry.npmjs.org.evil.example/pkg.tgz}",
+    },
+  ]);
+});
+
 test("ci workflow avoids privileged fork-pr and cache-poisoning patterns", async () => {
   const workflow = await readWorkspaceFile(".github/workflows/ci.yml");
 

@@ -33,6 +33,9 @@ describe("Wave 6 — behindProxy declarative model", () => {
     assert.throws(() => assertBehindProxy({ cidrs: [""] } as any));
     assert.throws(() => assertBehindProxy("trust-all" as any));
   });
+  it("rejects non-string CIDR entries", () => {
+    assert.throws(() => assertBehindProxy({ cidrs: [123] } as any), /non-empty strings/);
+  });
   it("App constructor refuses bad behindProxy", () => {
     assert.throws(() => new App({ behindProxy: { hops: 99 } as any }));
   });
@@ -123,6 +126,17 @@ describe("Wave 6 — subdomains PSL helper", () => {
   });
   it("throws when host is not under baseDomain", () => {
     assert.throws(() => subdomains("evil.com", { baseDomain: "example.com" }));
+  });
+  it("rejects empty hostnames", () => {
+    assert.throws(() => subdomains(""), /non-empty string/);
+  });
+  it("rejects invalid PSL snapshot dates", () => {
+    assert.throws(() =>
+      subdomains("api.example.com", {
+        production: true,
+        _snapshotDate: "not-a-date",
+      }),
+    );
   });
   it("refuses stale PSL in production", () => {
     assert.throws(() =>
@@ -230,6 +244,9 @@ describe("Wave 6 — plugin extension ordering", () => {
 });
 
 describe("Wave 6 — defineDependency", () => {
+  it("refuses missing dependency names", () => {
+    assert.throws(() => defineDependency({ name: "" as any, resolve: () => 1 }));
+  });
   it("returns hooks with a beforeHandle that writes to state", async () => {
     const dep = defineDependency({
       name: "user",

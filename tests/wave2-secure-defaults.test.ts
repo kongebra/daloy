@@ -200,6 +200,19 @@ test("Malformed Origin header is rejected with 403", async () => {
   assert.equal(res.status, 403);
 });
 
+test("same-origin POST with malformed JSON is rejected after the guard passes", async () => {
+  const app = newApp();
+  const res = await app.request("/write", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      origin: "http://test.local",
+    },
+    body: "{not-json",
+  });
+  assert.equal(res.status, 400);
+});
+
 test("cors() registered before a route allows allowlisted cross-origin POST", async () => {
   const app = newApp(undefined, cors({ origin: "https://app.example.com" }));
   const res = await app.request("/write", {
@@ -377,4 +390,28 @@ test("per-route accepts opts in to form-urlencoded without loosening globally", 
     body: "x=hello",
   });
   assert.equal(rejected.status, 415);
+});
+
+test("per-route accepts rejects unlisted text content types", async () => {
+  const app = new App({
+    logger: false,
+    secureHeaders: false,
+    allowedContentTypes: ["application/json"],
+  });
+  app.route({
+    method: "POST",
+    path: "/legacy",
+    operationId: "legacyTextReject",
+    accepts: ["application/x-www-form-urlencoded"],
+    request: { body: z.object({ x: z.string() }) },
+    responses: { 200: { description: "ok" } },
+    handler: ({ body }) => ({ status: 200 as const, body: { ok: true, body } }),
+  });
+
+  const res = await app.request("/legacy", {
+    method: "POST",
+    headers: { "content-type": "text/plain" },
+    body: "x=hello",
+  });
+  assert.equal(res.status, 415);
 });

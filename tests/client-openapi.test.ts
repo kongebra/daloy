@@ -76,6 +76,60 @@ test("typed client preserves non-JSON response bodies as text", async () => {
   assert.match(result.headers["content-type"] ?? "", /^text\/plain/);
 });
 
+test("typed client preserves malformed JSON response bodies as text", async () => {
+  const app = new App({ logger: false });
+  app.route({
+    method: "GET",
+    path: "/broken-json",
+    operationId: "brokenJson",
+    responses: { 200: { description: "ok" } },
+    handler: async () => ({ status: 200 as const, body: undefined }),
+  });
+  const client = createClient(app, {
+    baseUrl: "https://api.example.com",
+    fetch: async () => new Response("{not-json", {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }),
+  });
+
+  const result = await client.brokenJson({ params: {} } as any);
+  assert.equal(result.status, 200);
+  assert.equal(result.body, "{not-json");
+});
+
+test("typed client rejects when fetch fails", async () => {
+  const app = new App({ logger: false });
+  app.route({
+    method: "GET",
+    path: "/plain",
+    operationId: "plain",
+    responses: { 200: { description: "ok" } },
+    handler: async () => ({ status: 200 as const, body: undefined }),
+  });
+  const client = createClient(app, {
+    baseUrl: "https://api.example.com",
+    fetch: async () => {
+      throw new Error("network down");
+    },
+  });
+
+  await assert.rejects(client.plain({ params: {} } as any), /network down/);
+});
+
+test("typed client omits routes missing operationId", () => {
+  const app = new App({ logger: false });
+  app.route({
+    method: "GET",
+    path: "/anonymous",
+    responses: { 200: { description: "ok" } },
+    handler: async () => ({ status: 200 as const, body: undefined }),
+  });
+
+  const client = createClient(app, { baseUrl: "https://api.example.com" });
+  assert.deepEqual(Object.keys(client), []);
+});
+
 test("OpenAPI includes metadata, parameters, request body, responses, and security", () => {
   const app = new App({ logger: false });
   app.route({

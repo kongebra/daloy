@@ -182,6 +182,12 @@ test("ndjsonStream rejects values that cannot be represented as JSON", async () 
   await assert.rejects(reader.read(), /JSON-serializable/);
 });
 
+test("ndjsonStream rejects function values that cannot be serialized", async () => {
+  const stream = ndjsonStream([() => "nope"]);
+  const reader = stream.getReader();
+  await assert.rejects(reader.read(), /JSON-serializable/);
+});
+
 test("ndjsonStream is pull-driven", async () => {
   let yielded = 0;
   const stream = ndjsonStream<number>(async function* () {
@@ -334,6 +340,11 @@ test("getAsyncIterator throws TypeError on non-iterable input", () => {
   assert.throws(() => sseStream(null), TypeError);
   // @ts-expect-error — intentionally wrong
   assert.throws(() => sseStream({ not: "iterable" }), TypeError);
+});
+
+test("ndjsonStream throws TypeError on null or non-iterable input", () => {
+  assert.throws(() => ndjsonStream(null as any), /null\/undefined/);
+  assert.throws(() => ndjsonStream({ not: "iterable" } as any), /not iterable/);
 });
 
 test("sseStream cleanup tolerates iterator.return throwing", async () => {

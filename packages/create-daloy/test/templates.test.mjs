@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtemp, readFile, rm, access } from "node:fs/promises";
+import { mkdtemp, readFile, rm, access, mkdir, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
@@ -8,6 +8,20 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const pkgRoot = path.resolve(__dirname, "..");
+
+async function runCreateDaloy(args, opts = {}) {
+  return await new Promise((resolve) => {
+    let output = "";
+    const proc = spawn(process.execPath, [path.join(pkgRoot, "bin/create-daloy.mjs"), ...args], {
+      cwd: opts.cwd,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    proc.stdout.on("data", (chunk) => (output += chunk.toString()));
+    proc.stderr.on("data", (chunk) => (output += chunk.toString()));
+    proc.on("exit", (code) => resolve({ exitCode: code ?? 1, output }));
+    proc.on("error", () => resolve({ exitCode: 1, output }));
+  });
+}
 
 test("choiceInputMode prefers the controlling TTY when a wrapper hides raw mode on POSIX", async () => {
   process.env.DALOY_TEST_IMPORT = "1";
@@ -834,6 +848,93 @@ test("--help documents the create flow across package managers", async () => {
   assert.match(out, /--with-ci/);
   assert.match(out, /--code-owner/);
   assert.match(out, /https:\/\/daloyjs\.dev\/docs/);
+});
+
+test("create-daloy rejects unknown template and package manager values", async () => {
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "create-daloy-"));
+  try {
+    const badTemplate = await runCreateDaloy([
+      "bad-template",
+      "--template",
+      "rails",
+      "--package-manager",
+      "pnpm",
+      "--no-install",
+      "--no-git",
+      "--yes",
+    ], { cwd: tmpDir });
+    assert.notEqual(badTemplate.exitCode, 0);
+    assert.match(badTemplate.output, /Unknown template "rails"/);
+    await assert.rejects(access(path.join(tmpDir, "bad-template")));
+
+    const badPackageManager = await runCreateDaloy([
+      "bad-pm",
+      "--template",
+      "node-basic",
+      "--package-manager",
+      "pip",
+      "--no-install",
+      "--no-git",
+      "--yes",
+    ], { cwd: tmpDir });
+    assert.notEqual(badPackageManager.exitCode, 0);
+    assert.match(badPackageManager.output, /Unknown --package-manager "pip"/);
+    await assert.rejects(access(path.join(tmpDir, "bad-pm")));
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("create-daloy rejects invalid project names and unknown arguments", async () => {
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "create-daloy-"));
+  try {
+    const badName = await runCreateDaloy([
+      "Bad Name",
+      "--template",
+      "node-basic",
+      "--package-manager",
+      "pnpm",
+      "--no-install",
+      "--no-git",
+      "--yes",
+    ], { cwd: tmpDir });
+    assert.notEqual(badName.exitCode, 0);
+    assert.match(badName.output, /valid npm package name/);
+
+    const unknownArg = await runCreateDaloy(["--definitely-unknown"], { cwd: tmpDir });
+    assert.notEqual(unknownArg.exitCode, 0);
+    assert.match(unknownArg.output, /Unknown argument: --definitely-unknown/);
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("create-daloy refuses to overwrite a non-empty directory without force", async () => {
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "create-daloy-"));
+  const projectName = "occupied";
+  try {
+    await mkdir(path.join(tmpDir, projectName));
+    await writeFile(path.join(tmpDir, projectName, "README.md"), "existing\n");
+
+    const result = await runCreateDaloy([
+      projectName,
+      "--template",
+      "node-basic",
+      "--package-manager",
+      "pnpm",
+      "--no-install",
+      "--no-git",
+      "--yes",
+    ], { cwd: tmpDir });
+    assert.notEqual(result.exitCode, 0);
+    assert.match(result.output, /Directory occupied is not empty/);
+    assert.equal(
+      await readFile(path.join(tmpDir, projectName, "README.md"), "utf8"),
+      "existing\n",
+    );
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true });
+  }
 });
 
 test("non-interactive scaffold output includes the polished completion summary", async () => {

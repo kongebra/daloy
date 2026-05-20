@@ -58,6 +58,21 @@ test("docs helpers support self-hosted assets and nonce-based scripts", () => {
   assert.match(swagger, /nonce="nonce-123"/);
 });
 
+test("docs helpers escape malicious self-hosted asset URLs", () => {
+  const html = swaggerUiHtml({
+    specUrl: "/openapi.json",
+    assets: {
+      swaggerUiCssUrl: `/docs.css" onload="alert(1)`,
+      swaggerUiBundleUrl: `/docs.js" onerror="alert(1)`,
+    },
+  });
+
+  assert.doesNotMatch(html, /onload="alert/);
+  assert.doesNotMatch(html, /onerror="alert/);
+  assert.match(html, /\/docs\.css&quot; onload=&quot;alert\(1\)/);
+  assert.match(html, /\/docs\.js&quot; onerror=&quot;alert\(1\)/);
+});
+
 test("scalarHtml serializes custom Scalar UI configuration safely", () => {
   const html = scalarHtml({
     title: "Docs",
@@ -127,6 +142,18 @@ test("docsContentSecurityPolicy can target custom asset origins", () => {
   assert.match(csp, /style-src 'self' https:\/\/docs\.example\.com 'unsafe-inline'/);
 });
 
+test("docsContentSecurityPolicy omits unsafe-inline scripts when nonce is present", () => {
+  const csp = docsContentSecurityPolicy({ scriptNonce: "abc" });
+  assert.match(csp, /'nonce-abc'/);
+  assert.doesNotMatch(csp, /script-src[^;]*'unsafe-inline'/);
+});
+
+test("htmlResponse omits CDN origins when asset origins are empty", () => {
+  const res = htmlResponse("<p>ok</p>", { assetOrigins: [] });
+  const csp = res.headers.get("content-security-policy") ?? "";
+  assert.doesNotMatch(csp, /cdn\.jsdelivr\.net/);
+});
+
 test("structured logger respects level, child bindings, and string messages", () => {
   const lines: string[] = [];
   const logger = createLogger({ level: "warn", bindings: { app: "test" }, write: (line) => lines.push(line) });
@@ -141,6 +168,22 @@ test("structured logger respects level, child bindings, and string messages", ()
   assert.equal(err.app, "test");
   assert.equal(err.requestId, "r1");
   assert.equal(err.msg, "failed");
+});
+
+test("structured logger falls back when payload serialization fails", () => {
+  const lines: string[] = [];
+  const logger = createLogger({ level: "info", write: (line) => lines.push(line) });
+  const circular: Record<string, unknown> = {};
+  circular.self = circular;
+
+  logger.info(circular, "will not stringify");
+
+  assert.equal(lines.length, 1);
+  assert.deepEqual(JSON.parse(lines[0]!), {
+    level: "info",
+    time: JSON.parse(lines[0]!).time,
+    msg: "<unserializable log>",
+  });
 });
 
 test("cloudflare and vercel adapters delegate to app.fetch", async () => {

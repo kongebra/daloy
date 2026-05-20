@@ -140,6 +140,51 @@ test("docs: { path, openapiPath } honours custom mount points", async () => {
   assert.equal(spec.status, 200);
 });
 
+test("docs auto-mount rejects duplicate docs and OpenAPI paths", () => {
+  assert.throws(
+    () => new App({ logger: false, docs: { path: "/same", openapiPath: "/same" } }),
+    /Duplicate route/,
+  );
+});
+
+test("docs auto-mount rejects duplicate OpenAPI JSON and YAML paths", () => {
+  assert.throws(
+    () =>
+      new App({
+        logger: false,
+        docs: { openapiPath: "/spec", openapiYamlPath: "/spec" },
+      }),
+    /Duplicate route/,
+  );
+});
+
+test("docs auto-mount rejects later user routes that collide with docs", () => {
+  const app = new App({ logger: false, docs: true });
+  assert.throws(
+    () =>
+      app.route({
+        method: "GET",
+        path: "/docs",
+        operationId: "customDocs",
+        responses: { 200: { description: "ok" } },
+        handler: async () => ({ status: 200 as const, body: undefined }),
+      }),
+    /Duplicate route/,
+  );
+});
+
+test("docs: disabled YAML path returns 404", async () => {
+  const app = withRoute(
+    new App({
+      logger: false,
+      docs: { openapiYamlPath: false },
+      openapi: { info: { title: "T", version: "1" } },
+    }),
+  );
+  assert.equal((await app.request("/openapi.json")).status, 200);
+  assert.equal((await app.request("/openapi.yaml")).status, 404);
+});
+
 test("docs: false explicitly disables the auto-mount", async () => {
   const app = withRoute(
     new App({ logger: false, docs: false, openapi: { info: { title: "X", version: "1" } } }),

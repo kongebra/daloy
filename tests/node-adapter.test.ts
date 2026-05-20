@@ -150,6 +150,13 @@ test("node adapter: adapter error path returns 500 problem+json", async () => {
   }
 });
 
+test("node adapter: rejects invalid maxHeaderBytes", () => {
+  assert.throws(
+    () => serveNode(new App({ logger: false }), { maxHeaderBytes: -1, handleSignals: false }),
+    /maxHeaderSize|range|out of range/i,
+  );
+});
+
 test("node adapter: handleSignals registers SIGTERM/SIGINT listeners", async () => {
   const app = new App({ logger: false });
   const beforeT = process.listenerCount("SIGTERM");

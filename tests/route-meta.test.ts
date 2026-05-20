@@ -216,6 +216,50 @@ test("runCli --ai respects --tag/--method filters", async () => {
   assert.equal((dump as any).routes[0].path, "/b");
 });
 
+test("buildAiDump omits routes rejected by tag filters", () => {
+  const app = metaApp();
+  const dump = buildAiDump(app, {
+    json: false,
+    check: false,
+    schemas: false,
+    openapi: false,
+    ai: true,
+    help: false,
+    version: false,
+    tag: "Nope",
+  });
+  assert.equal((dump as any).routeCount, 0);
+  assert.deepEqual((dump as any).routes, []);
+});
+
+test("runCli --ai rejects missing app entries", async () => {
+  const err: string[] = [];
+  const io: CliIO = {
+    stdout: () => {},
+    stderr: (c) => err.push(c),
+    importEntry: async () => {
+      throw new Error("entry missing");
+    },
+    version: "0.0.0",
+  };
+  const r = await runCli(["--ai", "missing.ts"], io);
+  assert.equal(r.exitCode, 1);
+  assert.match(err.join(""), /entry missing/);
+});
+
+test("runCli --ai rejects modules without an App export", async () => {
+  const err: string[] = [];
+  const io: CliIO = {
+    stdout: () => {},
+    stderr: (c) => err.push(c),
+    importEntry: async () => ({ notAnApp: true }),
+    version: "0.0.0",
+  };
+  const r = await runCli(["--ai", "bad.ts"], io);
+  assert.equal(r.exitCode, 1);
+  assert.match(err.join(""), /did not export an App instance/);
+});
+
 test("runCli --ai respects tags supplied through meta", async () => {
   const app = new App({ logger: false });
   app.route({

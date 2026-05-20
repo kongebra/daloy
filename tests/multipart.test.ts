@@ -141,6 +141,14 @@ test("fileField validates magic-byte options", () => {
   );
 });
 
+test("fileField rejects magicBytes true without a sniffable accept type", () => {
+  assert.throws(() => fileField({ magicBytes: true }), /known sniffable MIME/);
+  assert.throws(
+    () => fileField({ accept: ["text/plain"], magicBytes: true }),
+    /known sniffable MIME/,
+  );
+});
+
 test("fileField runs filename matcher", async () => {
   const f = fileField({ filename: (n) => n.endsWith(".csv") });
   const ok = new File(["x"], "x.csv", { type: "text/csv" });
@@ -191,6 +199,13 @@ test("multipartObject rejects non-object input", async () => {
   const schema = multipartObject({ a: z.string() });
   const r = await validate(schema, null);
   assert.ok(r.issues);
+});
+
+test("multipartObject rejects missing required file fields", async () => {
+  const schema = multipartObject({ file: fileField() });
+  const r = await validate(schema, {});
+  assert.ok(r.issues);
+  assert.deepEqual(r.issues![0]!.path, ["file"]);
 });
 
 test("multipartObject strict mode flags unknown fields", async () => {

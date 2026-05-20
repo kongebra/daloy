@@ -135,6 +135,38 @@ test("async plugin routes are visible to introspection after ready", async () =>
   assert.ok(app.introspect().some((route) => route.path === "/plugin/later"));
 });
 
+test("register propagates sync plugin failures", () => {
+  const app = new App({ logger: false });
+
+  assert.throws(
+    () => app.register({ name: "broken", register: () => { throw new Error("sync boom"); } }),
+    /sync boom/,
+  );
+});
+
+test("app.ready rejects when async plugin registration fails", async () => {
+  const app = new App({ logger: false });
+
+  app.register({
+    name: "broken-async",
+    async register() {
+      await Promise.resolve();
+      throw new Error("async boom");
+    },
+  });
+
+  await assert.rejects(app.ready(), /async boom/);
+});
+
+test("register rejects plugins with missing dependencies", () => {
+  const app = new App({ logger: false });
+
+  assert.throws(
+    () => app.register({ name: "needs-db", dependencies: ["db"], register: () => {} }),
+    /dependency on "db"/,
+  );
+});
+
 test("onPluginInstalled listener errors are caught and logged but do not crash registration", async () => {
   const logs: Array<{ level: string; msg: string }> = [];
   const logger = {

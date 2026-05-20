@@ -56,6 +56,17 @@ test("apiKeyScheme validates inputs and emits the spec object", () => {
   assert.throws(() => apiKeyScheme({ in: "header", name: "" }), /non-empty string/);
 });
 
+test("apiKeyScheme rejects unsupported locations and non-string names", () => {
+  assert.throws(
+    () => apiKeyScheme({ in: "body" as any, name: "x" }),
+    /must be one of/,
+  );
+  assert.throws(
+    () => apiKeyScheme({ in: "query", name: null as any }),
+    /non-empty string/,
+  );
+});
+
 test("oauth2Scheme requires at least one flow and includes description when provided", () => {
   const scheme = oauth2Scheme({
     flows: {
@@ -71,6 +82,14 @@ test("oauth2Scheme requires at least one flow and includes description when prov
   assert.equal(scheme.description, "Books OAuth");
   assert.deepEqual(scheme.flows.authorizationCode?.scopes, { "read:books": "Read your books" });
   assert.throws(() => oauth2Scheme({ flows: {} }), /at least one OAuth2 flow/);
+});
+
+test("oauth2Scheme rejects missing or empty flows", () => {
+  assert.throws(() => oauth2Scheme({} as any), /at least one OAuth2 flow/);
+  assert.throws(
+    () => oauth2Scheme({ flows: { implicit: undefined } as any }),
+    /at least one OAuth2 flow/,
+  );
 });
 
 test("openIdConnectScheme validates the URL and emits the spec object", () => {
@@ -95,6 +114,14 @@ test("openIdConnectScheme validates the URL and emits the spec object", () => {
   assert.throws(
     () => openIdConnectScheme({ openIdConnectUrl: "" }),
     /non-empty string/
+  );
+});
+
+test("openIdConnectScheme rejects missing or non-string discovery URLs", () => {
+  assert.throws(() => openIdConnectScheme({} as any), /non-empty string/);
+  assert.throws(
+    () => openIdConnectScheme({ openIdConnectUrl: null as any }),
+    /non-empty string/,
   );
 });
 

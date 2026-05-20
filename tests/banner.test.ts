@@ -63,6 +63,29 @@ test("formatStartupBanner: omits version and runtime segments when not provided"
   assert.match(out, /DaloyJS/);
 });
 
+test("formatStartupBanner: does not produce ragged rows for long URLs", () => {
+  const out = strip(formatStartupBanner({
+    url: `http://localhost:3000/${"very-long-segment/".repeat(20)}`,
+    links: [],
+    color: false,
+    ascii: true,
+  }));
+  const widths = new Set(out.split("\n").map((line) => line.length));
+  assert.equal(widths.size, 1, `expected uniform line widths, got ${[...widths].join(",")}`);
+});
+
+test("printStartupBanner: propagates writer errors", () => {
+  assert.throws(
+    () => printStartupBanner(
+      { url: "http://localhost:3000", color: false, ascii: true },
+      () => {
+        throw new Error("writer failed");
+      },
+    ),
+    /writer failed/,
+  );
+});
+
 test("detectColor: NO_COLOR forces color off, FORCE_COLOR forces it on", () => {
   const prev = { NO_COLOR: process.env.NO_COLOR, FORCE_COLOR: process.env.FORCE_COLOR };
   try {
