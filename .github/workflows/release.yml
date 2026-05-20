@@ -86,6 +86,18 @@ jobs:
       - name: Verify lockfile sources
         run: pnpm verify:lockfile
 
+      - name: Verify zero runtime dependencies (Wave 8 governance gate)
+        run: pnpm verify:no-runtime-deps
+
+      - name: Verify secret-comparison single source of truth (Wave 8 governance gate)
+        run: pnpm verify:secret-comparisons
+
+      - name: Verify Wave 9 pattern-agnostic parity audits
+        run: pnpm verify:wave9-audits
+
+      - name: Verify Wave 10 zero-runtime-deps + governance audits
+        run: pnpm verify:wave10-audits
+
       - name: Typecheck
         run: pnpm typecheck
 
@@ -163,6 +175,25 @@ jobs:
         env:
           npm_config_ignore_scripts: "true"
 
+      - name: Verify actor is on SECURITY-CONTACTS rotation (Wave 10)
+        env:
+          ACTOR: ${{ github.actor }}
+        run: |
+          set -eu
+          node -e '
+            const fs = require("node:fs");
+            const text = fs.readFileSync("SECURITY-CONTACTS.md", "utf8");
+            const m = text.match(/<!--\s*BEGIN ACTIVE\s*-->([\s\S]*?)<!--\s*END ACTIVE\s*-->/);
+            if (!m) { console.error("::error::SECURITY-CONTACTS.md is missing the ACTIVE block."); process.exit(1); }
+            const handles = [...m[1].matchAll(/^\s*-\s*handle:\s*([A-Za-z0-9][A-Za-z0-9._-]*)\s*$/gm)].map(x => x[1]);
+            const actor = process.env.ACTOR;
+            if (!handles.includes(actor)) {
+              console.error(`::error::Actor "${actor}" is not on the SECURITY-CONTACTS active rotation. Active: ${handles.join(", ")}.`);
+              process.exit(1);
+            }
+            console.log(`Actor "${actor}" is on the SECURITY-CONTACTS active rotation.`);
+          '
+
       - name: Build
         run: pnpm build
 
@@ -234,6 +265,25 @@ jobs:
         run: pnpm install --frozen-lockfile --ignore-scripts
         env:
           npm_config_ignore_scripts: "true"
+
+      - name: Verify actor is on SECURITY-CONTACTS rotation (Wave 10)
+        env:
+          ACTOR: ${{ github.actor }}
+        run: |
+          set -eu
+          node -e '
+            const fs = require("node:fs");
+            const text = fs.readFileSync("SECURITY-CONTACTS.md", "utf8");
+            const m = text.match(/<!--\s*BEGIN ACTIVE\s*-->([\s\S]*?)<!--\s*END ACTIVE\s*-->/);
+            if (!m) { console.error("::error::SECURITY-CONTACTS.md is missing the ACTIVE block."); process.exit(1); }
+            const handles = [...m[1].matchAll(/^\s*-\s*handle:\s*([A-Za-z0-9][A-Za-z0-9._-]*)\s*$/gm)].map(x => x[1]);
+            const actor = process.env.ACTOR;
+            if (!handles.includes(actor)) {
+              console.error(`::error::Actor "${actor}" is not on the SECURITY-CONTACTS active rotation. Active: ${handles.join(", ")}.`);
+              process.exit(1);
+            }
+            console.log(`Actor "${actor}" is on the SECURITY-CONTACTS active rotation.`);
+          '
 
       - name: Test create-daloy
         run: pnpm --filter create-daloy test

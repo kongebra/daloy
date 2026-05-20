@@ -226,6 +226,51 @@ chalk/debug/node-ipc phishing campaigns.
    this release has hardware-backed 2FA enabled at both the GitHub
    organization level and the npm registry level. (Wave 8 mandatory-2FA
    audit gate.)
+6. Confirm the GitHub actor on the publish run is listed in the ACTIVE block
+   of [`SECURITY-CONTACTS.md`](SECURITY-CONTACTS.md). The Wave 10 release
+   gate refuses to publish otherwise.
+
+### Wave 10 governance floor (reaffirmed)
+
+Every supply-chain control listed above is the documented governance floor.
+Removal of any one of these requires an explicit `SECURITY.md` entry
+justifying the removal and a maintainer-quorum sign-off on the PR. The
+static gate that enforces this lives in
+[`scripts/verify-wave10-audits.ts`](scripts/verify-wave10-audits.ts) and runs
+in CI as `pnpm verify:wave10-audits`. It refuses a PR that:
+
+- removes the top-level `permissions:` block from a workflow,
+- removes `persist-credentials: false` from an `actions/checkout` call,
+- replaces a SHA-pinned third-party action with a tag or branch reference,
+- drops `step-security/harden-runner` from a workflow that uses third-party
+  actions,
+- adds a runtime dep to `@daloyjs/core/package.json` (zero-runtime-dep
+  posture, also reaffirmed by Wave 8 and Wave 9 item 19),
+- removes the plugin-prerequisite refuse-to-boot path or the
+  `topoSortExtensions` cycle-detection throw from `src/app.ts`, or
+- removes `SECURITY-CONTACTS.md` or `.github/CODEOWNERS`.
+
+### Recurring security-disclosure exercise (Wave 10)
+
+The disclosure rotation is documented in
+[`SECURITY-CONTACTS.md`](SECURITY-CONTACTS.md) and tested at least once per
+quarter with a simulated report. Each exercise verifies that:
+
+1. The private vulnerability-report inbox is monitored within the
+   3-business-day acknowledgement target documented earlier in this file.
+2. Every handle in the **Active** rotation can authenticate to GitHub and
+   npm with hardware-backed 2FA.
+3. The protected `npm-publish` GitHub Environment still requires explicit
+   approval before any publish job executes.
+4. `pnpm verify:wave10-audits` exits zero on `main`.
+
+The most recent exercise is recorded as a one-line bullet in
+[`PROJECT_HISTORY.md`](PROJECT_HISTORY.md) using the form
+"`_<date>_ — Wave 10 disclosure exercise completed.`" plus a short summary
+of findings. The audit script reads the
+`<!-- last-exercise: YYYY-MM-DD -->` marker in `SECURITY-CONTACTS.md` and
+refuses with a non-zero exit when the date is older than 180 days, so a
+missed quarter fails CI loud instead of silently aging out.
 
 ### Indicators of compromise — what to watch for
 

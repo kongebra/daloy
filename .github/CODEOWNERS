@@ -23,4 +23,5 @@
 
 # Security policy and incident notes.
 /SECURITY.md                      @daloyjs/maintainers
+/SECURITY-CONTACTS.md             @daloyjs/maintainers
 /otherdocs/security-incidence.md  @daloyjs/maintainers
