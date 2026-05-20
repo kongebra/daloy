@@ -272,7 +272,58 @@ of findings. The audit script reads the
 refuses with a non-zero exit when the date is older than 180 days, so a
 missed quarter fails CI loud instead of silently aging out.
 
-### Indicators of compromise — what to watch for
+### Typosquat + init-time C2 (shopsprint pattern)
+
+Socket's 2026-05-19 disclosure of
+[`github.com/shopsprint/decimal`](https://socket.dev/blog/popular-go-decimal-library-typosquat-dns-backdoor)
+is a Go-ecosystem incident, but the attack pattern is ecosystem-agnostic and
+maps cleanly onto npm. We list it here because operators occasionally ask
+which of our controls would actually have blocked it. The pattern has four
+moving parts:
+
+1. **Typosquat name** one character off the canonical package (`shopsprint`
+   vs. `shopspring`), uploaded years before being weaponized.
+2. **Trust-then-poison** release cadence — six years of benign mirror
+   releases, then a malicious release seven minutes after a legitimate-looking
+   bug-fix release on the same day.
+3. **Init-time C2** — package init runs a background loop that polls a DNS
+   TXT record on a free DDNS provider and executes any value as a command.
+   No shell, no HTTP, no filesystem persistence.
+4. **Registry-proxy persistence** — source repository and owner account
+   deleted, but the module proxy continues serving the malicious tarball
+   indefinitely from cache.
+
+The npm-equivalent attack is a typosquat of a popular package that ships a
+malicious `postinstall` (or an import-time side effect) and persists in the
+npm registry tarball cache after the source repo is taken down. The
+following Daloy controls are designed against exactly this pattern:
+
+| Attack step | DaloyJS / template control |
+| --- | --- |
+| Typosquat replaces canonical dep in `package.json` | Lockfile is committed and CI runs `pnpm install --frozen-lockfile`; any unexplained dep change shows up in PR review. We also publish a stable scope (`@daloyjs/*`) so consumers can grep for the scope rather than trust unscoped autocomplete. |
+| Trust-then-poison: malicious version published moments before install | `minimumReleaseAge: 1440` (24 h cooldown) in both the framework workspace ([`pnpm-workspace.yaml`](pnpm-workspace.yaml)) and every scaffolded project template ([`packages/create-daloy/templates/*/pnpm-workspace.yaml`](packages/create-daloy/templates)). Worm campaigns and trojan releases are typically detected and unpublished inside that window. |
+| Init-time / postinstall payload runs on `pnpm install` | `ignore-scripts=true` in [`.npmrc`](.npmrc) (framework) and the template `_npmrc` (user apps) suppresses every lifecycle script. The pnpm 11 `strictDepBuilds: true` workspace key (framework only — deferred from templates because of transitive `esbuild`) hard-refuses installs of any package that needs a build. Packages permitted to build are listed explicitly in `pnpm.onlyBuiltDependencies` (`esbuild` only). |
+| Import-time side effect runs the first time the app `import`s the dep | `@daloyjs/core` ships with **zero runtime dependencies** (enforced by [`pnpm verify:no-runtime-deps`](scripts/verify-no-runtime-deps.ts) and the Wave 10 governance floor above), so importing `@daloyjs/core` cannot pull in a transitively trojanized package at all. User-installed deps still need handler-level review, but the framework adds zero new import-time attack surface. |
+| Compromised release pulled from a non-registry source | `blockExoticSubdeps: true` (transitive deps refused unless they come from the configured registry) plus [`pnpm verify:lockfile`](scripts/verify-lockfile-sources.ts) (CI gate that rejects `git+`, `github:`, `ssh:`, and any tarball URL outside `registry.npmjs.org`). |
+| Source repo deleted, but malicious tarball still served from registry cache | Provenance attestation on every `@daloyjs/core` and `create-daloy` tarball (`--provenance` + Sigstore via OIDC, see § npm publishing) — consumers can verify the published bytes against the source commit and reject any release whose attestation cannot be re-derived from the GitHub source. |
+| Operator pivots through any binary the dev or CI runs | Maintainer accounts require hardware-backed 2FA; the publish workflow uses no long-lived `NPM_TOKEN`, runs in a protected environment, and blocks egress to everything except npm, GitHub, and Sigstore via `step-security/harden-runner` (see § CI/CD). A compromised dev laptop cannot push a release on its own. |
+
+What this **does not** defend against, and we say so explicitly:
+
+- A user copying a typosquatted dep name into their own `package.json` by
+  hand. No package manager can catch a human typo at the point of authoring.
+  Mitigations are review, dependabot, and `pnpm why <name>` before merge.
+- A second-stage payload that the operator pre-stages via a different vector
+  and triggers later. The 24 h cooldown shortens the window but does not
+  eliminate it.
+- Compromise of the npm registry itself. Provenance attestations make this
+  detectable after the fact; preventing it is npm's responsibility.
+
+If a future incident report describes an attack step that any control in
+the table above should have blocked, treat the gap as a release-blocking
+bug and open a private advisory.
+
+
 
 If you suspect a compromised version of `@daloyjs/core` or `create-daloy`:
 
