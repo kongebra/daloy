@@ -585,7 +585,46 @@ If a future incident report describes an attack step that any control in
 the table above should have blocked, treat the gap as a release-blocking
 bug and open a private advisory.
 
+### Slopsquatting / AI package hallucination (Aikido 2025 pattern)
 
+Aikido's ["Slopsquatting: When AIs hallucinate packages" research](https://www.aikido.dev/blog/slopsquatting-ai-package-hallucination-attacks)
+(and the original [Lasso / "Package Hallucination"](https://arxiv.org/abs/2406.10279)
+study before it) documents a supply-chain attack shape that is adjacent
+to classical typosquatting but driven by AI coding assistants: the LLM
+**hallucinates a package name that does not exist** (`request-promise-native2`,
+`pyjson-utils`, `@types/fastify-helmet`, etc.) and confidently emits
+`pnpm add <hallucination>`. An attacker who has been watching public LLM
+output simply registers that name on npm with a malicious payload, and
+the next developer / agent that copies the suggestion installs the
+trojan. The hallucinated name often *sounds* plausible, so it survives
+visual review in a way a classical typo (`expresss`, `lodahs`) does not.
+
+This is the same attack surface as the "Skill vendors a malicious npm
+dep transitively" row in the ToxicSkills table above — but it also
+applies when no skill is involved, just a base-model LLM the developer
+trusts. We list it explicitly because operators ask, and because as of
+2025 the share of `pnpm add` invocations originating from an AI agent
+inside a coding IDE is non-trivial.
+
+**Daloy's mitigations, mapped step by step against slopsquatting:**
+
+| Attack step | DaloyJS / template control |
+| --- | --- |
+| LLM emits `pnpm add <hallucinated-name>` and the developer / agent runs it without verifying the package exists | Outside any framework's boundary. We document the recommended posture in [`AGENTS.md`](AGENTS.md) ("review every diff before committing", least-privilege agent mode) and in the malicious-skills section above. The framework's job is to make sure that *if* the bad install happens, the blast radius is bounded by the controls below. |
+| Attacker pre-registered the hallucinated name on npm and pushed a fresh malicious version inside the last 24 hours | `minimum-release-age=1440` in this repo's [`.npmrc`](.npmrc) **and** in every scaffolded template's `_npmrc` ([`packages/create-daloy/templates/node-basic/_npmrc`](packages/create-daloy/templates/node-basic/_npmrc), `bun-basic`, `cloudflare-worker`, `vercel-edge`, etc.) refuses to resolve any version published less than 24 hours ago. Slopsquat packages are typically detected and unpublished or de-listed inside that window — the same property that defended us against the `node-ipc` 2026-05-14 reload. |
+| Malicious package ships a `postinstall` / `preinstall` / `prepare` hook that exfiltrates `~/.npmrc`, `.env`, SSH keys, or the keychain on `pnpm install` | `ignore-scripts=true` in this repo's [`.npmrc`](.npmrc) and every template's `_npmrc` suppresses every lifecycle script. Packages permitted to build are listed explicitly in `pnpm.onlyBuiltDependencies` and `pnpm-workspace.yaml#onlyBuiltDependencies` (currently only `esbuild` in the framework; templates ship an empty allowlist). pnpm 11's `strictDepBuilds: true` (framework only — see § Supply chain) hard-refuses any newly added dep that *needs* to build. |
+| Malicious package declares the trojan source via `git+ssh://` / `github:owner/repo#<sha>` / a non-`registry.npmjs.org` tarball URL to bypass registry-side scanning | `blockExoticSubdeps: true` in [`pnpm-workspace.yaml`](pnpm-workspace.yaml) and every template's `pnpm-workspace.yaml` refuses to install exotic sub-deps in the first place. `pnpm verify:lockfile` ([`scripts/verify-lockfile-sources.ts`](scripts/verify-lockfile-sources.ts)) is wired into [`ci.yml`](.github/workflows/ci.yml) and the pre-publish `verify` job in [`release.yml`](.github/workflows/release.yml); it rejects `git+`, `github:`, `ssh:`, `http:` URLs and any tarball whose origin is not the official npm registry. |
+| Hallucinated dep transitively lands inside `@daloyjs/core`'s published tarball, infecting every consumer | `@daloyjs/core` has **zero runtime dependencies** (only `zod` as a peer). [`scripts/verify-no-runtime-deps.ts`](scripts/verify-no-runtime-deps.ts) runs as `pnpm verify:no-runtime-deps` in CI and in the pre-publish `verify` job and fails the build if any `dependencies` entry is added to the published manifest. Even a slopsquat that lands in `pnpm-lock.yaml` as a dev-only dep cannot leak into the tarball we ship. |
+| Hallucinated dep lands in `pnpm-lock.yaml` via a PR (agent-authored or otherwise) | [`pnpm-lock.yaml`](pnpm-lock.yaml) is CODEOWNERS-protected ([`.github/CODEOWNERS`](.github/CODEOWNERS)); CI runs `pnpm install --frozen-lockfile`; `pnpm audit --prod` and `pnpm verify:lockfile` reject unsigned / non-registry sources; maintainer review is the last line of defence. A PR that adds a package name no reviewer recognises is the failure mode `AGENTS.md` warns about and reviewers are instructed to push back on. |
+| Slopsquat ships a typo of an *internal* Daloy export (`@daloyjs/cor`, `@daloyjs/core-utils`) to look like a sibling package | The `@daloyjs` npm scope is owned by the maintainer team and protected by hardware-backed 2FA; no third party can publish under it. Scaffolded templates only ever reference `@daloyjs/core` and `create-daloy`, both pinned by `create-daloy` to the matching release. There is no `@daloyjs/*` sub-package surface for a slopsquatter to plausibly imitate. |
+
+**What this does not defend against, and we say so explicitly:**
+
+- A developer who runs `pnpm add <hallucinated-name> --ignore-scripts=false` or otherwise overrides our defaults. The defaults are advisory at the consumer side; if a project disables them, the controls listed above do not apply.
+- A slopsquat that survives the 24-hour `minimum-release-age` window because nobody reported it. This is the same residual risk as classical typosquatting; defence-in-depth is `ignore-scripts=true` + `blockExoticSubdeps: true` + maintainer review of every new dep name.
+- A slopsquat installed *globally* (`pnpm add -g`) outside any project's `.npmrc`. Global installs do not inherit the project's cooldown; we recommend against `-g` for security-sensitive tooling and have none in our own developer setup.
+
+If you encounter a slopsquatted package referencing `@daloyjs/*` (e.g. `daloyjs`, `daloy-core`, `@daloyjs/cli`, `create-daloyjs`), report it via the npm abuse form *and* file a private advisory at <https://github.com/daloyjs/daloy/security/advisories/new> so we can warn other operators.
 
 If you suspect a compromised version of `@daloyjs/core` or `create-daloy`:
 
