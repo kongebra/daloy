@@ -362,6 +362,158 @@ If a future incident report describes an attack step that any control in
 either table above should have blocked, treat the gap as a release-blocking
 bug and open a private advisory.
 
+### IDE-extension compromise on a maintainer workstation (GitHub 2026-05-20 pattern)
+
+Aikido and BleepingComputer's 2026-05-20 disclosure of the
+[GitHub-internal-repos breach via a poisoned VS Code extension](https://www.aikido.dev/blog/github-breached-vs-code-extension)
+(~3,800 internal repositories exfiltrated after a GitHub employee installed
+a malicious extension from the official marketplace) is a different
+ecosystem from npm and most of the controls in the two tables above do
+**not** apply to it directly — the malicious code never enters
+`pnpm-lock.yaml`, never executes a `postinstall` script, and never has to
+defeat `minimum-release-age`. It runs in the developer's editor process
+with whatever filesystem and network access that editor has. We list it
+here because operators have asked, and because being honest about the
+boundary matters more than pretending we have a control we do not have.
+
+**What a backend framework cannot do.** Daloy cannot stop a maintainer or
+a consumer from installing a poisoned VS Code, Cursor, JetBrains, or
+Zed extension. That is a workstation-hygiene problem (signed extensions,
+publisher verification, extension allowlists, EDR) and is owned by the
+developer's operating environment, not by `@daloyjs/core`.
+
+**What Daloy does do**, mapped step-by-step against the GitHub incident:
+
+| Attack step | DaloyJS / template control |
+| --- | --- |
+| Malicious extension reads source files in the open workspace | Out of scope for a framework. We do not commit secrets to the repo (no `.env`, no long-lived tokens in `.github/`), and every scaffolded template's [`_gitignore`](packages/create-daloy/templates/node-basic/_gitignore) excludes `.env`, `.env.*` (with a `!.env.example` allowlist), `dist/`, and `coverage/` so an attacker reading the workspace gets configuration shape, not credentials. |
+| Malicious extension reads tokens from the OS keychain, shell history, or `~/.npmrc` | Out of scope for a framework. Our mitigation is that **no maintainer holds a long-lived `NPM_TOKEN`** — publishes happen through OIDC + Sigstore from `release.yml`, not from any dev machine (see § npm publishing). A scraped `~/.npmrc` from a Daloy maintainer's laptop yields no publish credential for `@daloyjs/*`. |
+| Malicious extension exfiltrates the contents of a private repository | Out of scope for a framework. For `@daloyjs/daloy` itself, the public repository is the source of truth and there is nothing private to exfiltrate. For *consumer* applications, secret-scanning (GitHub Advanced Security, `gitleaks`, etc.) and short-lived cloud credentials are the operator's responsibility — we recommend both in the threat-model section above. |
+| Malicious extension silently mutates `package.json` / `pnpm-lock.yaml` to introduce a typosquatted dep | Caught at PR review: `package.json` and `pnpm-lock.yaml` are CODEOWNERS-protected ([`.github/CODEOWNERS`](.github/CODEOWNERS)), CI runs `pnpm install --frozen-lockfile`, and `pnpm verify:lockfile` ([`scripts/verify-lockfile-sources.ts`](scripts/verify-lockfile-sources.ts)) rejects any `git+`, `github:`, `ssh:`, or non-`registry.npmjs.org` source. `minimumReleaseAge: 1440` then blocks install of a freshly published trojan dep even if one slipped past review. |
+| Malicious extension stages a commit to `.github/workflows/*` to weaken CI (e.g. drop `harden-runner`, add `pull_request_target`, unpin an action) | Caught at PR review: `.github/` is CODEOWNERS-protected, `zizmor` statically rejects unsafe workflow patterns ([`.github/workflows/zizmor.yml`](.github/workflows/zizmor.yml)), and `pnpm verify:wave10-audits` ([`scripts/verify-wave10-audits.ts`](scripts/verify-wave10-audits.ts)) refuses the PR if the top-level `permissions:` block, `persist-credentials: false`, the SHA-pin on a third-party action, or `step-security/harden-runner` is removed. |
+| Malicious extension steals a maintainer's GitHub PAT and uses it to push directly to `main` or to publish a release | Branch protection on `main` requires PR review (CODEOWNERS-enforced for sensitive paths). The publish job (`release.yml`) is triggered only by a signed `v*` tag plus explicit maintainer dispatch for `create-daloy`, runs only in the `npm-publish` protected GitHub Environment, and requires a second listed maintainer to approve the environment before any `pnpm publish` runs. A stolen single-account PAT does not produce a release on its own. |
+| Malicious extension installs an auto-update hook that re-poisons after cleanup | Outside our boundary. The standard recovery is to uninstall the extension, rotate maintainer credentials (npm, GitHub, recovery email — same drill as the `node-ipc` 2026-05-14 reload), and run the quarterly disclosure exercise out of cycle. |
+
+**What this does not defend against, and we say so explicitly:**
+
+- A maintainer installing a poisoned extension and then approving their
+  own subsequent malicious PR. CODEOWNERS requires a reviewer; branch
+  protection enforces it. The `npm-publish` environment requires a
+  second approver. None of these survive *two* compromised maintainer
+  accounts — that is the threat model that hardware-backed 2FA on every
+  active maintainer and the off-boarding checklist exist to make
+  expensive.
+- A consumer of `@daloyjs/core` who installs a poisoned VS Code
+  extension in their own application repo. The blast radius there is
+  whatever that extension can reach in the consumer's workspace, which
+  is unrelated to Daloy. Our recommended posture for consumers mirrors
+  ours: `.env*` in `.gitignore` (already shipped in every template
+  `_gitignore`), no long-lived cloud credentials on disk, branch
+  protection on the deploy branch, and OIDC-based publishing /
+  deployment instead of static tokens.
+
+If a future incident report describes an attack step that any control in
+the table above should have blocked, treat the gap as a release-blocking
+bug and open a private advisory.
+
+### Malicious AI-agent skills on a maintainer or consumer workstation (ToxicSkills / ClawHub 2026 pattern)
+
+Snyk's 2026 ["ToxicSkills" research](https://snyk.io/blog/toxicskills-malicious-ai-agent-skills-clawhub/)
+(plus the parallel "ClawHavoc" / `clawdhub` malicious-campaign disclosures
+and Mobb.ai's audit of 22,511 public skills) documents prompt-injection
+payloads in **~36%** of audited skills and **1,467 confirmed malicious
+payloads** across the ClawHub, OpenClaw, and Claude Code skill registries.
+The attack shape is: an AI coding agent (Claude Code, Cursor, OpenClaw,
+etc.) loads a "skill" — a markdown / YAML / shell bundle — from a public
+registry, and that skill either prompt-injects the agent into
+exfiltrating files and tokens or directly executes attacker-controlled
+shell commands with the developer's local privileges. The malicious code
+never enters `package.json` or `pnpm-lock.yaml`, so none of the
+npm-focused controls in the `node-ipc` / `shopsprint` / `@antv` tables
+above apply directly. We list it here for the same reason we list the
+GitHub VS Code-extension breach above: operators ask, and the honest
+answer is that some of this is outside a backend framework's boundary.
+
+**What a backend framework cannot do.** Daloy cannot stop a maintainer or
+a consumer from installing a poisoned skill into Claude Code, Cursor,
+OpenClaw, Continue, Aider, Windsurf, Zed, or any other agent runtime.
+Those runtimes execute skills with whatever filesystem, network, and
+credential access the developer's shell has, which is far more than any
+HTTP framework can mediate. Skill-registry hygiene (signed publishers,
+allowlists, isolation, sandboxing) is owned by the agent runtime and the
+developer's operating environment.
+
+**What Daloy does do**, mapped step-by-step against the ToxicSkills pattern:
+
+| Attack step | DaloyJS / template control |
+| --- | --- |
+| Poisoned skill prompt-injects the agent into reading `.env`, `~/.npmrc`, the macOS / Linux keychain, or shell history | Out of scope for a framework. Mitigation in our own repo: no `.env` is committed, no long-lived `NPM_TOKEN` exists on any maintainer machine (publish runs from `release.yml` via OIDC, see § npm publishing), and every scaffolded template's [`_gitignore`](packages/create-daloy/templates/node-basic/_gitignore) excludes `.env`, `.env.*` (with a `!.env.example` allowlist), `dist/`, `coverage/`, and `*.log` so a skill reading the workspace gets configuration shape, not credentials. |
+| Poisoned skill executes a shell command (`curl … \| sh`, `npm publish`, `git push`) under the developer's identity | Outside our boundary at runtime. The release-side blast radius is bounded because **no publish happens from a developer machine** — `release.yml` is the only path to `npm publish` for `@daloyjs/core` / `create-daloy`, it requires a signed `v*` tag, it runs only in the protected `npm-publish` GitHub Environment, and that environment requires a second listed maintainer to approve before any publish job executes. A skill that ran `npm publish` on a maintainer laptop would fail for lack of a publish-capable token. |
+| Poisoned skill silently edits `package.json`, `pnpm-lock.yaml`, `.npmrc`, or a workflow under `.github/` to weaken CI or introduce a typosquatted dep | Caught at PR review. Those paths are CODEOWNERS-protected ([`.github/CODEOWNERS`](.github/CODEOWNERS)); CI runs `pnpm install --frozen-lockfile`; `pnpm verify:lockfile` ([`scripts/verify-lockfile-sources.ts`](scripts/verify-lockfile-sources.ts)) rejects `git+`, `github:`, `ssh:`, and non-`registry.npmjs.org` sources; `pnpm verify:wave10-audits` ([`scripts/verify-wave10-audits.ts`](scripts/verify-wave10-audits.ts)) refuses removal of `permissions:`, `persist-credentials: false`, action SHA-pins, or `step-security/harden-runner`; `zizmor` statically rejects unsafe workflow patterns ([`.github/workflows/zizmor.yml`](.github/workflows/zizmor.yml)). Even with a fully compromised agent on a maintainer laptop, the malicious change has to clear a human review under those gates. |
+| Poisoned skill stages a backdoor inside `src/` (e.g. weakens a header sanitizer, removes a rate-limit guard, downgrades a JWT algorithm allowlist) | Caught at PR review plus the static governance gates: `pnpm verify:wave9-audits`, `pnpm verify:wave10-audits`, `pnpm verify:wave11-audits`, `pnpm verify:wave12-audits`, and `pnpm verify:secret-comparisons` enforce the documented security floor. CodeQL and the test suite (with the 90% line / 90% function / 90% branch coverage gates) run on every PR. A backdoor that bypasses all of those would have to be subtle enough to pass code review on `src/security.ts`, `src/hashing.ts`, `src/jwt.ts`, etc. — review is the last line of defense and there is no shortcut around it. |
+| Poisoned skill exfiltrates the contents of the open workspace over HTTP / DNS / a third-party MCP server | Out of scope for a framework. For `@daloyjs/daloy` itself the workspace is the public repository and there is nothing private to exfiltrate. For consumer applications, secret-scanning (GitHub Advanced Security, `gitleaks`, etc.), short-lived cloud credentials, and developer-workstation egress controls are the operator's responsibility — the same posture we recommend against the GitHub VS Code-extension breach above. |
+| Skill vendors a malicious npm dep transitively (skill says "install X" and X is a typosquat) | If the agent obeys and runs `pnpm add`, every other control in this document applies: `ignore-scripts=true` blocks lifecycle payloads, `minimumReleaseAge: 1440` blocks fresh trojan releases, `blockExoticSubdeps: true` plus `pnpm verify:lockfile` reject non-registry sources, `@daloyjs/core`'s zero-runtime-dep posture means *we* never pull the typosquat in, and the CODEOWNERS-guarded lockfile means the change has to clear PR review. |
+| Skill registry is taken down but the cached malicious skill remains pinned in a dev's local agent cache | Outside our boundary. Agent runtimes own their skill cache. Recovery is the same drill as the `node-ipc` 2026-05-14 reload and the VS Code-extension breach: uninstall the skill, rotate the affected maintainer's npm and GitHub credentials and recovery email (the quarterly disclosure exercise verifies all three), and run the disclosure exercise out of cycle. |
+
+**Daloy-repo policy on agent skills (workstation hygiene).** Because the
+framework cannot police skill registries, we constrain what enters *this*
+repository:
+
+- The repository does not vendor, recommend, or pre-install any
+  third-party AI-agent skill, Claude Code skill, Cursor rule pack,
+  OpenClaw skill, or equivalent. The only agent-facing files in this
+  repo are first-party and reviewed under the normal CODEOWNERS path:
+  [`AGENTS.md`](AGENTS.md), [`.github/copilot-instructions.md`](.github/copilot-instructions.md),
+  and the per-area `AGENTS.md` files (e.g. [`website/AGENTS.md`](website/AGENTS.md)).
+- No template under [`packages/create-daloy/templates/`](packages/create-daloy/templates)
+  ships a third-party skill bundle, agent ruleset, or MCP-server config
+  pointing at a public skill registry. Scaffolded apps therefore inherit
+  zero pre-installed skill surface from us.
+- A PR that adds a third-party skill, rule pack, or agent-cache
+  directory (`.claude/skills/`, `.cursor/rules/`, `.openclaw/`,
+  `.continue/`, `.aider/`, `.windsurf/`, `.zed/ai/`, or any similar
+  per-tool directory containing executable instructions sourced from
+  outside this repo) must be treated as a supply-chain change: it
+  requires the same maintainer review and justification as a new
+  runtime dependency, and must come from a publisher and version the
+  reviewer can verify by hand. "I downloaded this from ClawHub /
+  OpenClaw / the Cursor directory and it looked useful" is **not**
+  sufficient justification.
+- Maintainers who use an AI agent against this repo are expected to run
+  it under the agent's least-privilege mode (deny shell exec by
+  default, allowlist tools explicitly) and to review every diff before
+  committing. The CODEOWNERS, branch-protection, and
+  `npm-publish`-environment controls described above assume diffs are
+  human-reviewed; an agent that auto-approves its own PRs would defeat
+  that assumption.
+
+**What this does not defend against, and we say so explicitly:**
+
+- A maintainer installing a poisoned skill in their personal Claude
+  Code / Cursor / OpenClaw setup and then merging the skill's
+  suggestions without reading them. CODEOWNERS requires a reviewer for
+  sensitive paths and the `npm-publish` Environment requires a second
+  approver, so a single compromised maintainer cannot ship a poisoned
+  release on their own — but two compromised maintainers can, which is
+  why hardware-backed 2FA on every active maintainer and the off-boarding
+  checklist exist to make that expensive.
+- A consumer of `@daloyjs/core` who installs a poisoned skill in their
+  own application repo. The blast radius is whatever that skill can
+  reach in the consumer's workspace, which is unrelated to Daloy. Our
+  recommended posture for consumers mirrors ours: do not vendor
+  third-party skills, keep `.env*` in `.gitignore` (already shipped in
+  every template `_gitignore`), no long-lived cloud credentials on
+  disk, branch protection on the deploy branch, and OIDC-based
+  publishing / deployment instead of static tokens.
+- Prompt-injection content hosted in *data* the framework processes
+  (request bodies, third-party API responses). That is application-level
+  input validation owned by the handler author; Daloy does not auto-feed
+  request data to an LLM.
+
+If a future incident report describes an attack step that any control in
+the table above should have blocked, treat the gap as a release-blocking
+bug and open a private advisory.
+
 
 
 If you suspect a compromised version of `@daloyjs/core` or `create-daloy`:
