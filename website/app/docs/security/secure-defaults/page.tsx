@@ -3,7 +3,7 @@ import { CodeBlock } from "../../../../components/code-block";
 import { buildMetadata } from "@/lib/seo";
 
 export const metadata = buildMetadata({
-  title: "Secure-by-default (Wave 2)",
+  title: "Secure-by-default (0.16.0)",
   description:
     "Daloy 0.16.0 auto-applies secureHeaders() and rejects cross-origin state-changing requests unless cors() is registered. Learn the new defaults, escape hatches, and per-route opt-ins.",
   path: "/docs/security/secure-defaults",
@@ -24,9 +24,9 @@ export default function Page() {
       <h1>Secure-by-default (0.16.0)</h1>
       <p>
         Daloy <strong>0.16.0</strong> is the first release in the
-        &ldquo;secure-by-default&rdquo; Wave 2 series. It flips secure headers
-        and cross-origin write protection on by default, adds a per-route
-        content type opt-in, and keeps a single master escape hatch (
+        &ldquo;secure-by-default&rdquo; series. It flips secure headers and
+        cross-origin write protection on by default, adds a per-route content
+        type opt-in, and keeps a single master escape hatch (
         <code>secureDefaults: false</code>) plus per-feature opt-outs for the
         rare cases where you genuinely need the old behavior.
       </p>
@@ -222,8 +222,8 @@ export function myCustomHeaders() {
         What&apos;s <em>not</em> in this slice
       </h2>
       <p>
-        The full Wave 2 plan in the roadmap lists many additional flips (CSP
-        nonces default-on, per-content-type body caps, response-schema
+        The full secure-defaults plan in the roadmap lists many additional flips
+        (CSP nonces default-on, per-content-type body caps, response-schema
         validation in development, conditional
         <code>/openapi.json</code> in production,{" "}
         <code>frame-ancestors &apos;none&apos;</code> as immovable,

@@ -1,12 +1,12 @@
 # syntax=docker/dockerfile:1.7
-# Container-first defaults for a DaloyJS app (Wave 6 item 4).
+# Container-first defaults for a DaloyJS app.
 #
 # Hardening shipped out of the box:
 #   - Non-root runtime user (uid 1001).
 #   - Read-only root filesystem at runtime (use `--read-only` or set
 #     `readOnlyRootFilesystem: true` in your orchestrator).
 #   - `STOPSIGNAL SIGTERM` so the framework's graceful-shutdown drain
-#     (Wave 4) fires on container stop.
+#     fires on container stop.
 #   - `HEALTHCHECK` wired to `app.healthcheck()` / `app.readinesscheck()`
 #     (mount the routes via `app.healthcheck()` / `app.readinesscheck()`).
 #   - `tini` as PID 1 for proper signal forwarding and zombie reaping.

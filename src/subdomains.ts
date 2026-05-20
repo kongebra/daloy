@@ -1,5 +1,5 @@
 /**
- * PSL-aware `subdomains()` helper (Wave 6 item 6).
+ * PSL-aware `subdomains()` helper.
  *
  * Splits a hostname into its registrable base + the subdomain labels above
  * it, using a bundled Public Suffix List snapshot. The helper refuses to

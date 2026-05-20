@@ -1,5 +1,5 @@
 /**
- * Wave 5 leftover: first-party `etag()` helper with strong-validation default.
+ * First-party `etag()` helper with strong-validation default.
  *
  * Automatically computes a SHA-1 strong ETag for successful `GET` / `HEAD`
  * responses, responds `304 Not Modified` on a matching `If-None-Match`, and

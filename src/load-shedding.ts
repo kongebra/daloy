@@ -1,5 +1,5 @@
 /**
- * Wave 4 leftover: `loadShedding()` primitive.
+ * `loadShedding()` primitive.
  *
  * Lightweight Node-process pressure monitor that returns `Hooks` for
  * `app.use(...)`. When any of the configured thresholds is exceeded,

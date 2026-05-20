@@ -88,7 +88,7 @@ test("wave9 doctor: item 4 - bodyLimitBytes > 25 MiB surfaces a warn", async () 
   assert.equal(r.exitCode, 0);
   const parsed = JSON.parse(out.join(""));
   const codes = parsed.findings.map((f: { code: string }) => f.code);
-  assert.ok(codes.includes("wave9.bodyLimit.blanket"), codes.join(","));
+  assert.ok(codes.includes("audit.bodyLimit.blanket"), codes.join(","));
 });
 
 test("wave9 doctor: item 6 - allowUnsafeValidationDetails surfaces an error", async () => {
@@ -98,7 +98,7 @@ test("wave9 doctor: item 6 - allowUnsafeValidationDetails surfaces an error", as
   assert.equal(r.exitCode, 1);
   const parsed = JSON.parse(out.join(""));
   const codes = parsed.findings.map((f: { code: string }) => f.code);
-  assert.ok(codes.includes("wave9.validationDetails.leak"), codes.join(","));
+  assert.ok(codes.includes("audit.validationDetails.leak"), codes.join(","));
 });
 
 test("wave9 doctor: item 6 - exposeFrameworkIdentity surfaces an error", async () => {
@@ -108,7 +108,7 @@ test("wave9 doctor: item 6 - exposeFrameworkIdentity surfaces an error", async (
   assert.equal(r.exitCode, 1);
   const parsed = JSON.parse(out.join(""));
   const codes = parsed.findings.map((f: { code: string }) => f.code);
-  assert.ok(codes.includes("wave9.identityLeak"), codes.join(","));
+  assert.ok(codes.includes("audit.identityLeak"), codes.join(","));
 });
 
 test("wave9 doctor: item 1 - cors maxAge > 24h surfaces a warn", async () => {
@@ -119,7 +119,7 @@ test("wave9 doctor: item 1 - cors maxAge > 24h surfaces a warn", async () => {
   assert.equal(r.exitCode, 0);
   const parsed = JSON.parse(out.join(""));
   const codes = parsed.findings.map((f: { code: string }) => f.code);
-  assert.ok(codes.includes("wave9.cors.maxAge"), codes.join(","));
+  assert.ok(codes.includes("audit.cors.maxAge"), codes.join(","));
 });
 
 test("wave9 doctor: item 1 - cors wildcard + credentials surfaces an error", async () => {
@@ -137,7 +137,7 @@ test("wave9 doctor: item 1 - cors wildcard + credentials surfaces an error", asy
   assert.equal(r.exitCode, 1);
   const parsed = JSON.parse(out.join(""));
   const codes = parsed.findings.map((f: { code: string }) => f.code);
-  assert.ok(codes.includes("wave9.cors.wildcardCredentials"), codes.join(","));
+  assert.ok(codes.includes("audit.cors.wildcardCredentials"), codes.join(","));
 });
 
 test("wave9 doctor: item 7 - enableServerTimingInProduction in production surfaces an error", async () => {
@@ -147,7 +147,7 @@ test("wave9 doctor: item 7 - enableServerTimingInProduction in production surfac
   assert.equal(r.exitCode, 1);
   const parsed = JSON.parse(out.join(""));
   const codes = parsed.findings.map((f: { code: string }) => f.code);
-  assert.ok(codes.includes("wave9.serverTiming.production"), codes.join(","));
+  assert.ok(codes.includes("audit.serverTiming.production"), codes.join(","));
 });
 
 test("wave9 doctor: --no-audit-defaults skips every Wave 9 live check", async () => {

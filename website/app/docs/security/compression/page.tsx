@@ -24,7 +24,7 @@ export default function Page() {
     <>
       <h1>Compression middleware (0.25.0)</h1>
       <p>
-        Daloy <strong>0.25.0</strong> ships the first focused Wave 7 slice: a
+        Daloy <strong>0.25.0</strong> ships a focused compression slice: a
         first-party <code>compression()</code> middleware that uses the
         web-standard <code>CompressionStream</code> API instead of a Node-only
         compression package.
@@ -59,8 +59,8 @@ app.use(compression());
       <h2>Security skip rules</h2>
       <p>
         Compression can become an oracle when secrets and attacker-controlled
-        bytes share the same compressed response. Daloy keeps those guards
-        built in rather than asking every app to remember the same list.
+        bytes share the same compressed response. Daloy keeps those guards built
+        in rather than asking every app to remember the same list.
       </p>
       <ul>
         <li>
@@ -97,8 +97,9 @@ app.use(compression());
       <p>
         If a compressed response already has a strong ETag such as{" "}
         <code>&quot;abc&quot;</code>, Daloy downgrades it to{" "}
-        <code>W/&quot;abc&quot;</code>. The ETag was computed over the upstream body,
-        not the compressed wire bytes, so a weak validator is the honest one.
+        <code>W/&quot;abc&quot;</code>. The ETag was computed over the upstream
+        body, not the compressed wire bytes, so a weak validator is the honest
+        one.
       </p>
 
       <h2>No compression level knob</h2>

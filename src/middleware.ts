@@ -92,7 +92,7 @@ export interface CspDirectivesOptions {
    * When set, append `report-to <group>` to the generated CSP header so
    * browsers POST violation reports to the named Reporting API endpoint.
    * Pair with {@link SecureHeadersOptions.reportingEndpoints} (or
-   * {@link App.cspReportRoute}) to register the receiver. Wave 4 leftover.
+   * {@link App.cspReportRoute}) to register the receiver.
    *
   * @since 0.20.0
    */
@@ -116,7 +116,7 @@ export interface SecureHeadersOptions {
    * group names; values are absolute URLs that accept POSTed reports.
    * Pair with {@link CspDirectivesOptions.reportTo} (or pass
    * `reportTo: "csp-endpoint"` here as a shortcut) to direct CSP
-   * violation reports there. Wave 4 leftover.
+   * violation reports there.
    *
   * @since 0.20.0
    */
@@ -236,7 +236,7 @@ function cspOptionsHaveFrameAncestors(csp: CspDirectivesOptions): boolean {
 /**
  * Marker stamped on the `Hooks` object returned by {@link secureHeaders} so
  * the framework can detect that a developer has installed their own
- * `secureHeaders()` and remove the auto-installed Wave 2 instance to avoid
+ * `secureHeaders()` and remove the auto-installed default instance to avoid
  * shadowing the user's overrides. Exported so wrapper helpers can stamp
  * their own returned hooks (`(hooks as any)[SECURE_HEADERS_MARKER] = true`)
  * and get the same replace-not-stack behavior.
@@ -250,7 +250,7 @@ export const SECURE_HEADERS_MARKER: unique symbol = Symbol.for(
 export function secureHeaders(opts: SecureHeadersOptions = {}): Hooks {
   const headers: Record<string, string> = {};
   let cspOpt = opts.contentSecurityPolicy ?? "default-src 'self'; frame-ancestors 'none'";
-  // Wave 8 — refuse to construct when the developer disabled BOTH framing
+  // Refuse to construct when the developer disabled BOTH framing
   // defenses simultaneously (no X-Frame-Options AND no frame-ancestors
   // directive in CSP). A response with neither defense can be embedded in
   // an `<iframe>` from any origin, which re-opens the clickjacking surface
@@ -328,7 +328,7 @@ export function secureHeaders(opts: SecureHeadersOptions = {}): Hooks {
   if (opts.noSniff !== false) headers["x-content-type-options"] = "nosniff";
   if (opts.xssProtection ?? false) headers["x-xss-protection"] = "0"; // modern guidance
 
-  // Wave 4 leftover: Reporting API endpoints.
+  // Reporting API endpoints.
   if (opts.reportingEndpoints) {
     const entries = Object.entries(opts.reportingEndpoints);
     if (entries.length > 0) {
@@ -375,7 +375,7 @@ export function secureHeaders(opts: SecureHeadersOptions = {}): Hooks {
   return hooks;
 }
 
-// Wave 11 — `cors()` default `allowMethods` narrowed to the read-only set.
+// `cors()` default `allowMethods` narrowed to the read-only set.
 // State-changing methods (PUT / PATCH / DELETE) require explicit opt-in.
 // POST stays because it remains a non-CORS-preflighted "simple method" with
 // form-submittable content types (already covered by CSRF). OPTIONS is the
@@ -386,7 +386,7 @@ const DEFAULT_CORS_ALLOWED_HEADERS = ["content-type", "authorization"];
 /**
  * Marker stamped on the `Hooks` object returned by {@link cors} so the
  * framework can detect that a CORS policy has been installed. Used by the
- * Wave 2 secure-defaults cross-origin guard: if `App` is constructed with
+ * Secure-defaults cross-origin guard: if `App` is constructed with
  * `secureDefaults: true` (the 0.16+ default) and no route hook chain carries
  * a CORS policy that allows the request origin, state-changing requests with
  * a cross-origin `Origin` header are rejected with `403`. Exported so
@@ -403,7 +403,7 @@ export const CORS_HOOK_MARKER: unique symbol = Symbol.for(
 
 /**
  * Marker stamped on the `Hooks` object returned by {@link cors} with the
- * origin predicate used by the Wave 2 cross-origin guard. Third-party CORS
+ * origin predicate used by the cross-origin guard. Third-party CORS
  * wrappers can stamp the same function so Daloy can reject state-changing
  * requests whose `Origin` header is outside the registered allowlist.
  *
@@ -415,7 +415,7 @@ export const CORS_ORIGIN_ALLOW_MARKER: unique symbol = Symbol.for(
 
 /**
  * Marker stamped on the `Hooks` object returned by {@link cors} when the
- * configured `origin` permits the wildcard `"*"`. Used by the Wave 3
+ * configured `origin` permits the wildcard `"*"`. Used by the
  * boot-time refuse-to-boot guard: a wildcard CORS origin in production is
  * almost always a misconfiguration, so `App` constructed with
  * `secureDefaults: true` (the 0.16+ default) and resolved to
@@ -430,7 +430,7 @@ export const CORS_WILDCARD_ORIGIN_MARKER: unique symbol = Symbol.for(
 
 /**
  * Marker stamped on the `Hooks` object returned by {@link csrf}. Used by
- * the Wave 3 boot-time refuse-to-boot guard: when `session()` is registered
+ * the boot-time refuse-to-boot guard: when `session()` is registered
  * on a `secureDefaults: true` App that also exposes any state-changing
  * route, the framework requires a matching `csrf()` hook somewhere in the
  * hook chain so an attacker cannot forge a cross-site request that mutates
@@ -498,7 +498,7 @@ export function cors(opts: CorsOptions): Hooks {
       );
     }
   }
-  // Wave 11 — refuse wildcard `methods` at construction. CORS `allowMethods`
+  // Refuse wildcard `methods` at construction. CORS `allowMethods`
   // takes an explicit token list per the Fetch standard; `"*"` is a special
   // value only in the response header, never in the developer-facing API.
   // Shipping it as a configured allowlist would cross-origin-expose every
@@ -917,7 +917,7 @@ export interface BearerAuthOptions {
   /** WWW-Authenticate realm. Default: `"api"`. */
   realm?: string;
   /**
-   * Optional per-request revalidation hook (Wave 5). Called after `validate`
+   * Optional per-request revalidation hook. Called after `validate`
   * accepts the token. Returning `false` rejects the request with `403`;
   * returning `true` or `undefined` accepts. Use for revocation lists,
   * token-version counters, etc.
@@ -935,7 +935,7 @@ export interface BearerAuthOptions {
  *
  * The `validate` callback is the integration point with whatever JWT
  * verifier, opaque-token introspector, or in-memory test stub you use. The
- * optional `verify` hook (Wave 5) is the integration point for revocation
+ * optional `verify` hook is the integration point for revocation
  * lists, token-version counters, and other per-request invalidation checks
  * that `validate` cannot answer statelessly.
  *
@@ -1368,7 +1368,7 @@ export function basicAuth(opts: BasicAuthOptions): Hooks {
   };
 }
 
-// ---------- requireScopes (Wave 5 leftover) ----------
+// ---------- requireScopes ----------
 
 /**
  * Marker stamped on the per-request `state` bag so multiple `requireScopes()`

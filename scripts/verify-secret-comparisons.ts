@@ -1,5 +1,5 @@
 /**
- * Wave 8 single-source-of-truth secret-comparison CI grep gate.
+ * Single-source-of-truth secret-comparison CI grep gate.
  *
  * Scans the security-sensitive source files and refuses any `===` or `!==`
  * against a value that was clearly derived from a request `Authorization`,
@@ -8,7 +8,7 @@
  * framework's secret-comparison surface is internally self-consistent and
  * resistant to timing attacks.
  *
- * Files in scope (matches the Wave 8 plan):
+ * Files in scope:
  *   - src/session.ts
  *   - src/security.ts
  *   - src/security-schemes.ts
@@ -37,7 +37,7 @@ export const AUDITED_FILES: readonly string[] = [
 
 /**
  * Identifiers / expressions whose value clearly came from a header named in
- * the Wave 8 plan. The matcher is intentionally a conservative substring
+ * the plan. The matcher is intentionally a conservative substring
  * test because any positive match is a code-review smell — false positives
  * are cheap (rename the variable) while false negatives are a security bug.
  */

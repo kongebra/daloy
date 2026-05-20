@@ -3,7 +3,7 @@ import { CodeBlock } from "../../../../components/code-block";
 import { buildMetadata } from "@/lib/seo";
 
 export const metadata = buildMetadata({
-  title: "Boot guards (Wave 3)",
+  title: "Boot guards (0.17.0)",
   description:
     "Daloy 0.17.0 refuses to boot in production on weak session secrets, wildcard CORS, session() without csrf() on state-changing routes, and unconfigured X-Forwarded-* headers. Learn each guard, how to opt out, and how to migrate.",
   path: "/docs/security/boot-guards",
@@ -24,10 +24,10 @@ export default function Page() {
     <>
       <h1>Boot guards (0.17.0)</h1>
       <p>
-        Daloy <strong>0.17.0</strong> ships Wave 3 of the secure-by-default
-        initiative: four refuse-to-boot / first-request guards that turn the
-        most common production misconfigurations into loud failures during
-        startup instead of silent vulnerabilities under load.
+        Daloy <strong>0.17.0</strong> ships the boot-guards slice of the
+        secure-by-default initiative: four refuse-to-boot / first-request guards
+        that turn the most common production misconfigurations into loud
+        failures during startup instead of silent vulnerabilities under load.
       </p>
 
       <p>
@@ -46,7 +46,7 @@ export default function Page() {
         <code>
           app({"{"} secureDefaults: false {"}"})
         </code>{" "}
-        disables every Wave 3 guard at once.
+        disables every boot guard at once.
       </p>
 
       <h2>1. Weak session secret refuse-to-boot</h2>
@@ -182,7 +182,7 @@ const app = new App({ env: "production", trustProxy: true });
 // (b) Direct-to-process — ignore forwarded headers:
 const app = new App({ env: "production", trustProxy: false });
 
-// (c) Disable every Wave 3 guard (escape hatch):
+// (c) Disable every boot guard (escape hatch):
 const app = new App({ env: "production", secureDefaults: false });`}
       />
 

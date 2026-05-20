@@ -1,5 +1,5 @@
 /**
- * Wave 5 leftover: first-party `jwt()` sign + verify helpers with secure-by-default
+ * First-party `jwt()` sign + verify helpers with secure-by-default
  * algorithm discipline and time-claim validation.
  *
  * The framework refuses `alg: "none"` outright, requires an explicit algorithm
@@ -11,8 +11,8 @@
  * (with optional `iss` / `aud` checks) — none of which can be silenced in
  * production under `secureDefaults`.
  *
- * Pair with the Wave 1 webhook HMAC helpers in `@daloyjs/core` for body-bound
- * authentication, and with the Wave 5 `requireScopes()` middleware for
+ * Pair with the webhook HMAC helpers in `@daloyjs/core` for body-bound
+ * authentication, and with the `requireScopes()` middleware for
  * scope-based authorization on top of a verified JWT.
  *
  * @since 0.21.0
@@ -58,7 +58,7 @@ const ASYMMETRIC: ReadonlySet<JwtAlgorithm> = new Set([
 const ALL_ALGS: ReadonlySet<string> = new Set([...SYMMETRIC, ...ASYMMETRIC]);
 
 /**
- * Wave 8 — minimum byte length for an HS* HMAC secret. RFC 7518 §3.2
+ * Minimum byte length for an HS* HMAC secret. RFC 7518 §3.2
  * requires HS256 keys to be at least 256 bits (32 bytes). Apply the same
  * floor to HS384 / HS512 because shorter keys do not buy a meaningfully
  * stronger HMAC than HS256-with-a-256-bit-key.
@@ -255,7 +255,7 @@ async function importKey(
         `jwt(): raw byte keys are only supported for HS256/HS384/HS512; got ${alg}.`,
       );
     }
-    // Wave 8 — refuse HS-shaped secrets shorter than 32 bytes (256 bits).
+    // Refuse HS-shaped secrets shorter than 32 bytes (256 bits).
     // RFC 7518 §3.2 requires HS256 keys to be "of the same size as the hash
     // output (for instance, 256 bits for HS256)" — anything shorter is a
     // known-weak HMAC key that turns the signature into the bottleneck.

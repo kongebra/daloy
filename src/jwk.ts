@@ -1,5 +1,5 @@
 /**
- * Wave 5 leftover: first-party `jwk()` Bearer-token middleware that refuses
+ * First-party `jwk()` Bearer-token middleware that refuses
  * symmetric algorithms outright and verifies tokens against a JWKS source
  * (static object or `https://` URL).
  *
@@ -14,9 +14,9 @@
  *   the JWKS, is rejected with `401`.
  * - JWT-header `alg` MUST be in the allowlist. When the JWK declares its own
  *   `alg`, the two MUST agree (RFC 7517 §4.4 cross-check).
- * - `exp` / `nbf` / `iat` validated on every verify (Wave 5 leftover plan).
+ * - `exp` / `nbf` / `iat` validated on every verify.
  * - JWKS URLs MUST be `https://` (refused at construction otherwise).
- * - Optional `verify(payload, ctx)` revalidation hook (Wave 5 leftover) for
+ * - Optional `verify(payload, ctx)` revalidation hook for
  *   revocation lists, token-version counters, etc.
  *
  * The middleware extracts the Bearer token, runs verification, stamps the
@@ -61,7 +61,7 @@ export type JwkSource =
   | string
   | (() => JwkSet | Promise<JwkSet>);
 
-/** Per-request payload-revalidation hook (Wave 5 leftover). */
+/** Per-request payload-revalidation hook. */
 export type JwkVerifyHook = (
   payload: Record<string, unknown>,
   ctx: BaseContext<any, any>,

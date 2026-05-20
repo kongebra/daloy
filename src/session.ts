@@ -29,7 +29,7 @@ const DEFAULT_COOKIE_NAME = "__Host-daloy.sid";
 
 /**
  * Marker stamped on the `Hooks` object returned by {@link session}. Used
- * by the Wave 3 boot guard so the framework can detect that a session
+ * by the boot guard so the framework can detect that a session
  * subsystem is installed and pair it with `csrf()` / a strong production
  * secret. Third-party session helpers that want to participate in the
  * guard can stamp the same marker and expose their secrets via
@@ -43,7 +43,7 @@ export const SESSION_HOOK_MARKER: unique symbol = Symbol.for(
 
 /**
  * Marker stamped on the `Hooks` object returned by {@link session} that
- * carries the array of secrets passed to the helper. Used by the Wave 3
+ * carries the array of secrets passed to the helper. Used by the
  * boot guard to refuse-to-boot when production secrets are too short or
  * match a well-known placeholder.
  *

@@ -3,7 +3,7 @@ import { CodeBlock } from "../../../../components/code-block";
 import { buildMetadata } from "@/lib/seo";
 
 export const metadata = buildMetadata({
-  title: "Composition & network (Wave 5)",
+  title: "Composition & network (0.19.0)",
   description:
     "Daloy 0.19.0 ships rateLimit({ groupId }) shared buckets, combine primitives every/some/except, ipRestriction() with CIDR allow/deny, and the internal: true route flag with app.inject().",
   path: "/docs/security/composition-network",
@@ -26,10 +26,10 @@ export default function Page() {
     <>
       <h1>Composition &amp; network (0.19.0)</h1>
       <p>
-        Daloy <strong>0.19.0</strong> ships Wave 5 of the secure-by-default
-        initiative: four primitives that compose the security stack you already
-        have. Every item is opt-in; no existing behaviour changes unless you
-        call the new helper.
+        Daloy <strong>0.19.0</strong> ships the composition & network slice of
+        the secure-by-default initiative: four primitives that compose the
+        security stack you already have. Every item is opt-in; no existing
+        behaviour changes unless you call the new helper.
       </p>
 
       <h2>
@@ -200,9 +200,10 @@ await app.inject(new Request("http://app/__admin/reindex", { method: "POST" }));
 
       <h2>Opt-out</h2>
       <p>
-        Every Wave 5 primitive is additive; nothing changes unless you call the
-        helper. The Wave 1–4 master opt-out flag still applies if you ever need
-        to disable secure defaults in a development sandbox:
+        Every primitive in this slice is additive; nothing changes unless you
+        call the helper. The earlier secure-defaults master opt-out flag still
+        applies if you ever need to disable secure defaults in a development
+        sandbox:
       </p>
       <CodeBlock
         code={`const app = new App({ env: "development", secureDefaults: false });`}

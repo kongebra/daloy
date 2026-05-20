@@ -1,5 +1,6 @@
 /**
- * Wave 4 leftover: `defineConfig({ schema, source })`.
+ * `defineConfig({ schema, source })` — boot-time typed configuration
+ * validation.
  *
  * Single boot-time helper that loads application configuration from a
  * caller-chosen source (`process.env`, a file on disk, or an async secrets

@@ -1,6 +1,5 @@
 /**
- * Single source of truth for time-based JWT-style claim validation (Wave 8
- * remaining bake-ins).
+ * Single source of truth for time-based JWT-style claim validation.
  *
  * Every first-party verifier — `createJwtVerifier()`, `jwk()`, and any future
  * session-token verifier — MUST route through {@link assertTemporalClaims}

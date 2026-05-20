@@ -1,6 +1,6 @@
 /**
  * Single source of truth for cookie serialization and attribute validation
- * (Wave 8 remaining bake-ins).
+ * (single-source-of-truth cookie helpers).
  *
  * Every first-party subsystem that writes a `Set-Cookie` header — `session()`,
  * `csrf()`, future ban / rate-limit-cooldown cookies — MUST route through

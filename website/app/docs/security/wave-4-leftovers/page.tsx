@@ -3,9 +3,9 @@ import { CodeBlock } from "../../../../components/code-block";
 import { buildMetadata } from "@/lib/seo";
 
 export const metadata = buildMetadata({
-  title: "Wave 4 leftovers (0.20.0)",
+  title: "Lifecycle leftovers (0.20.0)",
   description:
-    "Daloy 0.20.0 ships the Wave 4 leftover slice of the secure-by-default initiative: loadShedding(), app.cspReportRoute() with secureHeaders reporting wiring, disconnectStatusCode: 499 default, and defineConfig({ schema, source }) boot-time validation.",
+    "Daloy 0.20.0 ships the lifecycle leftover slice of the secure-by-default initiative: loadShedding(), app.cspReportRoute() with secureHeaders reporting wiring, disconnectStatusCode: 499 default, and defineConfig({ schema, source }) boot-time validation.",
   path: "/docs/security/wave-4-leftovers",
   keywords: [
     "DaloyJS loadShedding",
@@ -27,11 +27,11 @@ export const metadata = buildMetadata({
 export default function Page() {
   return (
     <>
-      <h1>Wave 4 leftovers (0.20.0)</h1>
+      <h1>Lifecycle leftovers (0.20.0)</h1>
       <p>
-        Daloy <strong>0.20.0</strong> closes the four leftover items from Wave 4
-        of the secure-by-default initiative. Each one is additive and opt-in
-        (or, in the case of <code>disconnectStatusCode</code>, only changes the
+        Daloy <strong>0.20.0</strong> closes four leftover lifecycle items of
+        the secure-by-default initiative. Each one is additive and opt-in (or,
+        in the case of <code>disconnectStatusCode</code>, only changes the
         status code recorded for already-aborted requests):
       </p>
       <ul>

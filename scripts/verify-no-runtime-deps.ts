@@ -1,5 +1,5 @@
 /**
- * Wave 8 zero-external-runtime-dependency governance gate.
+ * Zero-external-runtime-dependency governance gate.
  *
  * Daloy's hard policy: `@daloyjs/core` ships zero entries in the
  * `dependencies` block of `package.json`. Adapter-specific bindings live

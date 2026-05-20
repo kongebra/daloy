@@ -1,5 +1,5 @@
 /**
- * Typed-DI chain helper (Wave 6 item 12).
+ * Typed-DI chain helper.
  *
  * `defineDependency()` wraps a middleware so the framework deduplicates
  * evaluation per request — a request that triggers two routes both depending

@@ -1,5 +1,5 @@
 /**
- * Adapter-independent connection info abstraction (Wave 6).
+ * Adapter-independent connection info abstraction.
  *
  * Provides a single typed surface for "where did this request come from" so
  * the rate limiter, `ipRestriction`, request-id propagation, audit log, and
@@ -13,8 +13,8 @@
  *
  * `info.remote` is populated lazily — adapters may stash a thunk (`() =>
  * string`) instead of an eager string so the IP is never enumerated into a
- * plain object that a careless `JSON.stringify(ctx.info)` could leak. This is
- * Wave 6 item 7 ("data-minimization leak").
+ * plain object that a careless `JSON.stringify(ctx.info)` could leak. This
+ * is a deliberate data-minimization defense.
  *
  * @since 0.24.0
  */
@@ -22,7 +22,7 @@
 import type { BaseContext } from "./types.js";
 
 /**
- * Declarative reverse-proxy posture (Wave 6 item 1). Replaces the
+ * Declarative reverse-proxy posture. Replaces the
  * foot-gunny `trustProxy: boolean` with a structured value that
  * simultaneously configures rate-limit keying, TLS enforcement, request-IP
  * resolution, and the `X-Forwarded-*` accept policy from a single source of
@@ -130,7 +130,7 @@ export function assertBehindProxy(cfg: BehindProxyConfig | undefined): void {
 }
 
 /**
- * Read the (N+1)-from-rightmost IP from `X-Forwarded-For`. Wave 6 item 11
+ * Read the (N+1)-from-rightmost IP from `X-Forwarded-For`.
  * ("`behindProxy` collapses `maxIpsCount`") — when the proxy chain is
  * declared with `{ hops: N }`, only that exact slot is honoured. Returns
  * `undefined` when the header is shorter than the configured hop count

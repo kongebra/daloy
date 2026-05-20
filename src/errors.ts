@@ -49,7 +49,7 @@ export interface ProblemRenderOptions {
   /** Request id stamped into `instance` as `urn:request:<id>` for log correlation. */
   requestId?: string;
   /**
-   * Wave 11 — extra response headers (typically `ctx.set.headers`) to merge
+   * Extra response headers (typically `ctx.set.headers`) to merge
    * onto the rendered problem response so per-request state (CSRF rotation,
    * session renewal, request-id, secure-headers) is not lost when a handler
    * throws an {@link HttpError}. Existing headers baked into the error
@@ -63,7 +63,7 @@ export interface ProblemRenderOptions {
 }
 
 /**
- * Wave 11 — headers that are safe to attach to a custom error response
+ * Headers that are safe to attach to a custom error response
  * (typically a `WWW-Authenticate` challenge built by an auth helper). Any
  * header outside this allowlist on a custom response would leak state from
  * the request scope into a generic error response and is refused at
@@ -84,7 +84,7 @@ export const SAFE_CUSTOM_ERROR_RESPONSE_HEADERS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Wave 11 — thrown when {@link httpError} is asked to attach a custom
+ * Thrown when {@link httpError} is asked to attach a custom
  * `Response` whose headers would leak request-scoped state (cookies,
  * caching directives other than `no-store` / `no-cache`, server-timing,
  * `X-*-Token` debug headers) into the error response.
@@ -112,7 +112,7 @@ export class MessageLeakError extends Error {
 
 /**
  * @internal — header-safety check applied by {@link httpError} when a custom
- * `res` is supplied. Exported for the Wave 11 audit and tests.
+ * `res` is supplied. Exported for audits and tests.
  */
 export function checkCustomErrorResponseHeaders(
   headers: Headers,
@@ -176,7 +176,7 @@ function shouldCopyCustomErrorHeader(name: string, value: string): boolean {
 }
 
 /**
- * Wave 11 — factory for constructing an {@link HttpError} with an optional
+ * Factory for constructing an {@link HttpError} with an optional
  * custom `res` (typically a `WWW-Authenticate` challenge). Refuses-at-
  * construction in production under `secureDefaults` when the custom
  * response carries headers that would leak request-scoped state — see
@@ -311,7 +311,7 @@ export class HttpError extends Error {
     for (const [name, value] of Object.entries(this.headers ?? {})) {
       headers.set(name, value);
     }
-    // Wave 11 — merge Context.set.headers (CSRF rotation, session renewal,
+    // Merge Context.set.headers (CSRF rotation, session renewal,
     // request-id, secureHeaders output) without overriding headers the
     // error class baked in (e.g. `cache-control: no-store` on auth
     // failures). The framework already merges these at the dispatch
@@ -416,7 +416,7 @@ export class UnauthorizedError extends HttpError {
         title: "Unauthorized",
         ...(detail ? { detail } : {}),
       },
-      // Wave 11 — auth-failure responses must never be cached. `no-store`
+      // Auth-failure responses must never be cached. `no-store`
       // already forbids both shared and private caches per RFC 9111 §5.2.2.5.
       { "cache-control": "no-store" },
     );
@@ -441,7 +441,7 @@ export class ForbiddenError extends HttpError {
         title: "Forbidden",
         ...(detail ? { detail } : {}),
       },
-      // Wave 11 — authorization-failure responses must never be cached.
+      // Authorization-failure responses must never be cached.
       { "cache-control": "no-store" },
     );
     this.name = "ForbiddenError";
@@ -528,7 +528,7 @@ export class TooManyRequestsError extends HttpError {
         type: "https://daloyjs.dev/errors/too-many-requests",
         title: "Too Many Requests",
       },
-      // Wave 11 — rate-limit responses must never be cached so a 429 from a
+      // Rate-limit responses must never be cached so a 429 from a
       // private cache cannot extend the throttle window past `Retry-After`.
       retryAfterSeconds !== undefined
         ? { "retry-after": String(retryAfterSeconds), "cache-control": "no-store" }

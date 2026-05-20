@@ -3,9 +3,9 @@ import { CodeBlock } from "../../../../components/code-block";
 import { buildMetadata } from "@/lib/seo";
 
 export const metadata = buildMetadata({
-  title: "Wave 5 auth-cohesive slice (0.22.0)",
+  title: "Auth-cohesive slice (0.22.0)",
   description:
-    "Daloy 0.22.0 ships the auth-cohesive slice of the Wave 5 leftover items: jwk() asymmetric-only JWKS middleware, per-scheme verify() revalidation hook on bearerAuth() and jwk(), basicAuth({ onAuthSuccess }) typed callback, and Cache-Control: no-store on every first-party auth helper 401 challenge.",
+    "Daloy 0.22.0 ships the auth-cohesive leftover slice: jwk() asymmetric-only JWKS middleware, per-scheme verify() revalidation hook on bearerAuth() and jwk(), basicAuth({ onAuthSuccess }) typed callback, and Cache-Control: no-store on every first-party auth helper 401 challenge.",
   path: "/docs/security/wave-5-auth",
   keywords: [
     "DaloyJS jwk",
@@ -28,10 +28,10 @@ export const metadata = buildMetadata({
 export default function Page() {
   return (
     <>
-      <h1>Wave 5 auth-cohesive slice (0.22.0)</h1>
+      <h1>Auth-cohesive slice (0.22.0)</h1>
       <p>
         Daloy <strong>0.22.0</strong> closes the auth-cohesive subset of the
-        Wave 5 leftover items from the secure-by-default initiative. Each one is
+        leftover items from the secure-by-default initiative. Each one is
         additive and opt-in:
       </p>
       <ul>
@@ -58,8 +58,7 @@ export default function Page() {
           <code>Cache-Control: no-store</code> on every first-party auth helper{" "}
           <code>401</code> challenge (<code>bearerAuth()</code>,{" "}
           <code>basicAuth()</code>, <code>jwk()</code>) so intermediaries never
-          cache an auth challenge — RFC 9111 §3.5 and Wave 9 audit item 24
-          alignment.
+          cache an auth challenge — RFC 9111 §3.5 and audit alignment.
         </li>
       </ul>
 
@@ -180,15 +179,12 @@ app.use(
 
       <h2>What shipped next</h2>
       <p>
-        The remaining Wave 5 leftover items — the <code>wsRateLimit()</code>{" "}
-        adapter, <code>loginThrottle()</code> preset,{" "}
-        <code>rotateSession()</code> helper, the file-upload MIME + magic-byte +
-        size guard, the <code>requirePayloadAuth</code> scheme flag, and the
-        WebSocket-helper safe defaults — shipped in the{" "}
-        <a href="/docs/security/wave-5-remaining">
-          Wave 5 remaining slice (0.23.0)
-        </a>
-        .
+        The remaining leftover items — the <code>wsRateLimit()</code> adapter,{" "}
+        <code>loginThrottle()</code> preset, <code>rotateSession()</code>{" "}
+        helper, the file-upload MIME + magic-byte + size guard, the{" "}
+        <code>requirePayloadAuth</code> scheme flag, and the WebSocket-helper
+        safe defaults — shipped in the{" "}
+        <a href="/docs/security/wave-5-remaining">0.23.0 remaining slice</a>.
       </p>
     </>
   );

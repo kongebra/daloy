@@ -1,5 +1,5 @@
 /**
- * Wave 7 (first focused slice): first-party `compression()` middleware with
+ * First-party `compression()` middleware with
  * BREACH-aware safe defaults.
  *
  * Built on the web-standard `CompressionStream` API so the same line works
@@ -83,7 +83,7 @@ export interface CompressionOptions {
 
 /**
  * Internal marker stamped on the hook so a future audit gate can confirm
- * the BREACH-aware middleware is installed (Wave 9 audit-item parity).
+ * the BREACH-aware middleware is installed (audit-item parity).
  *
  * @since 0.25.0
  */

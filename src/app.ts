@@ -86,8 +86,8 @@ export function _resetCrashHandlersForTests(): void {
 }
 
 /**
- * Wave 8 — once-per-process latch for the `secureDefaults: false` warning
- * log. Multiple `new App({ secureDefaults: false })` instances in the same
+ * Once-per-process latch for the `secureDefaults: false` warning log.
+ * Multiple `new App({ secureDefaults: false })` instances in the same
  * process share one log entry instead of flooding the access log with
  * duplicate warnings on every construction.
  */
@@ -98,9 +98,9 @@ export function _resetInsecureDefaultsLogForTests(): void {
 }
 
 /**
- * Wave 8 — list of secure-by-default surfaces disabled when
- * `secureDefaults: false` is set. Surfaced through the once-per-process
- * `error` log so the operator sees exactly which guards are off.
+ * List of secure-by-default surfaces disabled when `secureDefaults: false`
+ * is set. Surfaced through the once-per-process `error` log so the operator
+ * sees exactly which guards are off.
  */
 const DISABLED_BY_INSECURE_DEFAULTS: readonly string[] = Object.freeze([
   "secureHeaders auto-install",
@@ -114,7 +114,7 @@ const DISABLED_BY_INSECURE_DEFAULTS: readonly string[] = Object.freeze([
 ]);
 
 /**
- * Wave 12 item 11: the exact RFC 7231 + RFC 5789 HTTP-method allowlist.
+ * The exact RFC 7231 + RFC 5789 HTTP-method allowlist.
  * The framework refuses any other method at route-registration time so
  * `TRACE`, `CONNECT`, and WebDAV verbs (`MKCOL`, `COPY`, `PROPFIND`,
  * `MOVE`, etc.) cannot bypass the strict Content-Type / body-on-GET /
@@ -198,7 +198,7 @@ export interface AppOptions {
   stripServerHeaders?: boolean;
 
   /**
-   * Master switch for the secure-by-default Wave 2 surface (auto-applied
+   * Master switch for the secure-by-default surface (auto-applied
    * {@link secureHeaders}, cross-origin guard for state-changing requests
     * when no {@link cors} hook allows the request origin). Defaults to `true`
     * in `@daloyjs/core@0.16.0` and later. Per-feature opt-outs
@@ -211,11 +211,11 @@ export interface AppOptions {
   secureDefaults?: boolean;
 
   /**
-   * Wave 8 master-flag escape hatch acknowledgement. Required when
+   * Master-flag escape hatch acknowledgement. Required when
    * {@link AppOptions.secureDefaults} is `false` AND the resolved
    * environment is production. Setting this to `true` confirms that the
-   * caller understands every Wave 1–7 default is being disabled wholesale
-   * and accepts the resulting attack surface — refusing-to-construct in
+   * caller understands every secure-by-default surface is being disabled
+   * wholesale and accepts the resulting attack surface — refusing-to-construct in
    * production by default prevents the "developer flipped `secureDefaults`
    * off while debugging and shipped to production" class of accidents.
    * Whenever `secureDefaults: false` is set (in any environment), the
@@ -257,7 +257,7 @@ export interface AppOptions {
    * Declare whether the application sits behind a trusted reverse proxy
    * that populates `X-Forwarded-*` headers (load balancer, CDN, Vercel,
    * Cloudflare, AWS ALB, etc.). The value is opt-in tri-state for the
-   * Wave 3 first-request guard:
+   * first-request guard:
    *
    * - `undefined` (default) — *unconfigured*. The framework returns
    *   `500 problem+json` on the first request that carries an
@@ -278,7 +278,7 @@ export interface AppOptions {
   trustProxy?: boolean;
 
   /**
-   * Declarative reverse-proxy posture (Wave 6 — `0.24.0`). Supersedes the
+   * Declarative reverse-proxy posture (since `0.24.0`). Supersedes the
    * boolean {@link AppOptions.trustProxy} with a structured value that
    * simultaneously configures rate-limit keying, TLS enforcement, request-IP
    * resolution, and the `X-Forwarded-*` accept policy from a single source
@@ -300,7 +300,7 @@ export interface AppOptions {
   behindProxy?: BehindProxyConfig;
 
   /**
-   * Opt-out for the Wave 3 boot guard that refuses to start an App which
+   * Opt-out for the boot guard that refuses to start an App which
    * registers {@link session} and any state-changing route without a
    * matching {@link csrf} hook. Set to `"off"` to acknowledge that you
    * intentionally accept cookie-authenticated POST / PUT / PATCH / DELETE
@@ -475,7 +475,7 @@ export interface PluginInstalledEvent {
 }
 
 /**
- * Lifecycle-hook contribution declared by a plugin (Wave 6 item 10).
+ * Lifecycle-hook contribution declared by a plugin.
  * Combined with `before` / `after` ordering hints so security middleware
  * order is deterministic regardless of plugin-registration order.
  *
@@ -493,7 +493,7 @@ export interface PluginExtension {
   /** Extension names this one must run after. */
   after?: readonly string[];
   /**
-   * Wave 11 — names of response headers this extension mutates. When two
+   * Names of response headers this extension mutates. When two
    * extensions declare an overlapping `responseHeaders` entry without
    * declaring an explicit `before` / `after` relationship between them,
    * {@link topoSortExtensions} refuses-at-registration with a structured
@@ -558,8 +558,8 @@ export interface CspReportRouteOptions {
   rateLimit?: { limit?: number; windowMs?: number } | false;
   /**
    * Maximum accepted request body size, in bytes. Default `8192`. Larger
-   * bodies are rejected with `413`. Hard upper bound is 65536 bytes
-   * (Wave 11) — CSP / Reporting API reports are small; a cap above 64 KiB
+   * bodies are rejected with `413`. Hard upper bound is 65536 bytes —
+   * CSP / Reporting API reports are small; a cap above 64 KiB
    * is rejected at construction time as a DoS-via-report-flood defense.
    */
   maxBodyBytes?: number;
@@ -574,7 +574,7 @@ export interface CspReportRouteOptions {
     ctx: { ip: string | null; userAgent: string | null },
   ) => void | Promise<void>;
   /**
-   * Wave 11 — when `false` (the default in production), the default logger
+   * When `false` (the default in production), the default logger
    * sink omits the parsed report body and logs only `{ ip, userAgent }`.
    * CSP reports include the URL that violated CSP, which may contain PII
    * (e.g. a session-id query parameter on a navigation that triggered the
@@ -632,7 +632,7 @@ interface RouteSecurityMarkers {
   hasCsrf: boolean;
 }
 
-interface Wave3BootGuardCache {
+interface BootGuardCache {
   checked: boolean;
   error?: Error;
 }
@@ -718,7 +718,7 @@ export class App {
   private installedPlugins = new Set<string>();
   private closeHooks: Array<() => void | Promise<void>> = [];
   private closeHooksRun = false;
-  /** Wave 4 idle-connection close hooks (adapter-registered, sync). */
+  /** Idle-connection close hooks (adapter-registered, sync). */
   private idleConnectionCloseHooks: Array<() => void> = [];
   private pluginInstalledListeners: Array<
     (info: PluginInstalledEvent) => void | Promise<void>
@@ -744,13 +744,13 @@ export class App {
     private corsOriginAllows: CorsOriginAllow[] = [];
 
   /**
-   * Whether the Wave 3 once-only boot guard has run (session + CSRF +
-   * state-changing-route check). The check is deferred to first request
+   * Whether the once-only session + CSRF + state-changing-route boot
+   * guard has run. The check is deferred to first request
    * because route registration and `app.use(csrf(...))` can happen in any
    * order after construction; doing it on first `fetch()` is the latest
    * point we still get a 500 before any handler ever runs.
    */
-  private wave3BootGuard: Wave3BootGuardCache = { checked: false };
+  private bootGuard: BootGuardCache = { checked: false };
 
   /**
    * Latched marker stamped after the framework has reported the first
@@ -786,7 +786,7 @@ export class App {
   }
 
   /**
-   * Wave 4 leftover: validate {@link AppOptions.disconnectStatusCode}.
+   * Validate {@link AppOptions.disconnectStatusCode}.
    * Refuses anything outside `[400, 499]` (except `0`, which disables the
    * rewrite). Throws at construction time so the misconfiguration cannot
    * survive past boot.
@@ -802,7 +802,7 @@ export class App {
   }
 
   /**
-   * Wave 8 — master-flag escape-hatch enforcement. When
+   * Master-flag escape-hatch enforcement. When
    * `secureDefaults: false` is set, the framework:
    *  - refuses-to-construct in production unless
    *    `acknowledgeInsecureDefaults: true` is also set; closes the
@@ -818,7 +818,7 @@ export class App {
     if (inProduction && this.options.acknowledgeInsecureDefaults !== true) {
       throw new Error(
         "app({ secureDefaults: false }) is refused in production. " +
-          "secureDefaults turns off the entire Wave 1–7 secure-by-default " +
+          "secureDefaults turns off the entire secure-by-default " +
           "surface (auto secureHeaders, cross-origin guard, crash-on-unhandled-rejection, " +
           "trustProxy guard, csrf/session boot guard, weak-secret refuse-to-boot, " +
           "cors({ origin: '*' }) refuse-to-boot, anonymous-stateful-plugin refuse-to-boot). " +
@@ -843,7 +843,7 @@ export class App {
   }
 
   /**
-   * Install the Wave 2 secure-by-default global hooks. Currently:
+   * Install the secure-by-default global hooks. Currently:
    *  - {@link secureHeaders} as a group-level hook so every response carries
    *    the hardened baseline (HSTS, X-Frame-Options, nosniff, default CSP).
    *
@@ -865,7 +865,7 @@ export class App {
       (auto as Record<PropertyKey, unknown>)[AUTO_SECURE_HEADERS_MARKER] = true;
       this.groupHooks.push(auto);
     }
-    // Wave 4 leftover: opt-in load-shedding pressure monitor.
+    // Opt-in load-shedding pressure monitor.
     if (this.options.loadShedding) {
       const lsOpts =
         typeof this.options.loadShedding === "object"
@@ -876,7 +876,7 @@ export class App {
   }
 
   /**
-   * Wave 4 crash-on-unrecoverable-error guard. Installs Node-process-level
+   * Crash-on-unrecoverable-error guard. Installs Node-process-level
    * listeners for `unhandledRejection` and `uncaughtException` that log
    * through the pluggable logger and call `process.exit(1)`. Idempotent via
    * a module-level latch so multiple `new App()` instantiations in the same
@@ -962,7 +962,7 @@ export class App {
   }
 
   /**
-   * Wave 2 cross-origin guard. Rejects state-changing requests (`POST` /
+   * Cross-origin guard. Rejects state-changing requests (`POST` /
    * `PUT` / `PATCH` / `DELETE`) that carry an `Origin` header pointing at a
    * different origin than the request URL when no {@link cors} hook is
    * registered (neither at the app level nor on the matched route). Throws
@@ -1013,7 +1013,7 @@ export class App {
   }
 
   /**
-   * Wave 3 sync boot guard. Inspects a hook layer being installed via
+   * Sync boot guard. Inspects a hook layer being installed via
    * {@link App.use} and refuses-to-boot when:
    *
    *  - `cors({ origin: "*" })` is registered while resolved environment is
@@ -1060,13 +1060,13 @@ export class App {
     );
   }
 
-  private resetWave3BootGuardCache(): void {
-    this.wave3BootGuard.checked = false;
-    this.wave3BootGuard.error = undefined;
+  private resetBootGuardCache(): void {
+    this.bootGuard.checked = false;
+    this.bootGuard.error = undefined;
   }
 
   /**
-   * Wave 3 first-request boot guard. Verifies that the assembled hook
+   * First-request boot guard. Verifies that the assembled hook
    * chain + route table is internally consistent before any user handler
    * runs. Currently checks: when `session()` is installed and any route
    * accepts a state-changing method (`POST` / `PUT` / `PATCH` / `DELETE`),
@@ -1076,12 +1076,12 @@ export class App {
    * `app({ secureDefaults: false })`. Runs once per App between registration
    * changes; the result is cached so the fast path is a single boolean check.
    */
-  private assertWave3BootGuards(): void {
-    if (this.wave3BootGuard.checked) {
-      if (this.wave3BootGuard.error) throw this.wave3BootGuard.error;
+  private assertBootGuards(): void {
+    if (this.bootGuard.checked) {
+      if (this.bootGuard.error) throw this.bootGuard.error;
       return;
     }
-    this.wave3BootGuard.checked = true;
+    this.bootGuard.checked = true;
     if (this.options.secureDefaults === false) return;
     if (this.options.csrf === "off") return;
     // Per the risk register: boot guards only fire in production so CI /
@@ -1101,12 +1101,12 @@ export class App {
         `Register csrf() via app.use(csrf({ strategy: "fetch-metadata", allowedOrigins: [...] })), ` +
         `or pass app({ csrf: "off" }) to acknowledge that this app is not browser-facing.`,
     );
-    this.wave3BootGuard.error = err;
+    this.bootGuard.error = err;
     throw err;
   }
 
   /**
-   * Wave 3 per-request guard for spoofed proxy headers. When the App was
+   * Per-request guard for spoofed proxy headers. When the App was
    * constructed without an explicit {@link AppOptions.trustProxy} value
    * and a request arrives carrying an `X-Forwarded-*` header, refuse to
    * dispatch it: the rate limiter, audit log, and request-id propagation
@@ -1118,7 +1118,7 @@ export class App {
   private assertTrustProxyConfigured(request: Request): void {
     if (this.options.secureDefaults === false) return;
     if (this.options.trustProxy !== undefined) return;
-    // Wave 6: `behindProxy` is the declarative successor — when supplied,
+    // `behindProxy` is the declarative successor — when supplied,
     // the framework already knows how to interpret forwarded headers and
     // the legacy unconfigured-proxy guard is satisfied.
     if (this.options.behindProxy !== undefined) return;
@@ -1330,7 +1330,7 @@ export class App {
     Req extends RequestSchemas | undefined,
     Res extends ResponsesMap,
   >(def: RouteDefinition<P, M, Req, Res>): this {
-    // Wave 12 item 11: refuse non-canonical HTTP methods at runtime.
+    // Refuse non-canonical HTTP methods at runtime.
     // The TypeScript `HttpMethod` union already constrains the public
     // surface, but an unsafe cast (or a runtime caller in plain JS)
     // could bypass it. Closes the "framework silently routes WebDAV /
@@ -1374,7 +1374,7 @@ export class App {
       path: merged.path,
       ...securityMarkers,
     });
-    this.resetWave3BootGuardCache();
+    this.resetBootGuardCache();
     return this;
   }
 
@@ -1396,7 +1396,7 @@ export class App {
       production,
       secureDefaults,
     });
-    // Wave 11 — pre-upgrade authentication boundary. In production under
+    // Pre-upgrade authentication boundary. In production under
     // secureDefaults, a WebSocket route must either make an explicit
     // pre-upgrade decision (`beforeUpgrade`) or acknowledge that the route is
     // intentionally public. This prevents accidental auth in `open()` after
@@ -1414,7 +1414,7 @@ export class App {
           "{ acknowledgeUnauthenticated: true } for an intentionally public route.",
       );
     }
-    // Wave 11 — WebSocket post-upgrade header immutability. Once the RFC
+    // WebSocket post-upgrade header immutability. Once the RFC
     // 6455 101 handshake has been sent, no further response headers can be
     // added by middleware; mounting header-mutating middleware on a path
     // that also matches a WS route is a documented misconfiguration in
@@ -1452,7 +1452,7 @@ export class App {
    * container orchestrator `livenessProbe` configuration — a failing
    * liveness probe restarts the container.
    *
-   * Defaults (Wave 4 secure-by-default):
+   * Defaults (secure-by-default):
    *  - path: `/healthz`
    *  - rate-limit: 60 req/min per remote IP, in-memory (per-process)
    *  - auth: opt-in via `token`. In production with `secureDefaults: true`,
@@ -1525,7 +1525,7 @@ export class App {
         : { limit: 60, windowMs: 60_000, ...(opts.rateLimit ?? {}) };
     const token = opts.token;
 
-    // Wave 4 refuse-to-boot: unauthenticated health/ready probes in
+    // Refuse-to-boot: unauthenticated health/ready probes in
     // production are a documented info-disclosure surface (process uptime,
     // plugin-ready transitions, internal hostnames in some shops). Force
     // an explicit acknowledgement.
@@ -1600,7 +1600,7 @@ export class App {
   }
 
   /**
-   * Wave 4 leftover: register a built-in receiver for CSP / Reporting API
+   * Register a built-in receiver for CSP / Reporting API
    * violation reports. Accepts `application/csp-report` and
    * `application/reports+json` payloads, rate-limits per IP (defaults: 60
    * req/min), caps body size (default 8 KiB), and forwards parsed reports
@@ -1616,7 +1616,7 @@ export class App {
   cspReportRoute(opts: CspReportRouteOptions = {}): this {
     const path = (opts.path ?? "/__csp-report") as PathString;
     const maxBytes = opts.maxBodyBytes ?? 8192;
-    // Wave 11 — refuse a configured cap above 64 KiB so a misconfigured
+    // Refuse a configured cap above 64 KiB so a misconfigured
     // policy cannot turn the receiver into a DoS-via-report-flood amplifier.
     const HARD_MAX = 65536;
     if (!Number.isInteger(maxBytes) || maxBytes <= 0 || maxBytes > HARD_MAX) {
@@ -1632,7 +1632,7 @@ export class App {
       ? new Map<string, { count: number; resetMs: number }>()
       : null;
     const log = this.log;
-    // Wave 11 — only log report bodies when explicitly enabled. In
+    // Only log report bodies when explicitly enabled. In
     // production this is opt-in; in development the body is included by
     // default so violations are debuggable.
     const includeReportBody =
@@ -1756,7 +1756,7 @@ export class App {
     (child as any).routes = this.routes;
     (child as any).webSocketRoutes = this.webSocketRoutes;
     (child as any).routeSecurityMarkers = this.routeSecurityMarkers;
-    (child as any).wave3BootGuard = this.wave3BootGuard;
+    (child as any).bootGuard = this.bootGuard;
     (child as any).log = this.log;
     (child as any).prefix = joinPath(this.prefix, prefix);
     (child as any).groupHooks = [
@@ -1798,14 +1798,14 @@ export class App {
    * @returns This `App` instance for chaining.
    */
   use(hooks: Hooks): this {
-    // Wave 3 boot guards: refuse to start when the new hook layer is a
+    // Boot guards: refuse to start when the new hook layer is a
     // known-misconfigured security primitive in production. These checks
     // run synchronously at registration time so the developer sees the
     // failure during boot, not on first request.
     this.assertSecureHookConfig(hooks);
 
     // If the developer installs their own secureHeaders(), drop the
-    // Wave 2 auto-installed instance so the user's overrides win instead of
+    // auto-installed instance so the user's overrides win instead of
     // being shadowed (the auto one runs first and the per-header
     // "set only if absent" semantics mean the second installation would be
     // a silent no-op).
@@ -1823,7 +1823,7 @@ export class App {
     if ((hooks as Record<PropertyKey, unknown>)[CORS_HOOK_MARKER] === true) {
       this.corsOriginAllows = corsOriginAllowsFromHooks(this.groupHooks);
     }
-    this.resetWave3BootGuardCache();
+    this.resetBootGuardCache();
     return this;
   }
 
@@ -1852,7 +1852,7 @@ export class App {
    * @returns This `App` instance for chaining.
    */
   /**
-   * Apply an ordered list of plugin extensions (Wave 6 item 10) to the
+   * Apply an ordered list of plugin extensions to the
    * group-level hook chain. Each extension's `handler` is wrapped into a
    * single-event {@link Hooks} bundle so subsequent route registrations
    * pick it up via the normal hook composition path.
@@ -1874,7 +1874,7 @@ export class App {
       Object.prototype.hasOwnProperty.call(this.decorations, key) &&
       opts.override !== true
     ) {
-      // Wave 6 item 9: namespace-protected decorators. Refuse to silently
+      // Namespace-protected decorators. Refuse to silently
       // shadow an existing decoration; emit a once-per-process warn naming
       // both decorators on the explicit-override path.
       throw new Error(
@@ -1935,22 +1935,22 @@ export class App {
   /**
    * Encapsulated plugin registration (Fastify-style). Receives a child App;
    * routes/hooks declared on the child are scoped to the plugin by default
-   * (Wave 6 item 15 \u2014 encapsulation default `local`).
+   * (encapsulation default `local`).
    *
-   * Wave 6 (`0.24.0`) additions on the plugin descriptor object:
+   * Plugin descriptor object fields (since `0.24.0`):
    *
    * - `dependencies: string[]` \u2014 prerequisite plugin names; the framework
    *   refuses-to-boot at registration time when any declared dependency has
-   *   not been installed first (item 8).
+   *   not been installed first.
    * - `seed: string` \u2014 differentiator for parameterized instances of the
-   *   same plugin (item 16). Dedup key becomes `${name}#${seed}`.
+   *   same plugin. Dedup key becomes `${name}#${seed}`.
    * - `stateful: boolean` \u2014 when `true` AND `name` is absent AND the app is
    *   in production with `secureDefaults` on, registration refuses-to-boot
    *   so silent double-installs of global-state-mutating plugins are caught
-   *   loud (item 16).
+   *   loud.
    * - `extensions: [{ event, handler, before?, after? }]` \u2014 declarative
-   *   lifecycle-hook ordering with topological-sort + cycle detection
-   *   (item 10). Refuses-at-registration on cycles.
+   *   lifecycle-hook ordering with topological-sort + cycle detection.
+   *   Refuses-at-registration on cycles.
    */
   register(
     plugin:
@@ -1999,7 +1999,7 @@ export class App {
       this.installedPlugins.add(dedupKey);
     }
     if (descriptor?.extensions && descriptor.extensions.length > 0) {
-      // Wave 6 item 10: topological sort with cycle detection.
+      // Topological sort with cycle detection.
       const ordered = topoSortExtensions(descriptor.extensions);
       this.applyExtensions(ordered);
     }
@@ -2115,7 +2115,7 @@ export class App {
     const response = await this.dispatch(request);
     // In-flight responses that finish during draining advertise
     // `Connection: close` so HTTP/1.1 load balancers stop re-using the
-    // socket for new requests. Wave 4 connection-draining.
+    // socket for new requests (connection-draining).
     if (this.draining && !response.headers.has("connection")) {
       response.headers.set("connection", "close");
     }
@@ -2153,7 +2153,7 @@ export class App {
             "retry-after": "5",
             // Tell HTTP/1.1 load balancers to close the keep-alive socket
             // immediately so the next request lands on a healthy instance
-            // rather than coming back to a dying one. Wave 4.
+            // rather than coming back to a dying one.
             connection: "close",
           },
         },
@@ -2176,7 +2176,7 @@ export class App {
     try {
       assertNoDuplicateSingletonHeaders(request.headers);
       this.assertTrustProxyConfigured(request);
-      this.assertWave3BootGuards();
+      this.assertBootGuards();
       await globalHooks.onRequest?.(request);
 
       const url = new URL(request.url);
@@ -2322,7 +2322,7 @@ export class App {
           onResponse: activeResponseHook,
         }, stripFingerprint);
       }
-      // Wave 4 leftover: when the client has already disconnected, classify
+      // When the client has already disconnected, classify
       // the request at `disconnectStatusCode` (default 499) instead of
       // letting an AbortError bubble up as a generic 5xx. Logged at `info`
       // so disconnect storms do not look like service incidents.
@@ -2461,7 +2461,7 @@ export class App {
         }
       }
     }
-    // Wave 4: kill idle keep-alive connections immediately so they cannot
+    // Kill idle keep-alive connections immediately so they cannot
     // be re-used for a new request that would race with the drain. Adapters
     // (Node) register a hook here. In-flight requests are unaffected.
     for (const hook of this.idleConnectionCloseHooks) {
@@ -2551,7 +2551,7 @@ function corsOriginAllowsFromHooks(layers: Hooks[]): CorsOriginAllow[] {
 }
 
 /**
- * Wave 11 — detect header-mutating middleware on a WebSocket route's
+ * Detect header-mutating middleware on a WebSocket route's
  * effective hook stack. Returns a list of human-readable names for any
  * middleware that would otherwise lose its headers to the post-upgrade
  * RFC 6455 frame stream.
@@ -2574,7 +2574,7 @@ function detectHeaderMutatingMiddleware(layers: Hooks[]): string[] {
 }
 
 /**
- * Topological sort of plugin extensions (Wave 6 item 10). Refuses-at-call
+ * Topological sort of plugin extensions. Refuses-at-call
  * on cyclic ordering with a structured error naming the cycle.
  * @internal
  */
@@ -2625,7 +2625,7 @@ export function topoSortExtensions(
       `Plugin extension cycle detected among: ${remaining.map((n) => JSON.stringify(n)).join(", ")}.`,
     );
   }
-  // Wave 11 — refuse pairs of extensions that mutate the same response
+  // Refuse pairs of extensions that mutate the same response
   // header without declaring a before/after ordering relative to each
   // other. The resulting header value would otherwise depend on plugin
   // registration order.

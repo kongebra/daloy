@@ -234,7 +234,7 @@ export interface AuthSpec {
 export interface AppState {}
 
 /**
- * Scheme-aware auth contract (Wave 6 item 13). Every shipped first-party
+ * Scheme-aware auth contract. Every shipped first-party
  * auth helper writes through to `ctx.state.auth` with a discriminated
  * `scheme` tag so audit logs, revocation hooks, and per-scheme
  * `verify(credentials, ctx)` callbacks know which scheme issued the

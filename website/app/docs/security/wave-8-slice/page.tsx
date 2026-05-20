@@ -3,12 +3,12 @@ import { CodeBlock } from "../../../../components/code-block";
 import { buildMetadata } from "@/lib/seo";
 
 export const metadata = buildMetadata({
-  title: "Wave 8 focused slice (0.26.0)",
+  title: "secureDefaults enforcement (0.26.0)",
   description:
-    "Daloy 0.26.0 ships the first focused slice of Wave 8 of the secure-by-default initiative: secureDefaults: false master-flag enforcement (production refuse + once-per-process audit log), JWT HS-secret length refuse-to-construct (< 32 bytes), secureHeaders() refusing simultaneous frame-defense disable, and mandatory hardware-backed 2FA for every contributor with publish access.",
+    "Daloy 0.26.0 ships a focused cross-cutting bake-in: secureDefaults: false master-flag enforcement (production refuse + once-per-process audit log), JWT HS-secret length refuse-to-construct (< 32 bytes), secureHeaders() refusing simultaneous frame-defense disable, and mandatory hardware-backed 2FA for every contributor with publish access.",
   path: "/docs/security/wave-8-slice",
   keywords: [
-    "DaloyJS Wave 8",
+    "DaloyJS 0.26.0",
     "secureDefaults",
     "acknowledgeInsecureDefaults",
     "JWT weak secret",
@@ -27,26 +27,25 @@ export const metadata = buildMetadata({
 export default function Page() {
   return (
     <>
-      <h1>Wave 8 focused slice (0.26.0)</h1>
+      <h1>secureDefaults enforcement (0.26.0)</h1>
       <p>
-        Daloy <strong>0.26.0</strong> ships the first focused slice of{" "}
-        <strong>Wave 8 — cross-cutting bake-ins</strong> from the
-        secure-by-default initiative. Three items are implemented now; the
-        remaining cross-cutting bullets (single-source helpers for cookie /
-        client IP / time-claim / secret comparison, the <code>__Secure-</code>{" "}
-        cookie without TLS refuse-to-boot, the{" "}
-        <code>daloy doctor --audit-secrets</code> subcommand, and the
-        zero-runtime-dependency governance CI grep gate) remain tracked on the
-        roadmap and will land in subsequent additive <code>0.26.x</code>{" "}
-        releases.
+        Daloy <strong>0.26.0</strong> ships a focused slice of{" "}
+        <strong>cross-cutting bake-ins</strong> from the secure-by-default
+        initiative. Three items are implemented now; the remaining cross-cutting
+        bullets (single-source helpers for cookie / client IP / time-claim /
+        secret comparison, the <code>__Secure-</code> cookie without TLS
+        refuse-to-boot, the <code>daloy doctor --audit-secrets</code>{" "}
+        subcommand, and the zero-runtime-dependency governance CI grep gate)
+        remain tracked on the roadmap and will land in subsequent additive{" "}
+        <code>0.26.x</code> releases.
       </p>
 
       <h2>
         1. <code>secureDefaults: false</code> master-flag enforcement
       </h2>
       <p>
-        The wholesale escape hatch for the entire Wave 1–7 secure-by-default
-        surface now refuses-to-construct in production unless you also pass{" "}
+        The wholesale escape hatch for the entire secure-by-default surface now
+        refuses-to-construct in production unless you also pass{" "}
         <code>acknowledgeInsecureDefaults: true</code>. This closes the
         well-documented &quot;developer flipped the flag off while debugging and
         shipped to production&quot; footgun by forcing an explicit two-step
@@ -220,16 +219,16 @@ secureHeaders({
           <strong>Release-checklist audit gate:</strong> before tagging a
           release the maintainer running the release verifies that every
           contributor who approved the <code>npm-publish</code> Environment for
-          that release has 2FA enabled at both levels (the Wave 8 mandatory-2FA
-          audit gate).
+          that release has 2FA enabled at both levels (the mandatory-2FA audit
+          gate).
         </li>
       </ul>
 
-      <h2>What&apos;s next in Wave 8</h2>
+      <h2>What&apos;s next</h2>
       <p>
-        The remaining Wave 8 bullets stay tracked on the roadmap and will land
-        in subsequent <code>0.26.x</code> additive patches: single source of
-        truth for cookie writes / client IP / time-claim validation / secret
+        The remaining cross-cutting bullets stay tracked on the roadmap and will
+        land in subsequent <code>0.26.x</code> additive patches: single source
+        of truth for cookie writes / client IP / time-claim validation / secret
         comparison; the <code>__Secure-</code> cookie without TLS refuse-to-boot
         guard; the <code>daloy doctor --audit-secrets</code> subcommand; the
         zero-external-runtime-dependency governance CI grep gate; and the

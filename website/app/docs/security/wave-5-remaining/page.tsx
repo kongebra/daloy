@@ -3,9 +3,9 @@ import { CodeBlock } from "../../../../components/code-block";
 import { buildMetadata } from "@/lib/seo";
 
 export const metadata = buildMetadata({
-  title: "Wave 5 remaining slice (0.23.0)",
+  title: "WebSocket + login throttle slice (0.23.0)",
   description:
-    "Daloy 0.23.0 ships the remaining Wave 5 leftover items: WebSocket upgrade rate limiting, login throttling, automatic session rotation, upload magic-byte guards, payload-auth-required security schemes, and WebSocket safe defaults.",
+    "Daloy 0.23.0 ships the remaining leftover items: WebSocket upgrade rate limiting, login throttling, automatic session rotation, upload magic-byte guards, payload-auth-required security schemes, and WebSocket safe defaults.",
   path: "/docs/security/wave-5-remaining",
   keywords: [
     "DaloyJS 0.23.0",
@@ -25,9 +25,9 @@ export const metadata = buildMetadata({
 export default function Page() {
   return (
     <>
-      <h1>Wave 5 remaining slice (0.23.0)</h1>
+      <h1>WebSocket + login throttle slice (0.23.0)</h1>
       <p>
-        Daloy <strong>0.23.0</strong> closes the remaining expanded Wave 5
+        Daloy <strong>0.23.0</strong> closes the remaining expanded leftover
         items. The theme is narrow but practical: authentication entry points,
         upload boundaries, and WebSocket upgrades now have first-party helpers
         instead of copy-pasted local policy.

@@ -219,7 +219,7 @@ export function assertNoDuplicateSingletonHeaders(headers: Headers): void {
 
 /**
  * Minimum acceptable secret length in bytes for HMAC / signing material in
- * production (Wave 3 boot guard). Matches the OWASP "Secret Management"
+ * production (boot guard). Matches the OWASP "Secret Management"
  * cheat sheet floor of 256 bits for symmetric keys.
  *
  * @since 0.17.0
@@ -267,7 +267,7 @@ const WEAK_SECRET_SET = new Set(WEAK_SECRET_STRINGS.map((s) => s.toLowerCase()))
 
 /**
  * Throw when `secret` is unfit for production HMAC / signing duty. Used by
- * Wave 3 boot guards on `session()` / future `jwt()` helpers when the App
+ * Boot guards on `session()` / future `jwt()` helpers when the App
  * runs in production. The check rejects:
  *
  * - empty / non-string values;

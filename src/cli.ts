@@ -77,8 +77,8 @@ Commands:
   dev     [entry]        Start the entry file with the host runtime's
                          native watch mode (tsx --watch on Node, --hot on
                          Bun, --watch on Deno).
-  doctor  [entry]        Audit a loaded App's secure-by-default posture
-                         (Wave 6). Exits non-zero on any violation so the
+  doctor  [entry]        Audit a loaded App's secure-by-default posture.
+                         Exits non-zero on any violation so the
                          command can guard container HEALTHCHECK and CI
                          deploy steps.
 
@@ -469,7 +469,7 @@ function formatContract(report: Awaited<ReturnType<typeof runContractTests>>): s
 }
 
 /**
- * `daloy doctor` — boot-time + CLI audit (Wave 6 item 3). Loads the user's
+ * `daloy doctor` — boot-time + CLI audit. Loads the user's
  * App entry and runs the secure-by-default checklist. Exits non-zero on any
  * finding so the command can guard container `HEALTHCHECK` and CI deploy
  * steps.
@@ -508,7 +508,7 @@ async function runDoctor(opts: CliOptions, io: CliIO): Promise<CliResult> {
       findings.push({
         level: "warn",
         code: "secureDefaults.off",
-        message: "secureDefaults: false disables every Wave 1–5 hardening default.",
+        message: "secureDefaults: false disables every hardening default.",
       });
     }
     if (o.requestTimeoutMs === 0) {
@@ -529,13 +529,13 @@ async function runDoctor(opts: CliOptions, io: CliIO): Promise<CliResult> {
       }
     }
 
-    // Wave 9 live-config audits (items 1, 4, 5, 6, 7 from the
-    // pattern-agnostic-framework parity audit list; item 8 is this default-on
-    // doctor surface). Other Wave 9 entries are covered by static grep gates,
-    // existing verify scripts, feature-specific tests, or forward-looking
-    // roadmap gates for defaults that have not shipped yet.
+    // Live-config audits for CORS, body-size, idle timeout,
+    // validation-detail / framework-identity leaks, and side-channel
+    // exposure. Static grep gates, existing verify scripts,
+    // feature-specific tests, and forward-looking gates cover the
+    // remaining audit items.
 
-    // Item 1: CORS default posture audit. The framework refuses
+    // CORS default posture audit. The framework refuses
     // `origin: '*'` + `credentials: true` outright at construction; the
     // doctor surfaces any `maxAge` greater than 24 h (86400 s) so
     // reviewers re-evaluate the trade-off vs the documented strictest
@@ -546,12 +546,12 @@ async function runDoctor(opts: CliOptions, io: CliIO): Promise<CliResult> {
       if (typeof maxAge === "number" && maxAge > 86_400) {
         findings.push({
           level: "warn",
-          code: "wave9.cors.maxAge",
+          code: "audit.cors.maxAge",
           message:
             `cors({ maxAge: ${maxAge} }) exceeds 24 h. Long preflight ` +
             "caches amplify the blast radius of an inadvertently widened " +
             "Access-Control-Allow-* policy. Re-evaluate against the " +
-            "strictest documented competitor (Wave 9 item 1).",
+            "strictest documented competitor.",
         });
       }
       if (cors.origin === "*" && cors.credentials === true) {
@@ -560,17 +560,16 @@ async function runDoctor(opts: CliOptions, io: CliIO): Promise<CliResult> {
         // that — surface it here too.
         findings.push({
           level: "error",
-          code: "wave9.cors.wildcardCredentials",
+          code: "audit.cors.wildcardCredentials",
           message:
             "cors({ origin: '*', credentials: true }) is forbidden — the " +
             "browser will silently drop credentials anyway, but the " +
-            "configuration signals intent that does not match reality " +
-            "(Wave 9 item 1).",
+            "configuration signals intent that does not match reality.",
         });
       }
     }
 
-    // Item 4: body-size cap audit. The framework's default
+    // Body-size cap audit. The framework's default
     // `bodyLimitBytes` is 1 MiB and is enforced alongside per-content-
     // type multipart limits. Surface an unusually high blanket cap (>
     // 25 MiB) as a warning — at that scale the developer probably
@@ -580,15 +579,15 @@ async function runDoctor(opts: CliOptions, io: CliIO): Promise<CliResult> {
     if (typeof bodyLimitBytes === "number" && bodyLimitBytes > 25 * 1024 * 1024) {
       findings.push({
         level: "warn",
-        code: "wave9.bodyLimit.blanket",
+        code: "audit.bodyLimit.blanket",
         message:
-          `bodyLimitBytes is ${bodyLimitBytes} (> 25 MiB). Wave 9 item 4 ` +
-          "expects per-content-type caps for any limit this generous so " +
+          `bodyLimitBytes is ${bodyLimitBytes} (> 25 MiB). ` +
+          "Use per-content-type caps for any limit this generous so " +
           "JSON parsers are not DoS-amplified by a multipart-sized blob.",
       });
     }
 
-    // Item 5: idle-timeout / request-timeout audit. Reaffirms the
+    // Idle-timeout / request-timeout audit. Reaffirms the
     // existing requestTimeoutMs check; also surface an explicit zero
     // idleTimeoutMs in production. The framework also keeps adapter
     // defaults non-zero, but a developer-supplied override is surfaced
@@ -597,14 +596,14 @@ async function runDoctor(opts: CliOptions, io: CliIO): Promise<CliResult> {
     if (isProd && idleTimeoutMs === 0) {
       findings.push({
         level: "error",
-        code: "wave9.idleTimeout.zero",
+        code: "audit.idleTimeout.zero",
         message:
           "idleTimeoutMs is 0 in production — adapters keep slow-loris " +
-          "connections open indefinitely (Wave 9 item 5).",
+          "connections open indefinitely.",
       });
     }
 
-    // Item 6: validation-detail / framework-identity leak audit. The
+    // Validation-detail / framework-identity leak audit. The
     // framework refuses-at-construction any opt-in named
     // `allowUnsafeValidationDetails` / `exposeFrameworkIdentity`. The
     // doctor double-checks the live options because a custom plugin
@@ -612,25 +611,24 @@ async function runDoctor(opts: CliOptions, io: CliIO): Promise<CliResult> {
     if (o.allowUnsafeValidationDetails === true) {
       findings.push({
         level: "error",
-        code: "wave9.validationDetails.leak",
+        code: "audit.validationDetails.leak",
         message:
           "allowUnsafeValidationDetails: true would expose schema paths " +
           "to clients in production. The knob does not exist in the " +
-          "public type — a custom plugin must have set it. Remove it " +
-          "(Wave 9 item 6).",
+          "public type — a custom plugin must have set it. Remove it.",
       });
     }
     if (o.exposeFrameworkIdentity === true) {
       findings.push({
         level: "error",
-        code: "wave9.identityLeak",
+        code: "audit.identityLeak",
         message:
           "exposeFrameworkIdentity: true would emit Server / X-Powered-By " +
-          "naming the framework + version (Wave 9 item 6).",
+          "naming the framework + version.",
       });
     }
 
-    // Item 7: side-channel / timing exposure audit. Forbid any
+    // Side-channel / timing exposure audit. Forbid any
     // first-party middleware that attaches Server-Timing in production
     // without authentication. The marker is the opt-in flag
     // `enableServerTimingInProduction` that the framework's `timing()`
@@ -639,10 +637,10 @@ async function runDoctor(opts: CliOptions, io: CliIO): Promise<CliResult> {
     if (isProd && o.enableServerTimingInProduction === true) {
       findings.push({
         level: "error",
-        code: "wave9.serverTiming.production",
+        code: "audit.serverTiming.production",
         message:
           "Server-Timing in production leaks performance side channels. " +
-          "Disable or gate behind authenticated routes (Wave 9 item 7).",
+          "Disable or gate behind authenticated routes.",
       });
     }
   }
