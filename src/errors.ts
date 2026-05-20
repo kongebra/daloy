@@ -48,6 +48,191 @@ export interface ProblemRenderOptions {
   production?: boolean;
   /** Request id stamped into `instance` as `urn:request:<id>` for log correlation. */
   requestId?: string;
+  /**
+   * Wave 11 — extra response headers (typically `ctx.set.headers`) to merge
+   * onto the rendered problem response so per-request state (CSRF rotation,
+   * session renewal, request-id, secure-headers) is not lost when a handler
+   * throws an {@link HttpError}. Existing headers baked into the error
+   * (e.g. `cache-control: no-store` on `UnauthorizedError`) win over the
+   * supplied set — they were declared by the error class for a reason and
+   * are not overridable by ad-hoc Context state.
+   *
+   * @since 0.32.0
+   */
+  contextHeaders?: Headers | HeadersInit;
+}
+
+/**
+ * Wave 11 — headers that are safe to attach to a custom error response
+ * (typically a `WWW-Authenticate` challenge built by an auth helper). Any
+ * header outside this allowlist on a custom response would leak state from
+ * the request scope into a generic error response and is refused at
+ * construction time by {@link httpError}.
+ *
+ * @since 0.32.0
+ */
+export const SAFE_CUSTOM_ERROR_RESPONSE_HEADERS: ReadonlySet<string> = new Set([
+  "www-authenticate",
+  "proxy-authenticate",
+  "retry-after",
+  "content-type",
+  "content-language",
+  "content-length",
+  // `cache-control` is allowed only when its value is `no-store` or
+  // `no-cache`; that constraint is enforced in the check itself.
+  "cache-control",
+]);
+
+/**
+ * Wave 11 — thrown when {@link httpError} is asked to attach a custom
+ * `Response` whose headers would leak request-scoped state (cookies,
+ * caching directives other than `no-store` / `no-cache`, server-timing,
+ * `X-*-Token` debug headers) into the error response.
+ *
+ * @since 0.32.0
+ */
+export class MessageLeakError extends Error {
+  readonly offendingHeaders: ReadonlyArray<{ name: string; reason: string }>;
+  constructor(
+    offendingHeaders: ReadonlyArray<{ name: string; reason: string }>,
+  ) {
+    const summary = offendingHeaders
+      .map((h) => `${h.name} (${h.reason})`)
+      .join(", ");
+    super(
+      `httpError({ res }): custom error response carries disallowed header(s): ${summary}. ` +
+        "Only WWW-Authenticate, Proxy-Authenticate, Retry-After, Content-Type, " +
+        "Content-Language, Content-Length, and Cache-Control (no-store|no-cache) " +
+        "are permitted on a custom error response.",
+    );
+    this.name = "MessageLeakError";
+    this.offendingHeaders = offendingHeaders;
+  }
+}
+
+/**
+ * @internal — header-safety check applied by {@link httpError} when a custom
+ * `res` is supplied. Exported for the Wave 11 audit and tests.
+ */
+export function checkCustomErrorResponseHeaders(
+  headers: Headers,
+): Array<{ name: string; reason: string }> {
+  const offending: Array<{ name: string; reason: string }> = [];
+  headers.forEach((value, name) => {
+    const lower = name.toLowerCase();
+    if (lower === "cache-control") {
+      const token = value.trim().toLowerCase();
+      if (token !== "no-store" && token !== "no-cache") {
+        offending.push({
+          name,
+          reason: `cache-control must be "no-store" or "no-cache"; got ${JSON.stringify(value)}`,
+        });
+      }
+      return;
+    }
+    if (lower === "set-cookie" || lower === "set-cookie2") {
+      offending.push({ name, reason: "cookies are not permitted on a generic error response" });
+      return;
+    }
+    if (lower === "server-timing") {
+      offending.push({ name, reason: "Server-Timing is a side-channel leak in error responses" });
+      return;
+    }
+    if (lower.startsWith("x-") && lower.endsWith("-token")) {
+      offending.push({ name, reason: "X-*-Token headers are request-scoped" });
+      return;
+    }
+    if (!SAFE_CUSTOM_ERROR_RESPONSE_HEADERS.has(lower)) {
+      offending.push({ name, reason: "not in the safe-custom-error-response allowlist" });
+    }
+  });
+  return offending;
+}
+
+function defaultIsProduction(): boolean {
+  return typeof process !== "undefined" && process.env?.NODE_ENV === "production";
+}
+
+function defaultSecureDefaults(): boolean {
+  // Mirrors App({ secureDefaults: true }) — on unless explicitly opted out.
+  return true;
+}
+
+function isSafeCustomErrorHeaderValue(name: string, value: string): boolean {
+  const lower = name.toLowerCase();
+  return (
+    SAFE_CUSTOM_ERROR_RESPONSE_HEADERS.has(lower) &&
+    !(lower === "cache-control" &&
+      value.trim().toLowerCase() !== "no-store" &&
+      value.trim().toLowerCase() !== "no-cache")
+  );
+}
+
+function shouldCopyCustomErrorHeader(name: string, value: string): boolean {
+  if (!isSafeCustomErrorHeaderValue(name, value)) return false;
+  // The custom Response body is intentionally ignored by httpError({ res });
+  // forwarding its Content-Length would describe the wrong problem+json body.
+  return name.toLowerCase() !== "content-length";
+}
+
+/**
+ * Wave 11 — factory for constructing an {@link HttpError} with an optional
+ * custom `res` (typically a `WWW-Authenticate` challenge). Refuses-at-
+ * construction in production under `secureDefaults` when the custom
+ * response carries headers that would leak request-scoped state — see
+ * {@link SAFE_CUSTOM_ERROR_RESPONSE_HEADERS} and {@link MessageLeakError}.
+ *
+ * @since 0.32.0
+ */
+export interface HttpErrorOptions {
+  status: number;
+  problem: Partial<ProblemDetails> & { title: string };
+  /** Plain headers merged onto the rendered response. */
+  headers?: Record<string, string>;
+  /**
+   * Custom `Response` providing additional headers (typically a
+   * `WWW-Authenticate` challenge). Body is ignored; only headers are
+   * extracted. Headers are validated against the safe allowlist.
+   */
+  res?: Response;
+  /**
+   * Override the production check. Defaults to
+   * `process.env.NODE_ENV === "production"`.
+   */
+  production?: boolean;
+  /**
+   * Override the secureDefaults check. Defaults to `true`. The refuse-at-
+   * construction behavior only activates when `production && secureDefaults`
+   * are both true.
+   */
+  secureDefaults?: boolean;
+}
+
+/**
+ * Build an {@link HttpError} with optional safe-header extraction from a
+ * custom `Response`. See {@link HttpErrorOptions}.
+ *
+ * @since 0.32.0
+ */
+export function httpError(opts: HttpErrorOptions): HttpError {
+  const headers = new Headers(opts.headers);
+  if (opts.res) {
+    const isProd = opts.production ?? defaultIsProduction();
+    const secureDefaults = opts.secureDefaults ?? defaultSecureDefaults();
+    const offending = checkCustomErrorResponseHeaders(opts.res.headers);
+    if (isProd && secureDefaults && offending.length > 0) {
+      throw new MessageLeakError(offending);
+    }
+    opts.res.headers.forEach((value, name) => {
+      // Allow the safe headers through; disallowed ones are dropped in
+      // non-secureDefaults / dev contexts after a check-only pass.
+      if (shouldCopyCustomErrorHeader(name, value)) {
+        // Don't overwrite caller-supplied headers.
+        if (!headers.has(name)) headers.set(name, value);
+      }
+    });
+  }
+  return new HttpError(opts.status, opts.problem, Object.fromEntries(headers.entries()));
 }
 
 /**
@@ -122,10 +307,25 @@ export class HttpError extends Error {
       delete out.detail; // do not leak internals
     }
     if (opts.requestId) out.instance = `urn:request:${opts.requestId}`;
-    const headers: Record<string, string> = {
-      "content-type": "application/problem+json",
-      ...(this.headers ?? {}),
-    };
+    const headers = new Headers({ "content-type": "application/problem+json" });
+    for (const [name, value] of Object.entries(this.headers ?? {})) {
+      headers.set(name, value);
+    }
+    // Wave 11 — merge Context.set.headers (CSRF rotation, session renewal,
+    // request-id, secureHeaders output) without overriding headers the
+    // error class baked in (e.g. `cache-control: no-store` on auth
+    // failures). The framework already merges these at the dispatch
+    // boundary; this branch lets direct callers (custom `onError` hooks,
+    // tests) get the same behavior.
+    if (opts.contextHeaders) {
+      const ctxHeaders =
+        opts.contextHeaders instanceof Headers
+          ? opts.contextHeaders
+          : new Headers(opts.contextHeaders);
+      ctxHeaders.forEach((value, name) => {
+        if (!headers.has(name)) headers.set(name, value);
+      });
+    }
     return new Response(JSON.stringify(out), { status: this.status, headers });
   }
 }

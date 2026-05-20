@@ -32,9 +32,16 @@ import {
   UnauthorizedError,
   ForbiddenError,
   TooManyRequestsError,
+  HttpError,
+  MessageLeakError,
+  httpError,
+  checkCustomErrorResponseHeaders,
+  SAFE_CUSTOM_ERROR_RESPONSE_HEADERS,
 } from "../src/errors.js";
 
 import { runWave11Audits } from "../scripts/verify-wave11-audits.js";
+import { topoSortExtensions, type PluginExtension } from "../src/app.js";
+import { secureHeaders } from "../src/middleware.js";
 
 // ---------- live tree: every static audit passes ----------
 
@@ -348,4 +355,298 @@ test("wave11: cors() allows explicit PUT/PATCH/DELETE opt-in", async () => {
     res.headers.get("access-control-allow-methods"),
     "GET, HEAD, POST, PUT, PATCH, DELETE",
   );
+});
+
+// ---------- Wave 11 leftover slice (0.32.0) ----------
+
+// Item 2: WebSocket post-upgrade header immutability — refuse-at-registration.
+
+test("wave11: app.ws() refuses when secureHeaders() is mounted on a matching path", () => {
+  const app = new App();
+  app.use(secureHeaders());
+  assert.throws(
+    () =>
+      app.ws("/ws", {
+        open() {},
+      }),
+    /secureHeaders\(\).*WebSocket route/,
+  );
+});
+
+test("wave11: app.ws() accepts the route when acknowledgeHeaderMutatingMiddleware is set", () => {
+  const app = new App();
+  app.use(secureHeaders());
+  // Should not throw.
+  app.ws("/ws", {
+    acknowledgeHeaderMutatingMiddleware: true,
+    open() {},
+  });
+});
+
+test("wave11: app.ws() refuses when cors() is mounted on a matching path", () => {
+  const app = new App();
+  app.use(cors({ origin: ["https://known.test"] }));
+  assert.throws(
+    () =>
+      app.ws("/ws", {
+        open() {},
+      }),
+    /cors\(\).*WebSocket route/,
+  );
+});
+
+test("wave11: app.ws() refuses unauthenticated production routes without acknowledgement", () => {
+  const app = new App({ env: "production" });
+  assert.throws(
+    () =>
+      app.ws("/ws", {
+        open() {},
+      }),
+    /beforeUpgrade.*acknowledgeUnauthenticated/s,
+  );
+});
+
+test("wave11: app.ws() accepts production routes with a beforeUpgrade decision", () => {
+  const app = new App({ env: "production" });
+  app.ws("/ws", {
+    beforeUpgrade() {
+      return undefined;
+    },
+    open() {},
+  });
+});
+
+test("wave11: app.ws() accepts explicitly public production routes", () => {
+  const app = new App({ env: "production" });
+  app.ws("/public", {
+    acknowledgeUnauthenticated: true,
+    open() {},
+  });
+});
+
+// Item 5: httpError({ res }) refuse-at-construction + contextHeaders merge.
+
+test("wave11: httpError({ res }) refuses Set-Cookie in production", () => {
+  const res = new Response(null, {
+    status: 401,
+    headers: { "set-cookie": "leak=1", "www-authenticate": "Bearer" },
+  });
+  assert.throws(
+    () =>
+      httpError({
+        status: 401,
+        problem: { title: "Unauthorized" },
+        res,
+        production: true,
+        secureDefaults: true,
+      }),
+    MessageLeakError,
+  );
+});
+
+test("wave11: httpError({ res }) accepts a bare WWW-Authenticate challenge", () => {
+  const res = new Response(null, {
+    status: 401,
+    headers: { "www-authenticate": 'Bearer realm="api"' },
+  });
+  const err = httpError({
+    status: 401,
+    problem: { title: "Unauthorized" },
+    res,
+    production: true,
+    secureDefaults: true,
+  });
+  assert.ok(err instanceof HttpError);
+  const rendered = err.toResponse();
+  assert.equal(rendered.headers.get("www-authenticate"), 'Bearer realm="api"');
+});
+
+test("wave11: httpError({ res }) does not duplicate caller headers by case", () => {
+  const res = new Response(null, {
+    status: 401,
+    headers: { "www-authenticate": 'Bearer realm="res"' },
+  });
+  const err = httpError({
+    status: 401,
+    problem: { title: "Unauthorized" },
+    headers: { "WWW-Authenticate": 'Bearer realm="caller"' },
+    res,
+    production: true,
+    secureDefaults: true,
+  });
+  assert.equal(err.toResponse().headers.get("www-authenticate"), 'Bearer realm="caller"');
+});
+
+test("wave11: httpError({ res }) ignores custom Response content-length", () => {
+  const res = new Response(null, {
+    status: 401,
+    headers: { "content-length": "0", "www-authenticate": "Bearer" },
+  });
+  const err = httpError({
+    status: 401,
+    problem: { title: "Unauthorized" },
+    res,
+    production: true,
+    secureDefaults: true,
+  });
+  const rendered = err.toResponse();
+  assert.equal(rendered.headers.get("www-authenticate"), "Bearer");
+  assert.equal(rendered.headers.get("content-length"), null);
+});
+
+test("wave11: httpError({ res }) refuses cache-control: public", () => {
+  const res = new Response(null, {
+    status: 429,
+    headers: { "cache-control": "public, max-age=60" },
+  });
+  assert.throws(
+    () =>
+      httpError({
+        status: 429,
+        problem: { title: "Too Many Requests" },
+        res,
+        production: true,
+        secureDefaults: true,
+      }),
+    MessageLeakError,
+  );
+});
+
+test("wave11: httpError({ res }) accepts cache-control: no-store", () => {
+  const res = new Response(null, {
+    status: 401,
+    headers: { "cache-control": "no-store" },
+  });
+  const err = httpError({
+    status: 401,
+    problem: { title: "Unauthorized" },
+    res,
+    production: true,
+    secureDefaults: true,
+  });
+  assert.equal(err.toResponse().headers.get("cache-control"), "no-store");
+});
+
+test("wave11: httpError({ res }) drops non-safe headers in dev without throwing", () => {
+  const res = new Response(null, {
+    status: 401,
+    headers: { "x-debug-token": "leak", "www-authenticate": "Bearer" },
+  });
+  const err = httpError({
+    status: 401,
+    problem: { title: "Unauthorized" },
+    res,
+    production: false,
+  });
+  const rendered = err.toResponse();
+  assert.equal(rendered.headers.get("www-authenticate"), "Bearer");
+  assert.equal(rendered.headers.get("x-debug-token"), null);
+});
+
+test("wave11: checkCustomErrorResponseHeaders flags Server-Timing", () => {
+  const offending = checkCustomErrorResponseHeaders(
+    new Headers({ "server-timing": "db;dur=12" }),
+  );
+  assert.equal(offending.length, 1);
+  assert.match(offending[0]!.reason, /Server-Timing/);
+});
+
+test("wave11: SAFE_CUSTOM_ERROR_RESPONSE_HEADERS exposes the allowlist", () => {
+  assert.ok(SAFE_CUSTOM_ERROR_RESPONSE_HEADERS.has("www-authenticate"));
+  assert.ok(!SAFE_CUSTOM_ERROR_RESPONSE_HEADERS.has("set-cookie"));
+});
+
+test("wave11: toResponse({ contextHeaders }) merges without overwriting baked headers", () => {
+  const err = new UnauthorizedError("login required");
+  const res = err.toResponse({
+    contextHeaders: new Headers({
+      "x-request-id": "req-1",
+      // Must NOT overwrite the baked `cache-control: no-store`:
+      "cache-control": "public, max-age=60",
+    }),
+  });
+  assert.equal(res.headers.get("x-request-id"), "req-1");
+  assert.equal(res.headers.get("cache-control"), "no-store");
+});
+
+test("wave11: toResponse({ contextHeaders }) accepts HeadersInit as plain object", () => {
+  const err = new HttpError(500, { title: "Internal" });
+  const res = err.toResponse({
+    contextHeaders: { "x-trace-id": "abc" },
+  });
+  assert.equal(res.headers.get("x-trace-id"), "abc");
+});
+
+test("wave11: toResponse({ contextHeaders }) does not overwrite baked headers by case", () => {
+  const err = new HttpError(
+    401,
+    { title: "Unauthorized" },
+    { "Cache-Control": "no-store" },
+  );
+  const res = err.toResponse({
+    contextHeaders: { "cache-control": "public, max-age=60" },
+  });
+  assert.equal(res.headers.get("cache-control"), "no-store");
+});
+
+// Item 8: plugin extensions header-conflict refusal.
+
+test("wave11: topoSortExtensions throws when two extensions mutate the same header without ordering", () => {
+  const exts: PluginExtension[] = [
+    {
+      name: "A",
+      event: "onSend",
+      handler: () => {},
+      responseHeaders: ["x-foo"],
+    },
+    {
+      name: "B",
+      event: "onSend",
+      handler: () => {},
+      responseHeaders: ["X-Foo"],
+    },
+  ];
+  assert.throws(
+    () => topoSortExtensions(exts),
+    /Plugin extension header conflict.*"A".*"B".*"x-foo"/,
+  );
+});
+
+test("wave11: topoSortExtensions accepts conflicting headers when before is declared", () => {
+  const exts: PluginExtension[] = [
+    {
+      name: "A",
+      event: "onSend",
+      handler: () => {},
+      responseHeaders: ["x-foo"],
+      before: ["B"],
+    },
+    {
+      name: "B",
+      event: "onSend",
+      handler: () => {},
+      responseHeaders: ["x-foo"],
+    },
+  ];
+  const out = topoSortExtensions(exts);
+  assert.deepEqual(out.map((e) => e.name), ["A", "B"]);
+});
+
+test("wave11: topoSortExtensions accepts non-overlapping responseHeaders without ordering", () => {
+  const exts: PluginExtension[] = [
+    {
+      name: "A",
+      event: "onSend",
+      handler: () => {},
+      responseHeaders: ["x-foo"],
+    },
+    {
+      name: "B",
+      event: "onSend",
+      handler: () => {},
+      responseHeaders: ["x-bar"],
+    },
+  ];
+  const out = topoSortExtensions(exts);
+  assert.equal(out.length, 2);
 });

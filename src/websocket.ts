@@ -151,6 +151,28 @@ export interface WebSocketHandler<
   idleTimeout?: number;
   /** Maximum inbound message payload length in bytes. Default: 1 MiB. */
   maxPayloadLength?: number;
+  /**
+   * Wave 11 — explicitly mark this WebSocket route as intentionally public.
+   * In production with `secureDefaults` enabled, routes without a
+   * `beforeUpgrade` decision hook are refused at registration unless this is
+   * `true`, so an authenticated WebSocket cannot accidentally perform auth in
+   * `open()` after the RFC 6455 upgrade has already succeeded.
+   *
+   * @since 0.32.0
+   */
+  acknowledgeUnauthenticated?: boolean;
+  /**
+   * Wave 11 — acknowledge that a header-mutating middleware (CORS,
+   * `secureHeaders`, `etag`, `compression`, CSRF) is mounted on a path that
+   * matches this WebSocket route. By default the framework refuses at
+   * registration because once the RFC 6455 upgrade response is sent, no
+   * further headers can be added by middleware. Pass `true` only if the
+   * middleware is known to skip the upgrade request (the framework cannot
+   * verify this).
+   *
+   * @since 0.32.0
+   */
+  acknowledgeHeaderMutatingMiddleware?: boolean;
   beforeUpgrade?(
     request: Request,
     ctx: WebSocketContext<P, S>,

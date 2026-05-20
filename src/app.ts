@@ -55,6 +55,7 @@ import {
   type CorsOriginAllow,
   type SecureHeadersOptions,
 } from "./middleware.js";
+import { COMPRESSION_HOOK_MARKER } from "./compression.js";
 import {
   SESSION_HOOK_MARKER,
   SESSION_SECRETS_MARKER,
@@ -491,6 +492,17 @@ export interface PluginExtension {
   before?: readonly string[];
   /** Extension names this one must run after. */
   after?: readonly string[];
+  /**
+   * Wave 11 — names of response headers this extension mutates. When two
+   * extensions declare an overlapping `responseHeaders` entry without
+   * declaring an explicit `before` / `after` relationship between them,
+   * {@link topoSortExtensions} refuses-at-registration with a structured
+   * error — the resulting header value would otherwise depend on the
+   * non-deterministic registration order of the plugins.
+   *
+   * @since 0.32.0
+   */
+  responseHeaders?: readonly string[];
 }
 
 /** Information passed to {@link App.onShutdown} listeners. */
@@ -1378,10 +1390,53 @@ export class App {
     handler: WebSocketHandler<P, any, TData>,
   ): this {
     const fullPath = joinPath(this.prefix, path) as PathString;
+    const production = this.isProduction();
+    const secureDefaults = this.options.secureDefaults !== false;
     const options = normalizeWebSocketOptions(handler, {
-      production: this.isProduction(),
-      secureDefaults: this.options.secureDefaults !== false,
+      production,
+      secureDefaults,
     });
+    // Wave 11 — pre-upgrade authentication boundary. In production under
+    // secureDefaults, a WebSocket route must either make an explicit
+    // pre-upgrade decision (`beforeUpgrade`) or acknowledge that the route is
+    // intentionally public. This prevents accidental auth in `open()` after
+    // the 101 response has already committed the connection.
+    if (
+      production &&
+      secureDefaults &&
+      handler.beforeUpgrade === undefined &&
+      handler.acknowledgeUnauthenticated !== true
+    ) {
+      throw new Error(
+        `app.ws(${JSON.stringify(fullPath)}): production WebSocket routes must ` +
+          "authenticate or reject clients before the RFC 6455 upgrade. Add a " +
+          "beforeUpgrade hook for authenticated routes, or pass " +
+          "{ acknowledgeUnauthenticated: true } for an intentionally public route.",
+      );
+    }
+    // Wave 11 — WebSocket post-upgrade header immutability. Once the RFC
+    // 6455 101 handshake has been sent, no further response headers can be
+    // added by middleware; mounting header-mutating middleware on a path
+    // that also matches a WS route is a documented misconfiguration in
+    // upstream frameworks. Refuse-at-registration with a structured error
+    // naming both the WS route and the conflicting middleware unless the
+    // developer explicitly acknowledges the configuration.
+    if (handler.acknowledgeHeaderMutatingMiddleware !== true) {
+      const conflicts = detectHeaderMutatingMiddleware([
+        this.options.hooks ?? {},
+        ...this.groupHooks,
+      ]);
+      if (conflicts.length > 0) {
+        throw new Error(
+          `app.ws(${JSON.stringify(fullPath)}): ${conflicts.join(", ")} ` +
+            "middleware is mounted on a path that matches this WebSocket " +
+            "route, but no response headers can be added after the RFC 6455 " +
+            "upgrade. Either move the middleware below the WebSocket scope, " +
+            "or pass { acknowledgeHeaderMutatingMiddleware: true } after " +
+            "confirming the middleware does not run on Upgrade requests.",
+        );
+      }
+    }
     this.webSocketRoutes.add(
       fullPath,
       handler as WebSocketHandler<any, any, any>,
@@ -2496,6 +2551,29 @@ function corsOriginAllowsFromHooks(layers: Hooks[]): CorsOriginAllow[] {
 }
 
 /**
+ * Wave 11 — detect header-mutating middleware on a WebSocket route's
+ * effective hook stack. Returns a list of human-readable names for any
+ * middleware that would otherwise lose its headers to the post-upgrade
+ * RFC 6455 frame stream.
+ * @internal
+ */
+function detectHeaderMutatingMiddleware(layers: Hooks[]): string[] {
+  const found: string[] = [];
+  for (const hooks of layers) {
+    const record = hooks as Record<PropertyKey, unknown>;
+    // Skip the framework-default auto-secureHeaders bundle — it is
+    // installed by every App and only sets headers that are missing, so it
+    // never conflicts with a WebSocket upgrade in practice.
+    const isAuto = record[AUTO_SECURE_HEADERS_MARKER] === true;
+    if (!isAuto && record[SECURE_HEADERS_MARKER] === true) found.push("secureHeaders()");
+    if (record[CORS_HOOK_MARKER] === true) found.push("cors()");
+    if (record[CSRF_HOOK_MARKER] === true) found.push("csrf()");
+    if (record[COMPRESSION_HOOK_MARKER] === true) found.push("compression()");
+  }
+  return Array.from(new Set(found));
+}
+
+/**
  * Topological sort of plugin extensions (Wave 6 item 10). Refuses-at-call
  * on cyclic ordering with a structured error naming the cycle.
  * @internal
@@ -2546,6 +2624,39 @@ export function topoSortExtensions(
     throw new Error(
       `Plugin extension cycle detected among: ${remaining.map((n) => JSON.stringify(n)).join(", ")}.`,
     );
+  }
+  // Wave 11 — refuse pairs of extensions that mutate the same response
+  // header without declaring a before/after ordering relative to each
+  // other. The resulting header value would otherwise depend on plugin
+  // registration order.
+  for (let i = 0; i < exts.length; i++) {
+    const a = exts[i]!;
+    const aHeaders = a.responseHeaders;
+    if (!aHeaders || aHeaders.length === 0) continue;
+    const aSet = new Set(aHeaders.map((h) => h.toLowerCase()));
+    for (let j = i + 1; j < exts.length; j++) {
+      const b = exts[j]!;
+      const bHeaders = b.responseHeaders;
+      if (!bHeaders || bHeaders.length === 0) continue;
+      const overlap = bHeaders
+        .map((h) => h.toLowerCase())
+        .filter((h) => aSet.has(h));
+      if (overlap.length === 0) continue;
+      const declared =
+        (a.before ?? []).includes(b.name) ||
+        (a.after ?? []).includes(b.name) ||
+        (b.before ?? []).includes(a.name) ||
+        (b.after ?? []).includes(a.name);
+      if (!declared) {
+        throw new Error(
+          `Plugin extension header conflict: ${JSON.stringify(a.name)} and ` +
+            `${JSON.stringify(b.name)} both mutate response header(s) ` +
+            `${overlap.map((h) => JSON.stringify(h)).join(", ")} but neither ` +
+            "declares a `before` or `after` relationship to the other. Add the " +
+            "missing ordering to make the merged header value deterministic.",
+        );
+      }
+    }
   }
   return out;
 }

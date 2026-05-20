@@ -74,8 +74,12 @@ export {
   TooManyRequestsError,
   RequestTimeoutError,
   InternalError,
+  MessageLeakError,
+  httpError,
+  SAFE_CUSTOM_ERROR_RESPONSE_HEADERS,
+  checkCustomErrorResponseHeaders,
 } from "./errors.js";
-export type { ProblemDetails, ProblemRenderOptions } from "./errors.js";
+export type { ProblemDetails, ProblemRenderOptions, HttpErrorOptions } from "./errors.js";
 
 export type { StandardSchemaV1 } from "./schema.js";
 export { validate, isStandardSchema } from "./schema.js";
