@@ -401,6 +401,52 @@ If a future incident report describes an attack step that any control in
 the table above should have blocked, treat the gap as a release-blocking
 bug and open a private advisory.
 
+### Cross-platform postinstall binary drop (axios 2026 compromise pattern)
+
+Snyk's 2026 disclosure of the
+[axios npm package compromise](https://snyk.io/blog/axios-npm-package-compromised-supply-chain-attack-delivers-cross-platform/)
+(see also Microsoft's
+[mitigation guidance](https://www.microsoft.com/en-us/security/blog/2026/04/01/mitigating-the-axios-npm-supply-chain-compromise/)
+and Arctic Wolf's
+[writeup](https://arcticwolf.com/resources/blog/supply-chain-attack-impacts-widely-used-axios-npm-package/))
+is listed here because `axios` is one of the most-installed packages on
+npm and the compromise touched a maintainer-account takeover, a
+`postinstall` lifecycle script, and a cross-platform native payload — a
+combination several earlier entries only partially cover. We map each
+step explicitly so reviewers don't have to re-derive which Daloy control
+catches it.
+
+| Attack step | DaloyJS / template control |
+| --- | --- |
+| Maintainer account takeover (phishing / lapsed recovery email) used to publish trojaned `axios` versions | Upstream of any package-manager control. Our equivalent surface is every handle in [`SECURITY-CONTACTS.md`](SECURITY-CONTACTS.md) § Active: hardware-backed 2FA is mandatory at both the npm registry and the GitHub organization level (see § Maintainer accounts), the quarterly disclosure exercise re-verifies that each active contact's GitHub and npm recovery-email addresses still resolve to a domain the contact personally owns, and a lapsed-domain finding blocks the next publish. No long-lived `NPM_TOKEN` exists for an attacker to abuse; publishes use OIDC + Sigstore from `release.yml` only. |
+| Trojaned version published moments before a downstream `pnpm install` | `minimum-release-age=1440` (24 h cooldown) in root [`.npmrc`](.npmrc) and every scaffolded template [`_npmrc`](packages/create-daloy/templates/node-basic/_npmrc) blocks install of a freshly published trojan version inside the typical detect-and-unpublish window. Every malicious `axios` release in this campaign was removed inside that window. |
+| `postinstall` script (e.g. `prepare_node.js`) drops and executes a cross-platform Go binary that harvests npm/CI tokens, env vars, and wallets | `ignore-scripts=true` in root [`.npmrc`](.npmrc) and every template `_npmrc` suppresses *every* lifecycle hook (`preinstall` / `install` / `postinstall` / `prepare`). The allowlist for packages that legitimately need to build is `pnpm.onlyBuiltDependencies` in [`package.json`](package.json) (`esbuild` only on the framework; nothing on `@daloyjs/core` itself). The [`scripts/verify-no-lifecycle-scripts.ts`](scripts/verify-no-lifecycle-scripts.ts) governance gate (`pnpm verify:no-lifecycle-scripts`) refuses any PR that adds an install-time hook to a published manifest, so a future maintainer cannot quietly weaken this either. |
+| `axios` pulled in transitively by an unrelated dependency, executing its `postinstall` on a consumer install of `@daloyjs/core` | `@daloyjs/core` ships **zero runtime dependencies** (enforced by [`pnpm verify:no-runtime-deps`](scripts/verify-no-runtime-deps.ts) and the governance floor). Installing `@daloyjs/core` cannot pull in `axios` — or any other package — transitively. The framework's own HTTP/client code uses the platform `fetch` and Node `http`, never `axios`. |
+| Trojaned binary phones home from the publish runner to attacker C2 | `step-security/harden-runner` on the publish workflow (see § CI/CD) blocks egress to anything outside the npm registry, GitHub, and the Sigstore endpoints needed for provenance. Even if a transitive dev-dep on the publish runner were trojaned in a future incident, the runner cannot reach attacker infrastructure. The same workflow runs in the protected `npm-publish` GitHub Environment with `persist-credentials: false`, so a stolen workflow token would expire before the next job step. |
+| Consumer reinstalls and reintroduces the trojan after cleanup because the lockfile still pins the bad version | Scaffolded projects ship the same posture as the framework: `minimumReleaseAge: 1440` in [`packages/create-daloy/templates/*/pnpm-workspace.yaml`](packages/create-daloy/templates), `ignore-scripts=true` in each template `_npmrc`, and a lockfile that is committed and CI-checked with `pnpm install --frozen-lockfile`. Consumers can pin off a known-good version and rely on `pnpm verify:lockfile` ([`scripts/verify-lockfile-sources.ts`](scripts/verify-lockfile-sources.ts)) to reject any non-`registry.npmjs.org` tarball substitution. |
+
+What this **does not** defend against, and we say so explicitly:
+
+- A *consumer* application that depends on `axios` (directly or
+  transitively) and disables the template defaults — e.g. removes
+  `ignore-scripts=true` from its `.npmrc` or sets
+  `--minimum-release-age=0`. Daloy ships safe defaults in every
+  scaffolded template; we cannot police downstream projects that opt
+  out of them.
+- A future axios-style compromise that publishes a trojan version,
+  remains undetected for **longer** than 24 h, and ships an
+  import-time (not install-time) payload. `ignore-scripts=true` would
+  not help against a pure `import`-time payload (see the `node-ipc`
+  2026-05-14 table above); `minimum-release-age=1440` is what shortens
+  that window, and the zero-runtime-deps posture is what keeps
+  `@daloyjs/core` from carrying such a package at all.
+- Compromise of the npm registry itself. Provenance attestations make
+  it detectable after the fact; preventing it is npm's responsibility.
+
+If a future incident report describes an attack step that any control in
+the table above should have blocked, treat the gap as a release-blocking
+bug and open a private advisory.
+
 ### Import-time CJS payload + dormant-maintainer takeover (node-ipc 2026-05-14 reload)
 
 Socket's 2026-05-14 disclosure of the
@@ -501,7 +547,7 @@ registry, and that skill either prompt-injects the agent into
 exfiltrating files and tokens or directly executes attacker-controlled
 shell commands with the developer's local privileges. The malicious code
 never enters `package.json` or `pnpm-lock.yaml`, so none of the
-npm-focused controls in the `node-ipc` / `shopsprint` / `@antv` tables
+npm-focused controls in the `node-ipc` / `shopsprint` / `axios` / `@antv` tables
 above apply directly. We list it here for the same reason we list the
 GitHub VS Code-extension breach above: operators ask, and the honest
 answer is that some of this is outside a backend framework's boundary.
