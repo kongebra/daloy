@@ -550,6 +550,108 @@ test("verify-no-remote-exec accepts the live src/ tree", async () => {
   );
 });
 
+// ---------- verify-no-registry-exfiltration (Socket GemStuffer gate) ----------
+
+test("verify-no-registry-exfiltration flags every documented GemStuffer-class primitive", async () => {
+  const { findForbiddenRegistryExfilCalls } = await import(
+    "../scripts/verify-no-registry-exfiltration.js"
+  );
+  const sample = [
+    "// unsafe: TLS verification bypass (GemStuffer VERIFY_NONE)",
+    "const agent = new Agent({ rejectUnauthorized: false });",
+    "",
+    "// unsafe: process-wide TLS bypass via env",
+    'process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";',
+    "",
+    "// unsafe: HOME override (GemStuffer credential injection)",
+    'process.env.HOME = "/tmp/gemhome";',
+    "",
+    "// unsafe: npm publish-API path in source",
+    'const url = "https://registry.npmjs.org/-/npm/v1/publish";',
+    "",
+    "// unsafe: RubyGems publish endpoint literal",
+    'const r = "https://rubygems.org/api/v1/gems";',
+    "",
+    "// unsafe: PyPI legacy upload endpoint",
+    'const p = "https://upload.pypi.org/legacy/";',
+    "",
+    "// unsafe: crates.io publish endpoint",
+    'const c = "https://crates.io/api/v1/crates/new";',
+    "",
+    "// unsafe: host .npmrc read",
+    'const rc = path.join(home, "/.npmrc");',
+    "",
+    "// unsafe: host yarn credentials",
+    'const yr = home + "/.yarnrc.yml";',
+    "",
+    "// unsafe: host .netrc",
+    'const nr = home + "/.netrc";',
+    "",
+    "// unsafe: GemStuffer's fabricated gem credentials path",
+    'const gc = "/tmp/gemhome/.gem/credentials";',
+  ].join("\n");
+  const findings = findForbiddenRegistryExfilCalls("sample.ts", sample);
+  // Each of the 11 forbidden lines must produce exactly one finding.
+  assert.equal(findings.length, 11, JSON.stringify(findings, null, 2));
+  assert.match(findings[0]!.reason, /rejectUnauthorized/);
+  assert.match(findings[1]!.reason, /NODE_TLS_REJECT_UNAUTHORIZED/);
+  assert.match(findings[2]!.reason, /HOME/);
+  assert.match(findings[3]!.reason, /npm publish-API/);
+  assert.match(findings[4]!.reason, /RubyGems/);
+  assert.match(findings[5]!.reason, /PyPI/);
+  assert.match(findings[6]!.reason, /crates\.io/);
+  assert.match(findings[7]!.reason, /\.npmrc/);
+  assert.match(findings[8]!.reason, /yarnrc/);
+  assert.match(findings[9]!.reason, /\.netrc/);
+  assert.match(findings[10]!.reason, /\.gem\/credentials/);
+});
+
+test("verify-no-registry-exfiltration ignores forbidden tokens inside comments and code-only strings", async () => {
+  const { findForbiddenRegistryExfilCalls } = await import(
+    "../scripts/verify-no-registry-exfiltration.js"
+  );
+  const sample = [
+    "/* This block comment mentions rejectUnauthorized: false and HOME = '/tmp' and must not trip. */",
+    "// also a line comment about NODE_TLS_REJECT_UNAUTHORIZED",
+    'const doc = "do not write rejectUnauthorized: false in real code";',
+    "// reading equality on HOME is not a mutation",
+    'if (process.env.HOME === "/root") { /* ok */ }',
+    "// docstring referencing the host file generically",
+    'const note = "see npmjs.com docs for auth";',
+  ].join("\n");
+  const findings = findForbiddenRegistryExfilCalls("sample.ts", sample);
+  assert.equal(findings.length, 0, JSON.stringify(findings, null, 2));
+});
+
+test("verify-no-registry-exfiltration accepts the live src/ tree", async () => {
+  const { findForbiddenRegistryExfilCalls } = await import(
+    "../scripts/verify-no-registry-exfiltration.js"
+  );
+  const { readFile, readdir } = await import("node:fs/promises");
+  const path = await import("node:path");
+  const srcRoot = path.resolve(process.cwd(), "src");
+  async function* walk(dir: string): AsyncGenerator<string> {
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
+      const child = path.join(dir, entry.name);
+      if (entry.isDirectory()) yield* walk(child);
+      else if (entry.isFile() && /\.(?:m?ts|m?js)$/.test(entry.name)) yield child;
+    }
+  }
+  let total = 0;
+  for await (const absolute of walk(srcRoot)) {
+    const rel = path.relative(process.cwd(), absolute);
+    const text = await readFile(absolute, "utf8");
+    total += findForbiddenRegistryExfilCalls(rel, text).length;
+  }
+  assert.equal(
+    total,
+    0,
+    "src/ must remain free of TLS-verification bypasses, HOME mutations, host credential-file " +
+      "references, and package-registry publish-API paths (GemStuffer class); see " +
+      "https://socket.dev/blog/gemstuffer",
+  );
+});
+
 // ---------- verify-no-vulnerable-sandboxes (Socket vm2 CVE-2026-26956 gate) ----------
 
 test("verify-no-vulnerable-sandboxes flags every forbidden sandbox package across every dep bucket", async () => {

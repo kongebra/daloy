@@ -179,6 +179,7 @@
     "verify:no-vulnerable-sandboxes": "node --import tsx scripts/verify-no-vulnerable-sandboxes.ts",
     "verify:no-leaked-credentials": "node --import tsx scripts/verify-no-leaked-credentials.ts",
     "verify:no-invisible-unicode": "node --import tsx scripts/verify-no-invisible-unicode.ts",
+    "verify:no-registry-exfiltration": "node --import tsx scripts/verify-no-registry-exfiltration.ts",
     "verify:wave9-audits": "node --import tsx scripts/verify-wave9-audits.ts",
     "verify:wave10-audits": "node --import tsx scripts/verify-wave10-audits.ts",
     "verify:wave11-audits": "node --import tsx scripts/verify-wave11-audits.ts",
