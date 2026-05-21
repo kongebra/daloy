@@ -1465,3 +1465,41 @@ If a future incident report describes an attack step that any control in
 this section should have blocked, treat the gap as a release-blocking bug
 and open a private advisory via
 <https://github.com/daloyjs/daloy/security/advisories/new>.
+
+### Snyk "Jedi lessons to level up your JavaScript security" mapping
+
+Snyk's [3 Jedi-inspired lessons to level up your JavaScript security](https://snyk.io/blog/jedi-lessons-to-level-up-javascript-security/)
+post (Liran Tal, 2022) is generic JS-security guidance rather than a single
+CVE, but operators occasionally cite it when asking which of its concrete
+recommendations a framework should already enforce on their behalf. Each
+concrete tool / class the post calls out maps to an existing DaloyJS
+control, so adopting Daloy gives a downstream project these defenses by
+default without any extra `npm install` / `pre-commit` plumbing:
+
+| Snyk recommendation | DaloyJS / template control |
+| --- | --- |
+| Detect **Trojan Source** / invisible-Unicode attacks ([`eslint-plugin-anti-trojan-source`](https://github.com/lirantal/eslint-plugin-anti-trojan-source)) | [`pnpm verify:no-invisible-unicode`](scripts/verify-no-invisible-unicode.ts) runs in [`ci.yml`](.github/workflows/ci.yml) and the pre-publish `verify` job in [`release.yml`](.github/workflows/release.yml). It rejects every bidi-control / zero-width / format / tag / variation-selector codepoint in `src/`, `bin/`, `scripts/`, `tests/`, and the assembled tarball. Closes the trojan-source class without requiring consumers to wire up an ESLint plugin. |
+| Lint `pnpm-lock.yaml` / `package-lock.json` against malicious-module injection (`lockfile-lint`) | [`pnpm verify:lockfile`](scripts/verify-lockfile-sources.ts) refuses any lockfile entry resolved from a non-registry source (`git+`, `git://`, `ssh://`, `github:`, `gitlab:`, `bitbucket:`, `gist:`, raw `git@…`, or any tarball URL outside `registry.npmjs.org`). The root [`.npmrc`](.npmrc) and every scaffolded template `_npmrc` pin `registry=https://registry.npmjs.org/`, and `pnpm install --frozen-lockfile` runs in CI. Lockfile drift is a PR-review event, not a silent install. |
+| Prevent **dependency confusion** (attacker registers an unclaimed internal name on the public registry) | All Daloy-published names are scoped under `@daloyjs/*` or the registered unscoped name `create-daloy`; the scope is owned at the registry level so an attacker cannot publish `@daloyjs/anything-else`. The `verify:lockfile` gate above plus `blockExoticSubdeps: true` in [`pnpm-workspace.yaml`](pnpm-workspace.yaml) (and the template equivalents) refuse transitive deps from any source other than the configured registry. See § Supply-chain security → "Dependency confusion" for the full row. |
+| Avoid **typosquatting** + deprecated / unhealthy packages | `@daloyjs/core` declares **zero runtime dependencies** (enforced by [`pnpm verify:no-runtime-deps`](scripts/verify-no-runtime-deps.ts)), so consumers carry no transitive `npm install` surface a typo can land on through us. [`pnpm verify:no-bin-shadowing`](scripts/verify-no-bin-shadowing.ts) closes the bin-script typosquat class flagged by [Socket](https://socket.dev/blog/npm-bin-script-confusion). `minimum-release-age=1440` in root [`.npmrc`](.npmrc) and every template `_npmrc` adds a 24 h cooldown so a freshly-published typosquat cannot resolve before analysis catches it. See also § Supply-chain security → "Typosquatting" and the four typosquat-pattern sub-sections above (shopsprint, IR.* NuGet, axios, bin-script confusion). |
+| Run continuous vulnerability scanning (`snyk test` / IDE plugin / repo monitor) | The framework's own pipeline runs `pnpm audit --audit-level=high` in [`ci.yml`](.github/workflows/ci.yml) and again in the pre-publish `verify` job in [`release.yml`](.github/workflows/release.yml), alongside the full [`verify:*`](scripts) family. Scaffolded `create-daloy` templates ship the same audit step in their generated [`packages/create-daloy/templates/_ci/node/SECURITY.md`](packages/create-daloy/templates/_ci/node/SECURITY.md) workflow, plus Dependabot configuration, so a green-field app starts with continuous scanning enabled. Consumers can layer Snyk / Socket / Aikido on top, but the baseline does not require it. |
+| Defend against **prototype pollution** | Core `safeJsonParse` strips `__proto__` / `constructor` / `prototype` via reviver on every parsed JSON request body; the three non-JSON parsers in [`src/app.ts`](src/app.ts) funnel keys through `isForbiddenObjectKey` from [`src/security.ts`](src/security.ts) and drop the same keys before assignment; JWT verification ([`src/jwt.ts`](src/jwt.ts)) applies the reviver to the attacker-controlled header and payload. See § Threat model → "Prototype pollution via JSON" and "Parameter-binding RCE (Spring4Shell-class)" for the full rows. Regression-tested in [`tests/security.test.ts`](tests/security.test.ts). |
+
+What this section **does not** claim:
+
+- That the framework relieves consumers from secure-code-review discipline
+  in their own handlers. The post's "your eyes can deceive you" advice
+  about reviewing for security-relevant patterns still applies to
+  application code; Daloy can only enforce the framework boundary.
+- That `@daloyjs/core` replaces a vulnerability scanner. We ship audit
+  gates and zero runtime deps; consumers should still run a SCA tool of
+  their choice (Snyk, Socket, Aikido, GitHub Dependabot) against their
+  own dep tree.
+- That any of the above blocks a human author from typing a typosquatted
+  name into their own `package.json`. Mitigations are review, scope
+  awareness (`@daloyjs/*`), and `pnpm why <name>` before merge.
+
+If a future incident report describes an attack step that any control in
+this section should have blocked, treat the gap as a release-blocking bug
+and open a private advisory via
+<https://github.com/daloyjs/daloy/security/advisories/new>.
