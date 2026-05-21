@@ -559,6 +559,99 @@ const FORBIDDEN_PATTERNS: readonly ForbiddenPattern[] = [
       "Daloy core never shells out — remove this literal",
     keepStrings: true,
   },
+  // ---- Lazarus BeaverTail / InvisibleFerret campaign (Socket
+  //      2025-03-10, https://socket.dev/blog/lazarus-strikes-npm-again-with-a-new-wave-of-malicious-packages) ----
+  //
+  // Six typosquatted npm packages (`is-buffer-validator`,
+  // `yoojae-validator`, `event-handle-package`,
+  // `array-empty-validator`, `react-event-dependency`,
+  // `auth-validator`) embedded BeaverTail, which iterates browser
+  // profiles to extract Chrome / Brave / Firefox `Login Data` and
+  // Chromium `Local Extension Settings`, slurps macOS Keychain
+  // archives, and steals crypto wallet keys (`~/.config/solana/id.json`,
+  // `exodus.wallet`). The stolen data is POSTed to
+  // `http://172.86.84.38:1224/uploads`, and the second-stage
+  // InvisibleFerret backdoor is downloaded via `curl` to
+  // `${tmpDir}/p.zi` / `${tmpDir}/p2.zip` and extracted with `tar -xf`.
+  // The bare-IP IOC slips past the raw-IPv4 URL gate above when it is
+  // assigned to a variable (not embedded inside an `http(s)://` URL);
+  // the file-path literals below have no legitimate use inside a
+  // backend HTTP framework's runtime source.
+  {
+    re: /\b172\.86\.84\.38\b/,
+    reason:
+      "`172.86.84.38` is the documented C2 host for the Lazarus BeaverTail / InvisibleFerret " +
+      "campaign (six typosquatted npm packages, March 2025); the bare-IP literal slips past the " +
+      "raw-IPv4 URL gate when assigned to a variable for later string-concat into a URL " +
+      "(https://socket.dev/blog/lazarus-strikes-npm-again-with-a-new-wave-of-malicious-packages) — " +
+      "any reference in `src/**` is a hard IOC",
+    keepStrings: true,
+  },
+  {
+    // Chrome / Brave / Chromium credentials DB filename. BeaverTail
+    // walks `${userDataDir}/Profile N/Login Data` to extract saved
+    // passwords. Daloy has no reason to ever reference this filename
+    // — a real backend framework never reads browser SQLite
+    // databases off the host filesystem.
+    re: /["'`/\\]Login Data["'`/\\]/,
+    reason:
+      "`Login Data` is the Chrome / Brave / Chromium saved-passwords SQLite database filename; " +
+      "the Lazarus BeaverTail campaign walks `${userDataDir}/Profile N/Login Data` to extract " +
+      "browser credentials " +
+      "(https://socket.dev/blog/lazarus-strikes-npm-again-with-a-new-wave-of-malicious-packages) — " +
+      "a backend HTTP framework never reads browser credential databases, remove this literal",
+    keepStrings: true,
+  },
+  {
+    // Chromium extension storage path. BeaverTail walks
+    // `${userDataDir}/Profile N/Local Extension Settings` to slurp
+    // MetaMask / Exodus / Phantom wallet extension data (`.log` /
+    // `.ldb` files). Daloy has no reason to reference this path.
+    re: /\bLocal Extension Settings\b/,
+    reason:
+      "`Local Extension Settings` is the Chromium browser path the Lazarus BeaverTail campaign " +
+      "walks to slurp MetaMask / Exodus / Phantom wallet extension data " +
+      "(https://socket.dev/blog/lazarus-strikes-npm-again-with-a-new-wave-of-malicious-packages); " +
+      "a backend HTTP framework has no business reading browser extension storage — remove this " +
+      "literal",
+    keepStrings: true,
+  },
+  {
+    // Solana CLI keypair file path. BeaverTail reads
+    // `${homeDir}/.config/solana/id.json` to steal the user's
+    // Solana wallet private key. A backend framework has no
+    // reason to ever reference this path.
+    re: /\.config[\\/]solana[\\/]id\.json\b/i,
+    reason:
+      "`.config/solana/id.json` is the Solana CLI keypair file the Lazarus BeaverTail campaign " +
+      "exfiltrates to steal the user's Solana wallet private key " +
+      "(https://socket.dev/blog/lazarus-strikes-npm-again-with-a-new-wave-of-malicious-packages); " +
+      "a backend HTTP framework never reads crypto-wallet keypair files — remove this literal",
+    keepStrings: true,
+  },
+  {
+    // Exodus desktop wallet file. BeaverTail enumerates
+    // `exodus.wallet` to steal wallet seeds/keys. No legitimate
+    // use inside a backend framework.
+    re: /\bexodus\.wallet\b/i,
+    reason:
+      "`exodus.wallet` is the Exodus desktop-wallet filename the Lazarus BeaverTail campaign " +
+      "enumerates to steal wallet seeds and keys " +
+      "(https://socket.dev/blog/lazarus-strikes-npm-again-with-a-new-wave-of-malicious-packages); " +
+      "a backend HTTP framework never reads crypto-wallet files — remove this literal",
+    keepStrings: true,
+  },
+  {
+    // macOS Keychain directory. BeaverTail targets
+    // `~/Library/Keychains/` to exfiltrate macOS keychain archives.
+    re: /\/Library\/Keychains\//,
+    reason:
+      "`/Library/Keychains/` is the macOS Keychain directory the Lazarus BeaverTail campaign " +
+      "targets to exfiltrate keychain archives " +
+      "(https://socket.dev/blog/lazarus-strikes-npm-again-with-a-new-wave-of-malicious-packages); " +
+      "a backend HTTP framework never reads OS-level keychain files — remove this literal",
+    keepStrings: true,
+  },
 ];
 
 const STRING_LITERAL_RE = /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`/g;
@@ -694,16 +787,20 @@ async function main(): Promise<void> {
         "hidden install dir, embed raw-IPv4 `http(s)://` / `ws(s)://` URLs / the documented " +
         "RATatouille C2 IP `85.239.62.36`, name the `0x9c.xyz` exfiltration host (xrpl.js / Ripple " +
         "SDK April 2025 compromise), reference `authorized_keys` / `~/.ssh/`, name the " +
-        "`solana.validator.blog` C2 host (Telegram-bot SSH-backdoor class), or call public " +
+        "`solana.validator.blog` C2 host (Telegram-bot SSH-backdoor class), call public " +
         "IP-discovery endpoints (`ipinfo.io/ip`, `icanhazip.com`, `ifconfig.me`, `api.ipify.org`, " +
-        "`checkip.amazonaws.com`). These are the runtime primitives the GemStuffer, Lazarus / Jade " +
-        "Sleet, RATatouille / rand-user-agent, xrpl.js / Ripple-SDK, and Telegram-bot SSH-backdoor " +
-        "classes of supply-chain attack use to scrape and exfiltrate data. See " +
-        "https://socket.dev/blog/gemstuffer, " +
+        "`checkip.amazonaws.com`), or reference Lazarus BeaverTail / InvisibleFerret IOCs " +
+        "(`172.86.84.38` C2 IP, `Login Data` / `Local Extension Settings` browser-stealer paths, " +
+        "`.config/solana/id.json` / `exodus.wallet` crypto-wallet paths, `/Library/Keychains/` " +
+        "macOS keychain path). These are the runtime primitives the GemStuffer, Lazarus / Jade " +
+        "Sleet, RATatouille / rand-user-agent, xrpl.js / Ripple-SDK, Telegram-bot SSH-backdoor, " +
+        "and Lazarus BeaverTail / InvisibleFerret classes of supply-chain attack use to scrape " +
+        "and exfiltrate data. See https://socket.dev/blog/gemstuffer, " +
         "https://socket.dev/blog/social-engineering-campaign-npm-malware, " +
         "https://www.aikido.dev/blog/catching-a-rat-remote-access-trojian-rand-user-agent-supply-chain-compromise, " +
         "https://www.aikido.dev/blog/xrp-supplychain-attack-official-npm-package-infected-with-crypto-stealing-backdoor, " +
-        "and https://socket.dev/blog/npm-malware-targets-telegram-bot-developers.",
+        "https://socket.dev/blog/npm-malware-targets-telegram-bot-developers, " +
+        "and https://socket.dev/blog/lazarus-strikes-npm-again-with-a-new-wave-of-malicious-packages.",
     );
     process.exitCode = 1;
   }

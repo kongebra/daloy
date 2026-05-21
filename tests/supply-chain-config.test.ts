@@ -140,6 +140,61 @@ test("lockfile scanner rejects every npm git shorthand specifier (github/gitlab/
   }
 });
 
+test("lockfile scanner rejects every known-malicious Lazarus BeaverTail typosquat", () => {
+  // Socket 2025-03-10 — six typosquatted npm packages embedding BeaverTail /
+  // InvisibleFerret. Documented at
+  // https://socket.dev/blog/lazarus-strikes-npm-again-with-a-new-wave-of-malicious-packages.
+  // Any future PR that pulls one of these into `pnpm-lock.yaml` (direct or
+  // transitive) must be rejected by `pnpm verify:lockfile` before merge.
+  const lockfile = [
+    "packages:",
+    "  is-buffer-validator@1.0.0:",
+    "    resolution: {integrity: sha512-aaaa}",
+    "  yoojae-validator@1.0.0:",
+    "    resolution: {integrity: sha512-bbbb}",
+    "  event-handle-package@1.0.0:",
+    "    resolution: {integrity: sha512-cccc}",
+    "  array-empty-validator@1.0.0:",
+    "    resolution: {integrity: sha512-dddd}",
+    "  react-event-dependency@1.0.0:",
+    "    resolution: {integrity: sha512-eeee}",
+    "  auth-validator@1.0.0:",
+    "    resolution: {integrity: sha512-ffff}",
+  ].join("\n");
+
+  const findings = findForbiddenLockfileSources(lockfile);
+  assert.equal(findings.length, 6, JSON.stringify(findings, null, 2));
+  for (const finding of findings) {
+    assert.equal(
+      finding.reason,
+      "known-malicious package (Lazarus BeaverTail / InvisibleFerret)",
+    );
+  }
+  assert.match(findings[0]!.text, /is-buffer-validator/);
+  assert.match(findings[1]!.text, /yoojae-validator/);
+  assert.match(findings[2]!.text, /event-handle-package/);
+  assert.match(findings[3]!.text, /array-empty-validator/);
+  assert.match(findings[4]!.text, /react-event-dependency/);
+  assert.match(findings[5]!.text, /auth-validator/);
+});
+
+test("lockfile scanner allows the legitimate is-buffer package (exact-match blocklist)", () => {
+  // Regression: `is-buffer-validator` is the Lazarus typosquat, NOT the
+  // legitimate `is-buffer` package by Feross Aboukhadijeh (33M weekly
+  // downloads). The blocklist must be exact-name only — a real `is-buffer`
+  // entry must NOT be flagged.
+  const lockfile = [
+    "packages:",
+    "  is-buffer@2.0.5:",
+    "    resolution: {integrity: sha512-real-hash}",
+    "  some-pkg@1.0.0:",
+    "    dependencies:",
+    "      is-buffer: 2.0.5",
+  ].join("\n");
+
+  assert.deepEqual(findForbiddenLockfileSources(lockfile), []);
+});
+
 test("ci workflow avoids privileged fork-pr and cache-poisoning patterns", async () => {
   const workflow = await readWorkspaceFile(".github/workflows/ci.yml");
 

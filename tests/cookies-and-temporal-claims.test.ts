@@ -812,6 +812,50 @@ test("verify-no-registry-exfiltration flags Advcash reverse-shell IOCs", async (
   }
 });
 
+test("verify-no-registry-exfiltration flags every Lazarus BeaverTail / InvisibleFerret IOC", async () => {
+  // Socket 2025-03-10 — BeaverTail (browser-credential + crypto-wallet
+  // stealer) + InvisibleFerret backdoor inside six typosquatted npm
+  // packages. Documented at
+  // https://socket.dev/blog/lazarus-strikes-npm-again-with-a-new-wave-of-malicious-packages.
+  // The bare-IP C2 literal slips past the raw-IPv4 URL gate when it is
+  // assigned to a variable for later string-concat into a URL, and the
+  // browser-stealer / wallet-stealer file-path literals have no
+  // legitimate use inside a backend HTTP framework's runtime source.
+  const { findForbiddenRegistryExfilCalls } = await import(
+    "../scripts/verify-no-registry-exfiltration.js"
+  );
+  const sample = [
+    "// unsafe: documented BeaverTail C2 IP, bare literal",
+    'const c2 = "172.86.84.38";',
+    "",
+    "// unsafe: Chrome / Brave / Chromium credentials DB filename",
+    'const db = path.join(profile, "Login Data");',
+    "",
+    "// unsafe: Chromium browser extension storage path",
+    'const ext = profile + "/Local Extension Settings";',
+    "",
+    "// unsafe: Solana CLI keypair path",
+    'const k = home + "/.config/solana/id.json";',
+    "",
+    "// unsafe: Exodus desktop wallet filename",
+    'const w = "exodus.wallet";',
+    "",
+    "// unsafe: macOS Keychain directory",
+    'const kc = home + "/Library/Keychains/login.keychain-db";',
+  ].join("\n");
+  const findings = findForbiddenRegistryExfilCalls("sample.ts", sample);
+  assert.equal(findings.length, 6, JSON.stringify(findings, null, 2));
+  assert.match(findings[0]!.reason, /172\.86\.84\.38/);
+  assert.match(findings[1]!.reason, /Login Data/);
+  assert.match(findings[2]!.reason, /Local Extension Settings/);
+  assert.match(findings[3]!.reason, /solana\/id\.json/);
+  assert.match(findings[4]!.reason, /exodus\.wallet/);
+  assert.match(findings[5]!.reason, /Library\/Keychains/);
+  for (const finding of findings) {
+    assert.match(finding.reason, /BeaverTail|Lazarus/);
+  }
+});
+
 test("verify-no-registry-exfiltration ignores benign IP-shaped tokens", async () => {
   // Negative: dotted-quad version strings, doc-comment mentions of
   // the IOC IP, and benign shell-name mentions inside line comments
