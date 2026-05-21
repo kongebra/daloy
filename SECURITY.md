@@ -1110,6 +1110,84 @@ If you suspect a compromised version of `@daloyjs/core` or `create-daloy`:
   (the only paths in our `files` field).
 - Report to <https://github.com/daloyjs/daloy/security/advisories/new>.
 
+### Maintainer-access dispute in a low-level dependency (fsnotify 2026-05-08 pattern)
+
+Socket's 2026-05-08 writeup of the
+[fsnotify maintainer dispute](https://socket.dev/blog/fsnotify-maintainer-dispute-sparks-supply-chain-concerns)
+documents an *attack-shaped* event that turned out **not** to be an attack:
+a popular low-level dependency (Go's cross-platform filesystem-watcher,
+~321k dependent projects) saw a sudden removal of contributors from the
+GitHub organization, a deleted public post by a removed maintainer, and
+two fresh releases (`v1.10.0` and `v1.10.1`) shipped during the resulting
+confusion. There was no evidence any of those releases were compromised.
+The supply-chain concern, in Socket's words, is that "the early stages of
+a real supply chain compromise and the early stages of a maintainer
+dispute can look similar from the outside" — unclear release authority in
+a critical low-level dependency sends downstream users into verification
+mode even when nothing malicious happened.
+
+`fsnotify` itself is a Go library and is **not** in `@daloyjs/core`'s
+dependency tree (or any scaffolded template's tree) — Daloy is
+Node/TypeScript and does not ship a filesystem-watcher. But the *shape* of
+the incident — "popular low-level dep + sudden access changes +
+back-to-back releases during a dispute" — can land on the npm side
+tomorrow (`chokidar`, `node-watch`, `picomatch`, `signal-exit`, or any
+other deep transitive watcher / utility). We map our controls explicitly so
+operators don't have to re-derive them when the next npm version of this
+story breaks.
+
+| Attack-shaped step | DaloyJS / template control |
+| --- | --- |
+| Popular low-level dependency ships a back-to-back release while maintainer authority is in dispute, and downstream consumers `pnpm install` it inside the dispute window | `minimum-release-age=1440` (24 h cooldown) in this repo's [`.npmrc`](.npmrc) **and** in every scaffolded template's `_npmrc` ([`packages/create-daloy/templates/node-basic/_npmrc`](packages/create-daloy/templates/node-basic/_npmrc), `bun-basic`, `cloudflare-worker`, `vercel-edge`, etc.) refuses to resolve any version published less than 24 hours ago. If the disputed release turns out to be the start of a real takeover and is yanked inside that window (the typical detect-and-unpublish cadence), no consumer install ever resolves to it. |
+| Disputed dependency lives deep in the transitive tree, so downstream maintainers don't know they depend on it until a CVE drops | `@daloyjs/core` declares **zero runtime dependencies** ([`scripts/verify-no-runtime-deps.ts`](scripts/verify-no-runtime-deps.ts) runs as `pnpm verify:no-runtime-deps` in CI and in the pre-publish `verify` job in [`release.yml`](.github/workflows/release.yml)). Installing `@daloyjs/core` cannot pull a filesystem-watcher (or any other transitive dep) into a consumer's tree. `zod` is the only declared peer. The transitive surface a consumer has to worry about during a low-level-dep dispute is entirely the consumer's own — not Daloy's. |
+| New maintainer (or attacker) publishes a release whose tarball points at a `git+`, `github:`, or non-`registry.npmjs.org` source so registry scanners can't see the contents | `blockExoticSubdeps: true` in [`pnpm-workspace.yaml`](pnpm-workspace.yaml) and every template's `pnpm-workspace.yaml` refuses to install exotic sub-deps. `pnpm verify:lockfile` ([`scripts/verify-lockfile-sources.ts`](scripts/verify-lockfile-sources.ts)) runs in [`ci.yml`](.github/workflows/ci.yml) and the pre-publish `verify` job in `release.yml` and rejects any tarball whose origin is not `registry.npmjs.org`. |
+| Consumer's CI silently picks up the disputed release through a caret range during a routine rebuild | [`pnpm-lock.yaml`](pnpm-lock.yaml) is committed; CI runs `pnpm install --frozen-lockfile`; `pnpm verify:lockfile` rejects substitution. A rebuild resolves to the exact version recorded in the lockfile, not whatever the disputed dep's `latest` tag points at this hour. The same posture is shipped in every scaffolded template. |
+| Disputed release ships a `postinstall` / `preinstall` / `prepare` hook that fires the moment a consumer installs it | `ignore-scripts=true` in this repo's [`.npmrc`](.npmrc) and every template's `_npmrc` suppresses every lifecycle script. Packages permitted to build are listed explicitly in `pnpm.onlyBuiltDependencies` and `pnpm-workspace.yaml#onlyBuiltDependencies` (currently only `esbuild` in the framework; templates ship an empty allowlist). pnpm 11's `strictDepBuilds: true` (framework only) hard-refuses any newly added dep that *needs* to build. |
+| Disputed release lands code that fires at **import time** (the `node-ipc` / Lightning shape) rather than at `postinstall` | Same belt-and-braces as the `node-ipc 2026-05-14` and Lightning rows above: `@daloyjs/core` has zero runtime deps so it cannot transitively load a disputed package at import time; [`src/index.ts`](src/index.ts) is pure re-exports with no top-level side-effecting code (no `fetch`, no `spawn`, no `Buffer.from(..., "base64")` blobs, no `eval`); `scripts/verify-no-remote-exec.ts` refuses any `src/**` file that imports `node:child_process` / `node:vm`, calls bare `eval`, constructs `new Function` from a string, or dynamically imports a remote URL. |
+| Operator wants to verify the published bytes against the source commit before re-pinning | Every `@daloyjs/core` and `create-daloy` tarball is published with `--provenance` (root [`.npmrc`](.npmrc) sets `provenance=true`), which binds the bytes to the source commit and the `release.yml` workflow run via npm trusted publishing (OIDC) and Sigstore. The provenance attestation is the same primitive an operator should look for on a disputed third-party package before re-pinning to a fresh release. |
+
+**The reverse case — could a `fsnotify`-shaped maintainer dispute happen
+inside the Daloy project itself, and what stops it from translating into
+a malicious release?** We list the controls explicitly so the answer is
+not "trust us".
+
+| Concern raised by the fsnotify story | DaloyJS governance control |
+| --- | --- |
+| One maintainer silently removes other maintainers from the GitHub organization and starts cutting releases unilaterally | The **Active** rotation lives in [`SECURITY-CONTACTS.md`](SECURITY-CONTACTS.md) (cryptographically inspectable from git history; CODEOWNERS-protected by [`.github/CODEOWNERS`](.github/CODEOWNERS)) and is verified each quarter by the disclosure exercise (§ Recurring security-disclosure exercise). Off-boarding is a documented step on the release checklist (§ Maintainer accounts), not an ad-hoc decision. `pnpm verify:wave10-audits` refuses any PR that removes `SECURITY-CONTACTS.md` or `.github/CODEOWNERS`. |
+| Disputed maintainer pushes a fresh release directly to `main` and tags it | Branch protection on `main` requires PR review; CODEOWNERS enforces it for `package.json`, `pnpm-lock.yaml`, `.npmrc`, and `.github/`. Every release commit and `v*` tag is **signed**. The publish job in [`release.yml`](.github/workflows/release.yml) only runs from a signed `v*` tag and only inside the protected `npm-publish` GitHub Environment, which **requires a second listed maintainer to approve** before any `pnpm publish` runs. A single-maintainer push-then-tag does not produce a release on its own. |
+| Pre-publish `verify` job is silently weakened during the dispute (drop a `verify:*` gate, unpin an action, remove `harden-runner`) | `pnpm verify:wave10-audits` ([`scripts/verify-wave10-audits.ts`](scripts/verify-wave10-audits.ts)) refuses any PR that removes the top-level `permissions:` block, `persist-credentials: false`, a SHA-pin on a third-party action, `step-security/harden-runner` on workflows that use third-party actions, or the zero-runtime-deps gate. `zizmor` ([`.github/workflows/zizmor.yml`](.github/workflows/zizmor.yml)) statically rejects unsafe workflow patterns. Both gates run in `ci.yml` and the pre-publish `verify` job in `release.yml`, so a PR cannot pass CI under one rule set and be published under a weaker one. |
+| Publish actor is not who the maintainer rotation says it should be | The pre-publish `verify` job refuses to publish unless the GitHub actor on the publish run is listed in the **Active** block of [`SECURITY-CONTACTS.md`](SECURITY-CONTACTS.md) (§ Release checklist, step 6 — release gate). A removed maintainer who somehow re-claimed npm publish rights but is no longer in the active block cannot land a release. |
+| Outside observers cannot tell who actually controls the release pipeline | Release authority is documented in three places that move together: [`SECURITY-CONTACTS.md`](SECURITY-CONTACTS.md), [`.github/CODEOWNERS`](.github/CODEOWNERS), and the signed-tag chain in `git log`. The `npm-publish` GitHub Environment's required reviewers are the GitHub-side mirror of the same list. [`PROJECT_HISTORY.md`](PROJECT_HISTORY.md) records every release in append-only fashion (we have never force-pushed `main` and have never deleted a published version from npm — see § Mapping to Aikido Package Health → Maturity). |
+| A removed maintainer's GitHub or npm recovery email lapses and is re-registered by an attacker | The quarterly disclosure exercise (§ Recurring security-disclosure exercise, item 5, added 2026-05-20 in response to the `node-ipc` 2026-05-14 reload) verifies that every active contact's recovery-email domain still resolves to a domain the contact owns or to a custodial provider where the contact still has an active account. A lapsed-domain finding blocks the next publish. |
+
+**What this does not defend against, and we say so explicitly:**
+
+- A consumer who depends on a *different* low-level npm package that hits
+  a fsnotify-shaped governance dispute. Daloy can only speak to
+  `@daloyjs/core` and `create-daloy`. For every other package in the
+  consumer's tree the consumer should re-pin off a known-good lockfile,
+  wait out the 24 h cooldown, and verify the provenance attestation
+  before adopting a new release from the disputed project.
+- A genuine, well-intentioned fork. If a low-level dep does end up
+  forking under a new name (the article notes
+  `gofsnotify/fsnotify` as the announced fork from one removed
+  maintainer), evaluating that fork is the consumer's call. The most
+  Daloy can do is keep the *original* tree honest: zero runtime deps in
+  `@daloyjs/core` means the framework cannot drag a consumer into either
+  side of a fork by accident.
+- Two compromised Daloy maintainers acting together. The CODEOWNERS,
+  branch-protection, and `npm-publish` Environment controls assume the
+  required approver is independent of the proposer; two simultaneously
+  compromised accounts defeat that assumption. Hardware-backed 2FA on
+  every active maintainer and the off-boarding checklist exist to make
+  that expensive — and the quarterly disclosure exercise is the
+  recurring drill that catches drift before two accounts can drift
+  together.
+
+If a future incident report describes a maintainer-dispute-shaped attack
+step that any control in either table above should have blocked, treat
+the gap as a release-blocking bug and open a private advisory.
+
 ### JPMorganChase SaaS open letter (Opet 2025 pillars)
 
 On 2025-04-26, JPMorganChase CISO Patrick Opet published
