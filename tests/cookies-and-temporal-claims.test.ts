@@ -40,6 +40,15 @@ import {
   PUBLISHABLE_PACKAGES,
   scanFileContentForCredentials,
 } from "../scripts/verify-no-leaked-credentials.js";
+import {
+  ADDITIONAL_SOURCE_ROOTS,
+  FORBIDDEN_CLASSES,
+  findInvisibleUnicodeInPackage,
+  findInvisibleUnicodeInSourceRoot,
+  PUA_RANGES,
+  PUBLISHABLE_PACKAGES as INVISIBLE_PUBLISHABLE_PACKAGES,
+  scanFileForInvisibleUnicode,
+} from "../scripts/verify-no-invisible-unicode.js";
 
 // ---------- cookie.ts ----------
 
@@ -562,5 +571,110 @@ test("findCredentialLeaks allows .env.example as a published placeholder", async
     dir,
   );
   assert.deepEqual([...findings], []);
+});
+
+// ---------- verify-no-invisible-unicode (Aikido GlassWorm gate) ----------
+
+test("scanFileForInvisibleUnicode flags Unicode Tag characters", () => {
+  // GlassWorm encodes its eval() payload inside U+E0000–U+E007F.
+  const carrier = "const x = 1;" + String.fromCodePoint(0xe0041) + "\n";
+  const hits = scanFileForInvisibleUnicode(carrier, true);
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0]!.codePoint, 0xe0041);
+  assert.match(hits[0]!.detail, /Unicode Tag character/);
+});
+
+test("scanFileForInvisibleUnicode flags zero-width joiners mid-stream", () => {
+  const carrier = "foo" + "\u200B" + "bar" + "\u200D" + "baz\n";
+  const hits = scanFileForInvisibleUnicode(carrier, false);
+  assert.equal(hits.length, 2);
+  assert.equal(hits[0]!.codePoint, 0x200b);
+  assert.equal(hits[1]!.codePoint, 0x200d);
+});
+
+test("scanFileForInvisibleUnicode flags Trojan Source bidi overrides", () => {
+  // RLO is the canonical Trojan-Source carrier.
+  const carrier = "if (level) \u202E { /* … */ }\n";
+  const hits = scanFileForInvisibleUnicode(carrier, false);
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0]!.codePoint, 0x202e);
+  assert.match(hits[0]!.detail, /Bidi override/);
+});
+
+test("scanFileForInvisibleUnicode flags PUA only when scanPua is true", () => {
+  const carrier = "x = \uE000;\n"; // BMP PUA
+  assert.equal(scanFileForInvisibleUnicode(carrier, false).length, 0);
+  const hits = scanFileForInvisibleUnicode(carrier, true);
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0]!.codePoint, 0xe000);
+});
+
+test("scanFileForInvisibleUnicode allows BOM at file start but rejects it mid-stream", () => {
+  assert.equal(scanFileForInvisibleUnicode("\uFEFFexport const ok = 1;\n", true).length, 0);
+  const hits = scanFileForInvisibleUnicode("export const ok = 1;\uFEFF\n", true);
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0]!.codePoint, 0xfeff);
+});
+
+test("scanFileForInvisibleUnicode does not flag harmless ASCII or normal Unicode", () => {
+  const clean = [
+    "// Em-dash — and smart quotes “like these” are fine.",
+    "const greeting = 'hello world';",
+    "export const π = 3.14;",
+  ].join("\n");
+  assert.equal(scanFileForInvisibleUnicode(clean, true).length, 0);
+});
+
+test("FORBIDDEN_CLASSES and PUA_RANGES exports are non-empty and frozen", () => {
+  assert.ok(FORBIDDEN_CLASSES.length >= 3);
+  assert.ok(Object.isFrozen(FORBIDDEN_CLASSES));
+  assert.ok(PUA_RANGES.length >= 3);
+  assert.ok(Object.isFrozen(PUA_RANGES));
+});
+
+test("verify-no-invisible-unicode accepts the live publishable packages", async () => {
+  for (const pkg of INVISIBLE_PUBLISHABLE_PACKAGES) {
+    const findings = await findInvisibleUnicodeInPackage(pkg);
+    assert.deepEqual(
+      [...findings],
+      [],
+      `${pkg.name} must not ship any invisible-Unicode carrier ` +
+        "(see https://www.aikido.dev/blog/glassworm-returns-unicode-attack-github-npm-vscode)",
+    );
+  }
+});
+
+test("verify-no-invisible-unicode accepts every in-repo source root", async () => {
+  for (const root of ADDITIONAL_SOURCE_ROOTS) {
+    const findings = await findInvisibleUnicodeInSourceRoot(root);
+    assert.deepEqual(
+      [...findings],
+      [],
+      `${root}/ must not contain any invisible-Unicode carrier`,
+    );
+  }
+});
+
+test("findInvisibleUnicodeInPackage flags a smuggled Tag character in a synthetic package", async () => {
+  const { mkdtemp, writeFile, mkdir } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const path = await import("node:path");
+  const dir = await mkdtemp(path.join(tmpdir(), "daloy-invunic-"));
+  await writeFile(
+    path.join(dir, "package.json"),
+    JSON.stringify({ name: "wormy", version: "0.0.0", files: ["dist"] }),
+  );
+  await mkdir(path.join(dir, "dist"));
+  await writeFile(
+    path.join(dir, "dist", "index.js"),
+    "export const ok = true;" + String.fromCodePoint(0xe0041) + "\n",
+  );
+  const findings = await findInvisibleUnicodeInPackage(
+    { name: "wormy", packageDir: "." },
+    dir,
+  );
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0]!.codePoint, 0xe0041);
+  assert.match(findings[0]!.detail, /Unicode Tag character/);
 });
 

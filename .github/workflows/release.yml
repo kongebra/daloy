@@ -128,6 +128,9 @@ jobs:
       - name: Verify no leaked credentials in publishable tarball contents (Snyk "leaked credentials in packages" gate)
         run: pnpm verify:no-leaked-credentials
 
+      - name: Verify no invisible Unicode carriers (Aikido GlassWorm gate)
+        run: pnpm verify:no-invisible-unicode
+
       - name: Audit production dependencies
         run: pnpm audit --prod
 
