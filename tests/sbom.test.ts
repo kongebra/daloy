@@ -1,6 +1,7 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
@@ -12,6 +13,7 @@ import {
 import { verifyTarget } from "../scripts/verify-sbom.ts";
 
 const FIXED_DATE = new Date("2026-05-21T00:00:00Z");
+const REPO_ROOT = pathToFileURL(`${process.cwd()}/`);
 
 test("deriveMetadata throws when package.json is missing required fields", () => {
   assert.throws(
@@ -239,10 +241,10 @@ test("verifyTarget fails when SBOM version drifts from package.json", async () =
 test("the in-repo SBOMs are present and match the current published manifests", async () => {
   // This locks the invariant that `pnpm gen:sbom` ran before commit.
   const coreCdx = JSON.parse(
-    await readFile(new URL("../dist/sbom.cdx.json", import.meta.url), "utf8"),
+    await readFile(new URL("dist/sbom.cdx.json", REPO_ROOT), "utf8"),
   );
   const corePkg = JSON.parse(
-    await readFile(new URL("../package.json", import.meta.url), "utf8"),
+    await readFile(new URL("package.json", REPO_ROOT), "utf8"),
   );
   assert.equal(coreCdx.bomFormat, "CycloneDX");
   assert.equal(coreCdx.specVersion, "1.5");
@@ -252,13 +254,13 @@ test("the in-repo SBOMs are present and match the current published manifests", 
 
   const createDaloyCdx = JSON.parse(
     await readFile(
-      new URL("../packages/create-daloy/sbom.cdx.json", import.meta.url),
+      new URL("packages/create-daloy/sbom.cdx.json", REPO_ROOT),
       "utf8",
     ),
   );
   const createDaloyPkg = JSON.parse(
     await readFile(
-      new URL("../packages/create-daloy/package.json", import.meta.url),
+      new URL("packages/create-daloy/package.json", REPO_ROOT),
       "utf8",
     ),
   );

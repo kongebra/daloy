@@ -1,9 +1,10 @@
 import { readdir, readFile } from "node:fs/promises";
+import { pathToFileURL } from "node:url";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { findUnpinnedActions } from "../scripts/verify-actions-pinned.ts";
 
-const WORKFLOWS_DIR = new URL("../.github/workflows/", import.meta.url);
+const WORKFLOWS_DIR = new URL(".github/workflows/", pathToFileURL(`${process.cwd()}/`));
 
 test("every shipped workflow has zero `uses:` violations", async () => {
   const entries = await readdir(WORKFLOWS_DIR, { withFileTypes: true });

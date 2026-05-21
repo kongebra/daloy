@@ -34,11 +34,9 @@
  */
 
 import { readdir, readFile, stat } from "node:fs/promises";
-import { dirname, join, posix, relative, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join, posix, relative, resolve } from "node:path";
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(HERE, "..");
+const REPO_ROOT = process.cwd();
 
 /** Publishable packages whose tarball contents must be scanned. */
 export interface PublishablePackage {
