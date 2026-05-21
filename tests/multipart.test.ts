@@ -218,6 +218,92 @@ test("multipartObject strict mode flags unknown fields", async () => {
   assert.match(r.issues![0]!.message, /Unknown field/);
 });
 
+test("fileField rejects scriptable image formats by default when magicBytes is set", async () => {
+  const f = fileField({ accept: ["image/*"], magicBytes: true });
+
+  const svg = new File(
+    [`<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>`],
+    "x.svg",
+    { type: "image/svg+xml" },
+  );
+  const svgResult = await validate(f, svg);
+  assert.ok(svgResult.issues, "SVG should be rejected");
+  assert.match(svgResult.issues![0]!.message, /scriptable image/i);
+
+  // Bare <svg> without an XML prologue.
+  const bareSvg = new File([`<svg xmlns="http://www.w3.org/2000/svg"></svg>`], "x.svg", {
+    type: "image/svg+xml",
+  });
+  const bareResult = await validate(f, bareSvg);
+  assert.ok(bareResult.issues);
+  assert.match(bareResult.issues![0]!.message, /scriptable image/i);
+
+  // ImageMagick MVG \u2014 the ImageTragick payload shape.
+  const mvg = new File(
+    [`push graphic-context\nviewbox 0 0 640 480\nimage Over 0,0 0,0 'url(http://example.com/)'\npop graphic-context`],
+    "x.mvg",
+    { type: "image/png" },
+  );
+  const mvgResult = await validate(f, mvg);
+  assert.ok(mvgResult.issues);
+  assert.match(mvgResult.issues![0]!.message, /scriptable image/i);
+
+  // PostScript / EPS \u2014 attacker disguises it under an image MIME so the
+  // accept-list pass-through, then the scriptable-image guard catches it.
+  const ps = new File([`%!PS-Adobe-3.0 EPSF-3.0\n%%BoundingBox: 0 0 10 10\n`], "x.eps", {
+    type: "image/jpeg",
+  });
+  const psResult = await validate(f, ps);
+  assert.ok(psResult.issues);
+  assert.match(psResult.issues![0]!.message, /scriptable image/i);
+});
+
+test("fileField scriptable-image guard handles a UTF-8 BOM before <svg", async () => {
+  const f = fileField({ accept: ["image/*"], magicBytes: true });
+  const bom = new Uint8Array([0xef, 0xbb, 0xbf]);
+  const body = new TextEncoder().encode(`<svg xmlns="http://www.w3.org/2000/svg"></svg>`);
+  const buf = new Uint8Array(bom.length + body.length);
+  buf.set(bom, 0);
+  buf.set(body, bom.length);
+  const svg = new File([buf], "x.svg", { type: "image/svg+xml" });
+  const r = await validate(f, svg);
+  assert.ok(r.issues);
+  assert.match(r.issues![0]!.message, /scriptable image/i);
+});
+
+test("fileField scriptable-image guard can be opted out", async () => {
+  const f = fileField({
+    accept: ["image/svg+xml"],
+    rejectScriptableImages: false,
+  });
+  const svg = new File([`<svg xmlns="http://www.w3.org/2000/svg"></svg>`], "x.svg", {
+    type: "image/svg+xml",
+  });
+  const r = await validate(f, svg);
+  assert.equal(r.issues, undefined);
+});
+
+test("fileField scriptable-image guard can be enabled without magicBytes", async () => {
+  const f = fileField({ accept: ["image/*"], rejectScriptableImages: true });
+  const svg = new File([`<svg xmlns="http://www.w3.org/2000/svg"></svg>`], "x.svg", {
+    type: "image/svg+xml",
+  });
+  const r = await validate(f, svg);
+  assert.ok(r.issues);
+  assert.match(r.issues![0]!.message, /scriptable image/i);
+});
+
+test("fileField scriptable-image guard leaves real PNGs alone", async () => {
+  const f = fileField({ accept: ["image/png"], magicBytes: true });
+  const png = new File(
+    [new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d])],
+    "ok.png",
+    { type: "image/png" },
+  );
+  const r = await validate(f, png);
+  assert.equal(r.issues, undefined);
+});
+
 test("end-to-end: app parses a multipart request and the handler receives a File", async () => {
   const app = new App({ logger: false });
   let received: any = null;

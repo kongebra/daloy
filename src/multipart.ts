@@ -92,6 +92,17 @@ export interface FileFieldOptions {
    * Custom signatures can be supplied for domain-specific formats.
    */
   magicBytes?: FileMagicBytesOption;
+  /**
+   * Reject scriptable / vector image formats that downstream tooling like
+   * ImageMagick can execute (SVG, MVG, MSL, PostScript / EPS). These
+   * formats are a classic vector for ImageTragick-style RCE
+   * (https://imagetragick.com) and SSRF/XXE against XML parsers, so they
+   * are blocked by default whenever `magicBytes` is enabled. Set to
+   * `false` to opt back in — you are then responsible for sandboxing the
+   * renderer (see SECURITY.md). Set to `true` explicitly to enable the
+   * check even without `magicBytes`.
+   */
+  rejectScriptableImages?: boolean;
   /** When true, accept `null`/`undefined` values. Default: false. */
   optional?: boolean;
   /** OpenAPI hint for documentation purposes. Default: `"binary"`. */
@@ -247,6 +258,61 @@ function normalizeMagicBytesOption(
   return signatures.map(normalizeCustomMagicSignature);
 }
 
+/**
+ * Heuristics for scriptable / vector image formats that libraries such as
+ * ImageMagick treat as code (SVG, MVG, MSL, PostScript / EPS). These are
+ * deliberately fuzzy — they look at an ASCII prefix because the real files
+ * are text and can be preceded by BOMs, whitespace, XML prologues, or
+ * comments. Returning the label here means "refuse this upload".
+ */
+const SCRIPTABLE_IMAGE_PREFIX_BYTES = 512;
+
+function asciiPrefix(bytes: Uint8Array): string {
+  // Strip a UTF-8 / UTF-16 BOM so the trailing keyword sits at the start.
+  let start = 0;
+  if (bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
+    start = 3;
+  } else if (
+    bytes.length >= 2 &&
+    ((bytes[0] === 0xff && bytes[1] === 0xfe) || (bytes[0] === 0xfe && bytes[1] === 0xff))
+  ) {
+    start = 2;
+  }
+  let out = "";
+  for (let i = start; i < bytes.length; i++) {
+    const byte = bytes[i]!;
+    // Keep printable ASCII + common whitespace; replace everything else with
+    // a space so keyword searches still work across NULs / UTF-16 padding.
+    out += byte === 0x09 || byte === 0x0a || byte === 0x0d || (byte >= 0x20 && byte <= 0x7e)
+      ? String.fromCharCode(byte)
+      : " ";
+  }
+  return out.toLowerCase();
+}
+
+function detectScriptableImagePayload(bytes: Uint8Array): string | undefined {
+  const prefix = asciiPrefix(bytes);
+  // PostScript / EPS — "%!PS" is the canonical Adobe header.
+  if (prefix.startsWith("%!ps") || prefix.includes("%!ps-adobe")) {
+    return "postscript";
+  }
+  // ImageMagick MVG / MSL — vector / scripting formats that can shell out
+  // through the `url:`, `ephemeral:`, `msl:` coders (ImageTragick).
+  if (prefix.includes("push graphic-context") || prefix.startsWith("<msl>") || prefix.includes("<image ")) {
+    return "mvg-or-msl";
+  }
+  // SVG — XML-based and routinely carries `<script>` / external references.
+  // Match both raw `<svg` and an `<?xml ...?>` prologue that introduces SVG.
+  const trimmed = prefix.trimStart();
+  if (trimmed.startsWith("<svg") || /<!doctype\s+svg/.test(trimmed)) {
+    return "svg";
+  }
+  if (trimmed.startsWith("<?xml") && /<svg[\s>]/.test(trimmed)) {
+    return "svg";
+  }
+  return undefined;
+}
+
 async function verifyMagicBytes(
   file: UploadedFile,
   signatures: readonly InternalMagicSignature[],
@@ -292,6 +358,10 @@ export function fileField(
     ...options,
   };
   const magicSignatures = normalizeMagicBytesOption(opts.magicBytes, opts.accept);
+  const scriptableImagesEnabled =
+    opts.rejectScriptableImages === undefined
+      ? opts.magicBytes !== undefined
+      : opts.rejectScriptableImages;
 
   const schema: FileFieldSchema<UploadedFile | null | undefined> = {
     "~standard": {
@@ -336,6 +406,27 @@ export function fileField(
           if (!opts.filename(name)) {
             return {
               issues: [{ message: `File name "${name}" rejected by filename matcher` }],
+            };
+          }
+        }
+        if (scriptableImagesEnabled) {
+          const probeLength = Math.max(
+            SCRIPTABLE_IMAGE_PREFIX_BYTES,
+            ...magicSignatures.map((signature) => signature.readLength),
+          );
+          const prefix = new Uint8Array(
+            await file.slice(0, Math.min(probeLength, file.size)).arrayBuffer(),
+          );
+          const scriptable = detectScriptableImagePayload(prefix);
+          if (scriptable) {
+            return {
+              issues: [
+                {
+                  message:
+                    `Refusing scriptable image format "${scriptable}": this format can execute code in ` +
+                    `renderers like ImageMagick. Pass rejectScriptableImages: false to opt out.`,
+                },
+              ],
             };
           }
         }
