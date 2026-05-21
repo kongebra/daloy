@@ -173,6 +173,46 @@ export interface WebSocketHandler<
    * @since 0.32.0
    */
   acknowledgeHeaderMutatingMiddleware?: boolean;
+  /**
+   * Allowlist for the upgrade request's `Origin` header. Daloy validates
+   * this **before** {@link WebSocketHandler.beforeUpgrade} runs, closing the
+   * Cross-Site WebSocket Hijacking (CSWSH) class of bug — including the
+   * Storybook dev-server upgrade hijack disclosed as
+   * [CVE-2026-27148](https://www.aikido.dev/blog/storybooks-websockets-attack)
+   * — where a malicious site triggers `new WebSocket(...)` in a victim's
+   * browser. Browsers always attach cookies on a WS handshake; without
+   * Origin validation the upgrade succeeds and the attacker can speak the
+   * protocol on the user's behalf.
+   *
+   * Accepted forms:
+   *  - `"same-origin"` — when an `Origin` header is present, it must match
+   *    the request's own origin (scheme + host + port). When absent (a
+   *    non-browser client), the upgrade is allowed.
+   *  - `readonly string[]` — when an `Origin` header is present, it must
+   *    equal one of the listed origins exactly. When absent, allowed.
+   *  - `(origin, request) => boolean` — full control. The function is
+   *    invoked with the `Origin` header (string or `null`) and the upgrade
+   *    `Request`; returning `false` rejects the handshake with `403`.
+   *
+   * @since 0.33.0
+   */
+  allowedOrigins?:
+    | "same-origin"
+    | readonly string[]
+    | ((origin: string | null, request: Request) => boolean);
+  /**
+   * Acknowledge that this WebSocket route is intentionally exposed to
+   * upgrade requests from any browser origin. In production with
+   * `secureDefaults` enabled, registration refuses to add a WS route
+   * unless either {@link WebSocketHandler.allowedOrigins} is set or this
+   * flag is `true`, mirroring the Storybook / CSWSH lesson: the
+   * `beforeUpgrade` hook authenticates the user, but CSWSH attaches the
+   * user's own cookies, so authentication alone does not stop the
+   * cross-site handshake.
+   *
+   * @since 0.33.0
+   */
+  acknowledgeCrossOriginUpgrade?: boolean;
   beforeUpgrade?(
     request: Request,
     ctx: WebSocketContext<P, S>,
@@ -206,6 +246,22 @@ export interface NormalizedWebSocketOptions {
 function assertPositiveWebSocketInteger(name: string, value: number): void {
   if (!Number.isInteger(value) || value <= 0) {
     throw new Error(`app.ws(): ${name} must be a positive integer.`);
+  }
+}
+
+function assertWebSocketOriginPolicy(
+  policy: WebSocketHandler<any, any, any>["allowedOrigins"],
+): void {
+  if (policy === undefined || policy === "same-origin" || typeof policy === "function") return;
+  if (!Array.isArray(policy)) {
+    throw new Error(
+      'app.ws(): allowedOrigins must be "same-origin", an array of origin strings, or a predicate function.',
+    );
+  }
+  for (const origin of policy) {
+    if (typeof origin !== "string" || origin.length === 0) {
+      throw new Error("app.ws(): allowedOrigins entries must be non-empty origin strings.");
+    }
   }
 }
 
@@ -255,6 +311,7 @@ export function normalizeWebSocketOptions(
   if (typeof perMessageDeflate !== "boolean") {
     throw new Error("app.ws(): perMessageDeflate must be a boolean.");
   }
+  assertWebSocketOriginPolicy(handler.allowedOrigins);
   if (perMessageDeflate && context.secureDefaults && context.production) {
     throw new Error(
       "app.ws(): perMessageDeflate: true is refused in production under secureDefaults. " +
@@ -531,6 +588,66 @@ function isValidWebSocketKey(key: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Validate the `Origin` header on a WebSocket upgrade request against the
+ * route's `allowedOrigins` policy. Adapters call this **before** invoking
+ * the route's `beforeUpgrade` hook so a Cross-Site WebSocket Hijacking
+ * attempt is rejected with `403` before any authenticated handler runs.
+ *
+ * Returns `{ ok: true }` when the upgrade is permitted, otherwise
+ * `{ ok: false, reason }` with a short human-readable reason suitable for
+ * the upgrade-error body.
+ *
+ * @since 0.33.0
+ */
+export function checkWebSocketOrigin(
+  request: Request,
+  policy: WebSocketHandler<any, any, any>["allowedOrigins"],
+): { ok: true } | { ok: false; reason: string } {
+  if (policy === undefined) return { ok: true };
+  const origin = request.headers.get("origin");
+  if (typeof policy === "function") {
+    let allowed: boolean;
+    try {
+      allowed = policy(origin, request) === true;
+    } catch {
+      return { ok: false, reason: "WebSocket origin check failed" };
+    }
+    return allowed
+      ? { ok: true }
+      : { ok: false, reason: "WebSocket upgrade rejected by origin policy" };
+  }
+  // For string-list and "same-origin" policies, a missing Origin header
+  // means the client is not a browser (browsers always attach Origin on
+  // a WS handshake) and the CSWSH class of attack is not reachable, so we
+  // allow it through. Callers that want to reject non-browser clients can
+  // pass a predicate function.
+  if (origin === null) return { ok: true };
+  if (policy === "same-origin") {
+    try {
+      const requestOrigin = new URL(request.url).origin;
+      return origin === requestOrigin
+        ? { ok: true }
+        : {
+            ok: false,
+            reason: "WebSocket upgrade rejected: cross-origin handshake",
+          };
+    } catch {
+      return { ok: false, reason: "WebSocket origin check failed" };
+    }
+  }
+  if (!Array.isArray(policy)) {
+    return { ok: false, reason: "WebSocket origin policy is invalid" };
+  }
+  // string[] allowlist
+  return policy.includes(origin)
+    ? { ok: true }
+    : {
+        ok: false,
+        reason: "WebSocket upgrade rejected: origin not allowlisted",
+      };
 }
 
 // ---------- Frame protocol (RFC 6455 §5) ----------

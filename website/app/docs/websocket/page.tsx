@@ -51,6 +51,14 @@ export default function Page() {
         Production apps running with <code>secureDefaults</code> refuse{" "}
         <code>perMessageDeflate: true</code>.
       </p>
+      <p>
+        Since <strong>0.33.0</strong>, production routes also require an Origin
+        policy with <code>allowedOrigins</code> or an explicit{" "}
+        <code>acknowledgeCrossOriginUpgrade: true</code>. This closes the
+        Cross-Site WebSocket Hijacking pattern behind Storybook&apos;s
+        CVE-2026-27148: browsers attach cookies to WS handshakes, even when
+        another site opened the socket.
+      </p>
 
       <h2>Quick start</h2>
       <CodeBlock
@@ -150,12 +158,14 @@ app.ws("/chat/:room", chatHandler);`}
       <h2>Protocol negotiation & upgrade hook</h2>
       <p>
         Optional <code>beforeUpgrade(req, ctx)</code> runs after the path match
-        but before the 101 response. Return a <code>Response</code> to reject
-        (handy for auth or rate-limiting), or return a <code>string</code> to
-        pick a subprotocol from <code>Sec-WebSocket-Protocol</code>:
+        and Origin policy, but before the 101 response. Return a{" "}
+        <code>Response</code> to reject (handy for auth or rate-limiting), or
+        return a <code>string</code> to pick a subprotocol from{" "}
+        <code>Sec-WebSocket-Protocol</code>:
       </p>
       <CodeBlock
         code={`app.ws("/api", {
+  allowedOrigins: "same-origin",
   beforeUpgrade(req, ctx) {
     const token = ctx.headers["authorization"]?.replace(/^Bearer /, "");
     if (!token || !isValid(token)) {
@@ -173,6 +183,57 @@ app.ws("/chat/:room", chatHandler);`}
   },
 });`}
       />
+
+      <h2>Origin policy and CSWSH</h2>
+      <p>
+        <code>allowedOrigins</code> is checked before <code>beforeUpgrade</code>{" "}
+        in both Node and Bun. Use <code>&quot;same-origin&quot;</code> for
+        browser clients served from the same scheme, host, and port as the WS
+        endpoint, use an array for explicit cross-origin browser clients, or use
+        a predicate when machine clients must also send an <code>Origin</code>{" "}
+        header.
+      </p>
+      <CodeBlock
+        code={`app.ws("/session", {
+  allowedOrigins: "same-origin",
+  beforeUpgrade(req, ctx) {
+    const session = readSession(ctx.headers.cookie);
+    if (!session) return new Response("unauthorized", { status: 401 });
+  },
+  open(conn) {
+    conn.send("ready");
+  },
+});
+
+app.ws("/partner-feed", {
+  allowedOrigins: ["https://partner.example.com"],
+  beforeUpgrade(req) {
+    return verifyPartner(req) ? undefined : new Response("forbidden", { status: 403 });
+  },
+  message(conn, data) {
+    conn.send(data);
+  },
+});
+
+app.ws("/cli", {
+  allowedOrigins: (origin) => origin !== null && origin === "https://admin.example.com",
+  beforeUpgrade(req) {
+    return verifyBearerToken(req) ? undefined : new Response("unauthorized", { status: 401 });
+  },
+  open(conn) {
+    conn.send("ready");
+  },
+});`}
+        language="ts"
+      />
+      <p>
+        Missing <code>Origin</code> is allowed by the{" "}
+        <code>&quot;same-origin&quot;</code>
+        and array policies because browsers send <code>Origin</code> on WS
+        handshakes; no <code>Origin</code> usually means a CLI or
+        server-to-server client. Use the predicate form when your route should
+        reject clients that omit the header.
+      </p>
 
       <h2>Upgrade rate limiting</h2>
       <p>

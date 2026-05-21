@@ -71,6 +71,7 @@ every HTTP client (browser, mobile, CLI, attacker) are untrusted.
 | CRLF in user-controlled headers | All built-in middleware that emit headers from config (`basicAuth` realm, `csrf` cookie name, etc.) reject CRLF at construction time. |
 | Credential timing attacks | First-party `timingSafeEqual()` plus `basicAuth()` verifier hooks designed for constant-time password checks. |
 | Cross-origin forgery (CSRF) | First-party `csrf()` with two strategies (double-submit cookie + Fetch-Metadata, see [docs](https://daloyjs.dev/docs/security/csrf)). |
+| Cross-Site WebSocket Hijacking (CSWSH) | `app.ws()` refuses-at-registration in production unless the route sets `allowedOrigins` (`"same-origin"`, a string allowlist, or a predicate) or explicitly opts in via `acknowledgeCrossOriginUpgrade: true`. The Origin check runs **before** `beforeUpgrade`, so an attacker's drive-by `new WebSocket(...)` is rejected with `403` before any cookie-bearing handler runs. Closes the Storybook [CVE-2026-27148](https://www.aikido.dev/blog/storybooks-websockets-attack) class of bug. |
 | Clickjacking / MIME sniffing / cross-origin leakage | First-party `secureHeaders()` (CSP, HSTS, COOP, CORP, `X-Frame-Options`, `X-Content-Type-Options`, Permissions-Policy; CSP nonce + Trusted Types). |
 | Trusted-proxy header spoofing | `rateLimit({ trustProxyHeaders })` and `requestId({ trustIncoming })` default OFF; key generators must be explicit. |
 | Supply chain | pnpm strict isolation + `ignore-scripts` + `minimum-release-age` + verified store; SHA-pinned CI; OIDC publishing with provenance (see Supply-chain section below). |
@@ -580,6 +581,48 @@ repository:
   (request bodies, third-party API responses). That is application-level
   input validation owned by the handler author; Daloy does not auto-feed
   request data to an LLM.
+
+If a future incident report describes an attack step that any control in
+the table above should have blocked, treat the gap as a release-blocking
+bug and open a private advisory.
+
+### Cross-Site WebSocket Hijacking on a dev/admin server (Storybook CVE-2026-27148 pattern)
+
+Aikido's 2026 disclosure of the
+[Storybook WebSocket hijack](https://www.aikido.dev/blog/storybooks-websockets-attack)
+([CVE-2026-27148](https://app.opencve.io/cve/CVE-2026-27148)) is the
+representative case for a class of bug that ships in many runtime
+frameworks: the WebSocket upgrade endpoint authenticates the user with
+cookies but does **not** validate the `Origin` header. A browser
+*always* attaches cookies to a WS handshake regardless of which page
+triggered it, so a victim visiting `evil.example` while their local
+Storybook (or any cookie-authenticated WS server) is running silently
+hands the attacker a fully authenticated control channel — Storybook's
+specific impact was overwriting story files on disk and reaching RCE on
+the developer's workstation.
+
+| Attack step | DaloyJS / template control |
+| --- | --- |
+| Malicious page calls `new WebSocket("ws://victim-host/...")`; the browser opens the handshake with the victim's cookies attached | `app.ws()` in production with `secureDefaults` refuses-at-registration unless the route declares an `allowedOrigins` policy (`"same-origin"`, a string allowlist, or a predicate) or explicitly opts out via `acknowledgeCrossOriginUpgrade: true`. The CSWSH gate is an *additional* check on top of the existing `beforeUpgrade` / `acknowledgeUnauthenticated` gate — cookie auth alone is no longer a sufficient acknowledgement, because cookie auth is exactly what CSWSH abuses. |
+| The server's `beforeUpgrade` hook reads the cookie, finds a valid session, and accepts the handshake | `checkWebSocketOrigin()` runs **before** `beforeUpgrade` in both the Node and Bun adapters. A cross-origin handshake is rejected with `403` and `beforeUpgrade` is never invoked, so an authenticated handler cannot accidentally bless the attacker's connection. |
+| The attacker sends authenticated WS messages (modify state, exfiltrate data, write files, achieve RCE through a "write story to disk" RPC like Storybook's) | The CSWSH guard refuses the handshake before any message is received. A non-browser client (CLI, server-to-server) that does not send `Origin` still passes the `same-origin` and array-allowlist policies; callers that want to require an `Origin` for every client may pass a predicate (`(origin) => origin !== null && allowed.has(origin)`). |
+| The attacker uses a `null` origin (sandboxed iframe, file://, some browser extensions) to evade a naive `Origin` check | Daloy's policies compare against the exact `Origin` string the server received, so `"null"` is treated as just another origin — `"same-origin"` and a typical string allowlist both reject it. The predicate form gives the operator the final say. |
+
+What this **does not** defend against, and we say so explicitly:
+
+- A route that opts in via `acknowledgeCrossOriginUpgrade: true` and
+  then exposes a state-changing protocol over WS. The acknowledgement
+  flag is exactly the place where the operator owns the decision; if
+  the route is truly cross-origin (a public broadcast feed, a
+  no-cookie WS used only with bearer tokens out of the URL), CSWSH is
+  not reachable and the flag is correct. If the route is
+  cookie-authenticated, the flag is wrong and the refuse-at-startup
+  message names the route so review can catch it.
+- A custom WS adapter that bypasses `app.webSocketRoutes` and calls
+  the adapter's raw upgrade primitive directly. The CSWSH check is
+  wired into the Node and Bun adapters; bespoke adapters are
+  responsible for calling `checkWebSocketOrigin()` themselves before
+  invoking `beforeUpgrade`.
 
 If a future incident report describes an attack step that any control in
 the table above should have blocked, treat the gap as a release-blocking

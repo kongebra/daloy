@@ -409,6 +409,7 @@ test("wave11: app.ws() refuses unauthenticated production routes without acknowl
 test("wave11: app.ws() accepts production routes with a beforeUpgrade decision", () => {
   const app = new App({ env: "production" });
   app.ws("/ws", {
+    allowedOrigins: "same-origin",
     beforeUpgrade() {
       return undefined;
     },
@@ -420,6 +421,7 @@ test("wave11: app.ws() accepts explicitly public production routes", () => {
   const app = new App({ env: "production" });
   app.ws("/public", {
     acknowledgeUnauthenticated: true,
+    acknowledgeCrossOriginUpgrade: true,
     open() {},
   });
 });

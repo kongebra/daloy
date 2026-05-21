@@ -336,6 +336,7 @@ export {
   parseSubprotocols,
   validateSelectedSubprotocol,
   validateUpgrade,
+  checkWebSocketOrigin,
   parseFrame,
   encodeFrame,
   encodeClosePayload,

@@ -1414,6 +1414,28 @@ export class App {
           "{ acknowledgeUnauthenticated: true } for an intentionally public route.",
       );
     }
+    // Cross-Site WebSocket Hijacking (CSWSH) guard. Storybook's
+    // CVE-2026-27148 — and the Cross-Site WebSocket Hijacking class of bug
+    // in general — exploits the fact that browsers attach cookies on a WS
+    // upgrade no matter which origin opened the connection. A
+    // `beforeUpgrade` hook that only checks cookies/JWTs still accepts the
+    // attacker's handshake. Refuse-at-registration unless the route either
+    // sets an Origin allowlist or explicitly acknowledges the exposure.
+    if (
+      production &&
+      secureDefaults &&
+      handler.allowedOrigins === undefined &&
+      handler.acknowledgeCrossOriginUpgrade !== true
+    ) {
+      throw new Error(
+        `app.ws(${JSON.stringify(fullPath)}): production WebSocket routes must ` +
+          "guard against Cross-Site WebSocket Hijacking (CSWSH). Set " +
+          "{ allowedOrigins: \"same-origin\" } or an explicit origin allowlist, " +
+          "or pass { acknowledgeCrossOriginUpgrade: true } for an intentionally " +
+          "public route. See https://daloyjs.dev/docs/websocket " +
+          "and CVE-2026-27148 (Storybook) for the attack pattern.",
+      );
+    }
     // WebSocket post-upgrade header immutability. Once the RFC
     // 6455 101 handshake has been sent, no further response headers can be
     // added by middleware; mounting header-mutating middleware on a path

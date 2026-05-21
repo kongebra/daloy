@@ -12,6 +12,7 @@ import {
   encodeSendPayload,
   parseSubprotocols,
   validateSelectedSubprotocol,
+  checkWebSocketOrigin,
   WebSocketProtocolError,
   type NormalizedWebSocketOptions,
   type WebSocketConnection,
@@ -177,6 +178,10 @@ async function tryBunUpgrade(
   };
 
   const handler = match.handler.handler as WebSocketHandler<any, any, any>;
+  const originCheck = checkWebSocketOrigin(req, handler.allowedOrigins);
+  if (!originCheck.ok) {
+    return new Response(originCheck.reason, { status: 403 });
+  }
   let chosenProtocol = "";
   try {
     const decision = await handler.beforeUpgrade?.(req, ctx);
