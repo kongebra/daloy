@@ -1189,6 +1189,72 @@ If a future incident report describes a maintainer-dispute-shaped attack
 step that any control in either table above should have blocked, treat
 the gap as a release-blocking bug and open a private advisory.
 
+### Token-value leaked into a log line (Composer / Packagist 2026-05-13 pattern)
+
+Socket's 2026-05-13 writeup of the
+[Composer / Packagist token disclosure](https://socket.dev/blog/packagist-urges-immediate-composer-update)
+documents an incident where Composer 2.x printed the **full contents of
+a GitHub Actions–issued `GITHUB_TOKEN` or GitHub App installation token
+into stderr** when the token failed a hardcoded format validator.
+GitHub's rollout of the new variable-length `ghs_APPID_JWT` token shape
+on 2026-04-27 made tokens that Composer's regex did not recognize, so
+the rejection path's "got token: X" error message leaked the credential
+into CI logs. GitHub-hosted runner tokens usually expire at job end (or
+6 h max), but self-hosted runner tokens can stay valid for 24 h after
+issuance, and GitHub App tokens can have broader scopes.
+
+The two transferable lessons for any framework — not just Composer:
+
+1. **Never embed a credential value in an error message.** Even a
+   passing reference like `"unable to authenticate, got token: $token"`
+   is a one-line credential leak the moment that branch fires.
+2. **Never validate a credential against a hardcoded format
+   assumption.** Treat tokens as opaque. GitHub's own guidance after
+   this rollout: "avoid hardcoded token patterns entirely."
+
+Daloy is a Node/TypeScript web framework, not a package manager, but it
+brokers credentials in three of the same shapes Composer leaked
+(Bearer tokens for `bearerAuth()` / `jwk()` / `jwt()`, session cookies,
+and outbound provider keys via `fetchGuard()`/AI gateway patterns). We
+map our controls explicitly so the same line never leaves a Daloy
+process.
+
+| Attack-shaped step | DaloyJS control |
+| --- | --- |
+| Framework code embeds the rejected token value into the thrown error / log line, exactly as Composer did | Every credential-rejection path in [`src/jwt.ts`](src/jwt.ts), [`src/jwk.ts`](src/jwk.ts), [`src/middleware.ts`](src/middleware.ts) (`bearerAuth()`, CSRF), and [`src/time-claims.ts`](src/time-claims.ts) throws a generic `JwtError` / `ForbiddenError` / `BadRequestError` with a fixed message (`"invalid_token"`, `"Invalid token"`, `"Token revoked"`, `"CSRF token missing or invalid"`, `"token has expired (exp)."`, `"jwt(): token must have three dot-separated segments."`). The rejected value is **never interpolated** into the message. The RFC 6750 `WWW-Authenticate: Bearer error="invalid_token"` response carries no token text either. |
+| User code or an upstream library logs an object that happens to carry a Bearer/Cookie/API-key header | Key-based redaction in [`src/logger.ts`](src/logger.ts) (`DEFAULT_REDACT_KEYS`) already masks `authorization`, `cookie`, `set-cookie`, `token`, `access_token`, `refresh_token`, `id_token`, `password`, `client_secret`, `x-api-key`, and the LiteLLM-class provider headers (`openai-api-key`, `anthropic-api-key`, `x-goog-api-key`, `x-litellm-master-key`, etc.) at every depth, case-insensitively. |
+| User code logs a string containing a JWT — even under a non-redacted field name | `redactJwtLikeStrings: true` (default) replaces any string value matching `^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$` with the censor. |
+| **The exact Composer leak shape**: user code interpolates a rejected token into a message (`"got token: ghs_… from CI"`) under an unrecognized field name, or assigns the raw value to a custom field | `redactCredentialLikeStrings: true` (default, added in `@daloyjs/core` 0.69.0 in response to this incident) walks every string value in the log record and replaces substrings matching the published shapes of the most common opaque provider credentials: GitHub `gh[opsur]_…` / `github_pat_…`, Slack `xox[abprs]-…`, AWS `AKIA…`/`ASIA…`, Stripe `sk_live_…`/`sk_test_…`/`rk_…`/`pk_live_…`, npm `npm_…`, GitLab `glpat-…`, Google `AIza…`, Anthropic `sk-ant-…`, OpenAI `sk-…`. Lengths are anchored conservatively so ordinary identifiers (`uuid`s, `sk-abc` test fixtures, short prefixes) are left alone — see the false-positive regression test in [`tests/logger-redaction-and-header-smuggling.test.ts`](tests/logger-redaction-and-header-smuggling.test.ts). Combined with key-based and JWT-shape redaction, an accidental `logger.error({ err: …token… })` cannot leak the credential. |
+| Framework code parses an incoming bearer token by **shape** before sending it to the verifier, and rejects new token formats it does not recognize (the root cause of the Composer leak) | `bearerAuth()` ([`src/middleware.ts`](src/middleware.ts)) and `jwk()` ([`src/jwk.ts`](src/jwk.ts)) extract the bearer credential with a minimal `^Bearer\s+(.+)$` parser and hand the value verbatim to the user-supplied `validate` / JWKS verifier. There is no hardcoded length, charset, or prefix check against the token contents. New provider token shapes (longer JWTs, App-issued `ghs_APPID_JWT`-style tokens, future opaque formats) flow straight through to the verifier; verification failure throws the same generic `invalid_token` response. |
+| Token validation fails *and* the framework includes the offending value in a CI-visible exception (the `1.10.x` / `2.9.x` Composer bug) | Every `JwtError` constructor in [`src/jwt.ts`](src/jwt.ts) (`invalid_token`, `invalid_key`, `weak_hs_secret`, `missing_kid`) takes a fixed-string `reason` + a fixed-string human message; both are reviewed in code review and locked by tests in `tests/jwt*.test.ts`. The same convention is followed by `TemporalClaimError` in [`src/time-claims.ts`](src/time-claims.ts) and the `ForbiddenError`/`BadRequestError` instances thrown by the bearer and CSRF paths. |
+| A custom validator written by a Daloy user `throw new Error(\`bad token: ${tok}\`)` and that string lands in the structured log | Defense-in-depth: even if user code does this, the logger's `redactCredentialLikeStrings` pass redacts the matching substring **before** `JSON.stringify` writes the record. The user's mistake degrades to a generic `[REDACTED]` placeholder in the log line, not a credential leak. Documented as the recommended pattern in [`README.md`](README.md) so users see it before writing their first custom verifier. |
+
+**What this does not defend against, and we say so explicitly:**
+
+- A custom logger plugged in via `new App({ logger: myPino })`. Daloy's
+  default `createLogger()` does the redaction; a user-supplied logger
+  is on the user. `redactRecord()` and `DEFAULT_REDACT_KEYS` are
+  exported from [`src/logger.ts`](src/logger.ts) so a custom logger can
+  apply the same policy with one extra line in its serializer.
+- Stack traces printed by `process.on("uncaughtException", …)` or by a
+  panicking transitive dependency. The redaction pass only runs on
+  records that go through `createLogger`. An out-of-band `console.error(err)`
+  call from outside the framework is the runtime's problem; treat
+  `uncaughtException` as a fatal-shutdown signal in production and rely
+  on the platform's secrets-masking (GitHub Actions does mask known
+  secret env vars in the runner log).
+- A credential format the value-shape detector does not yet know about.
+  The patterns above are anchored to *published* provider formats as
+  of 2026-05. New shapes (or rotated formats like GitHub's 2026-04
+  `ghs_APPID_JWT` change) require a one-line addition to
+  `CREDENTIAL_LIKE_RE` and a new regression-test fixture; the key-based
+  redaction list and the user's own redact-keys override remain the
+  primary defense for header-carried credentials.
+
+If a future incident report describes a token-leaked-into-a-log-line
+attack step that any control in the table above should have blocked,
+treat the gap as a release-blocking bug and open a private advisory.
+
 ### JPMorganChase SaaS open letter (Opet 2025 pillars)
 
 On 2025-04-26, JPMorganChase CISO Patrick Opet published

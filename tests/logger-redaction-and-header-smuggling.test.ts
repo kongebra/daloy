@@ -85,6 +85,79 @@ test("DEFAULT_REDACT_KEYS includes the documented set", () => {
   }
 });
 
+// ---------- Credential-shape value redaction (Composer/Packagist 2026) ----------
+//
+// In May 2026 Composer printed rejected GitHub Actions tokens into stderr
+// because its hardcoded format validator did not allow the new `ghs_APPID_JWT`
+// shape. Defense-in-depth: even when a user code path stuffs an opaque
+// credential into an unrecognized log field or interpolates it into a
+// string, the logger must redact it by value shape.
+
+test("logger redacts whole-value GitHub / npm / Stripe / AWS / Slack / Google tokens", () => {
+  const lines: string[] = [];
+  const log = createLogger({ level: "info", write: (l) => lines.push(l) });
+  log.info({
+    a: "ghs_" + "a".repeat(40),
+    b: "github_pat_" + "B".repeat(50),
+    c: "xoxb-" + "1".repeat(20) + "-abcdef",
+    d: "AKIAABCDEFGHIJKLMNOP",
+    e: "sk_live_" + "x".repeat(30),
+    f: "npm_" + "y".repeat(36),
+    g: "glpat-" + "z".repeat(25),
+    h: "AIza" + "k".repeat(35),
+    i: "sk-ant-" + "m".repeat(40),
+    j: "sk-" + "n".repeat(40),
+  });
+  const obj = JSON.parse(lines[0]!);
+  for (const k of ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"]) {
+    assert.equal(obj[k], "[REDACTED]", `field ${k} should be redacted`);
+  }
+});
+
+test("logger redacts credential substrings interpolated into error-style strings", () => {
+  // This is the exact Composer/Packagist 2026 leak pattern: the framework
+  // (or user code) embeds the rejected token value into a message.
+  const lines: string[] = [];
+  const log = createLogger({ level: "info", write: (l) => lines.push(l) });
+  const token = "ghs_" + "a".repeat(40);
+  log.error({ err: `Unable to authenticate, got token: ${token} from CI` }, "auth-fail");
+  const obj = JSON.parse(lines[0]!);
+  assert.ok(!obj.err.includes(token), "raw token must not appear in log output");
+  assert.match(obj.err, /\[REDACTED\]/);
+  assert.match(obj.err, /Unable to authenticate/); // surrounding context preserved
+});
+
+test("logger leaves ordinary identifiers alone (no false positives)", () => {
+  const lines: string[] = [];
+  const log = createLogger({ level: "info", write: (l) => lines.push(l) });
+  log.info({
+    short: "sk-abc",            // below the 20-char minimum
+    name: "ghp_short",          // below the 36-char minimum
+    uuid: "550e8400-e29b-41d4-a716-446655440000",
+    text: "hello world",
+    awsLooking: "AKIASHORT",    // below the 16-char tail
+  });
+  const obj = JSON.parse(lines[0]!);
+  assert.equal(obj.short, "sk-abc");
+  assert.equal(obj.name, "ghp_short");
+  assert.equal(obj.uuid, "550e8400-e29b-41d4-a716-446655440000");
+  assert.equal(obj.text, "hello world");
+  assert.equal(obj.awsLooking, "AKIASHORT");
+});
+
+test("redactCredentialLikeStrings:false disables value-shape redaction", () => {
+  const lines: string[] = [];
+  const log = createLogger({
+    level: "info",
+    write: (l) => lines.push(l),
+    redact: { redactCredentialLikeStrings: false },
+  });
+  const token = "ghs_" + "a".repeat(40);
+  log.info({ misc: token });
+  const obj = JSON.parse(lines[0]!);
+  assert.equal(obj.misc, token);
+});
+
 test("DEFAULT_REDACT_KEYS includes AI provider credential headers (LiteLLM blast-radius pattern)", () => {
   // Headers commonly carrying LLM provider keys when an app brokers
   // prompts to OpenAI / Anthropic / Google / Azure / Cohere / Mistral /

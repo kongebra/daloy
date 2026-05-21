@@ -45,6 +45,19 @@ export interface LoggerRedactionOptions {
   useDefaults?: boolean;
   /** Replace string values shaped like a JWT (`eyJ...`) regardless of key. Default: `true`. */
   redactJwtLikeStrings?: boolean;
+  /**
+   * Replace substrings shaped like opaque provider credentials
+   * (GitHub `ghp_`/`ghs_`/`gho_`/`ghu_`/`ghr_`/`github_pat_`, Slack
+   * `xox[abprs]-`, AWS `AKIA…`/`ASIA…`, Stripe `sk_live_…`/`pk_live_…`,
+   * npm `npm_…`, GitLab `glpat-…`, Google `AIza…`, OpenAI `sk-…`,
+   * Anthropic `sk-ant-…`) inside any string value, regardless of key.
+   * Defense-in-depth for the Composer/Packagist 2026 incident class
+   * where a tool printed a rejected token value into stderr because
+   * its hardcoded format check did not match the new token shape.
+   * Default: `true`.
+   * @since 0.69.0
+   */
+  redactCredentialLikeStrings?: boolean;
   /** Maximum recursion depth when walking nested objects. Default: 6. */
   maxDepth?: number;
 }
@@ -119,10 +132,31 @@ export interface ConsoleLoggerOptions {
 
 const JWT_LIKE_RE = /^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
 
+/**
+ * Substring patterns for opaque provider credentials. Matches inside
+ * larger strings (e.g. error messages that interpolate a rejected
+ * token) and is replaced with the censor. Lengths are anchored
+ * conservatively to avoid false positives on ordinary identifiers.
+ *
+ * Sources (token formats published by each provider as of 2026):
+ * - GitHub: `gh[opsur]_` 36–251 alphanumerics; `github_pat_` 40+ alnum/_
+ * - Slack:  `xox[abprs]-` legacy/bot/user/refresh tokens
+ * - AWS:    `AKIA`/`ASIA` + 16 uppercase alphanumerics
+ * - Stripe: `sk|rk|pk` + `_live_|_test_` + 20+ alphanumerics
+ * - npm:    `npm_` + 36 alphanumerics (publish tokens)
+ * - GitLab: `glpat-` + 20+ alnum/_/-
+ * - Google: `AIza` + 35 alnum/_/-
+ * - Anthropic: `sk-ant-` + 20+ alnum/_/-
+ * - OpenAI: `sk-` + 20+ alnum/_/- (matched after the `sk-ant-` form)
+ */
+const CREDENTIAL_LIKE_RE =
+  /(?:gh[opsur]_[A-Za-z0-9]{36,251}|github_pat_[A-Za-z0-9_]{40,255}|xox[abprs]-[A-Za-z0-9-]{10,}|(?:AKIA|ASIA)[A-Z0-9]{16}|(?:sk|rk|pk)_(?:live|test)_[A-Za-z0-9]{20,}|npm_[A-Za-z0-9]{36}|glpat-[A-Za-z0-9_-]{20,}|AIza[A-Za-z0-9_-]{35}|sk-ant-[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9_-]{20,})/g;
+
 interface ResolvedRedaction {
   keys: Set<string>;
   censor: string;
   redactJwt: boolean;
+  redactCredential: boolean;
   maxDepth: number;
 }
 
@@ -139,8 +173,19 @@ function resolveRedaction(
     keys,
     censor: cfg.censor ?? "[REDACTED]",
     redactJwt: cfg.redactJwtLikeStrings ?? true,
+    redactCredential: cfg.redactCredentialLikeStrings ?? true,
     maxDepth: cfg.maxDepth ?? 6,
   };
+}
+
+function redactString(value: string, cfg: ResolvedRedaction): string {
+  if (cfg.redactJwt && JWT_LIKE_RE.test(value)) return cfg.censor;
+  if (cfg.redactCredential && CREDENTIAL_LIKE_RE.test(value)) {
+    // Reset lastIndex because the test() above advanced it on the global regex.
+    CREDENTIAL_LIKE_RE.lastIndex = 0;
+    return value.replace(CREDENTIAL_LIKE_RE, cfg.censor);
+  }
+  return value;
 }
 
 /**
@@ -172,8 +217,9 @@ function walkRedact(
   if (Array.isArray(node)) {
     for (let i = 0; i < node.length; i++) {
       const v = node[i];
-      if (cfg.redactJwt && typeof v === "string" && JWT_LIKE_RE.test(v)) {
-        node[i] = cfg.censor;
+      if (typeof v === "string") {
+        const replaced = redactString(v, cfg);
+        if (replaced !== v) node[i] = replaced;
       } else {
         walkRedact(v, cfg, depth + 1, seen);
       }
@@ -188,8 +234,9 @@ function walkRedact(
       continue;
     }
     const v = obj[key];
-    if (cfg.redactJwt && typeof v === "string" && JWT_LIKE_RE.test(v)) {
-      obj[key] = cfg.censor;
+    if (typeof v === "string") {
+      const replaced = redactString(v, cfg);
+      if (replaced !== v) obj[key] = replaced;
     } else {
       walkRedact(v, cfg, depth + 1, seen);
     }
