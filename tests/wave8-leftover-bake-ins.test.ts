@@ -33,6 +33,7 @@ import { session } from "../src/session.js";
 import { csrf } from "../src/middleware.js";
 import { findForbiddenRuntimeDependencies } from "../scripts/verify-no-runtime-deps.js";
 import { findForbiddenSecretComparisons } from "../scripts/verify-secret-comparisons.js";
+import { findForbiddenBufferCalls } from "../scripts/verify-no-unsafe-buffer.js";
 
 // ---------- cookie.ts ----------
 
@@ -339,4 +340,65 @@ test("verify-secret-comparisons accepts the audited source files", async () => {
     total += findForbiddenSecretComparisons(f, text).length;
   }
   assert.equal(total, 0, "audited files must remain free of forbidden secret comparisons");
+});
+
+test("verify-no-unsafe-buffer flags forbidden Buffer call sites", () => {
+  const sample = [
+    "// safe: API references in prose should not trip the gate",
+    'const note = "Buffer.allocUnsafe is forbidden, use Buffer.alloc";',
+    "const safe1 = Buffer.alloc(16);",
+    "const safe2 = Buffer.from(input);",
+    "const safe3: Buffer = Buffer.from(input);",
+    "",
+    "// unsafe: deprecated constructor",
+    "const bad1 = new Buffer(16);",
+    "",
+    "// unsafe: zero-fill bypass",
+    "const bad2 = Buffer.allocUnsafe(64);",
+    "",
+    "// unsafe: slow variant",
+    "const bad3 = Buffer.allocUnsafeSlow(64);",
+  ].join("\n");
+  const findings = findForbiddenBufferCalls("sample.ts", sample);
+  assert.equal(findings.length, 3);
+  assert.match(findings[0]!.reason, /deprecated/);
+  assert.match(findings[0]!.text, /new Buffer/);
+  assert.match(findings[1]!.reason, /uninitialized/);
+  assert.match(findings[1]!.text, /allocUnsafe/);
+  assert.match(findings[2]!.text, /allocUnsafeSlow/);
+});
+
+test("verify-no-unsafe-buffer ignores Buffer references inside comments and strings", () => {
+  const sample = [
+    "/* This block comment mentions Buffer.allocUnsafe and new Buffer() and must not trip. */",
+    'const msg = "do not call Buffer.allocUnsafe(...) here";',
+    "// new Buffer(0) is deprecated -- this comment is fine",
+    "const ok = Buffer.alloc(0);",
+  ].join("\n");
+  const findings = findForbiddenBufferCalls("sample.ts", sample);
+  assert.equal(findings.length, 0);
+});
+
+test("verify-no-unsafe-buffer accepts the live src/ tree", async () => {
+  const { readFile, readdir } = await import("node:fs/promises");
+  const path = await import("node:path");
+  const srcRoot = path.resolve(process.cwd(), "src");
+  async function* walk(dir: string): AsyncGenerator<string> {
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
+      const child = path.join(dir, entry.name);
+      if (entry.isDirectory()) yield* walk(child);
+      else if (entry.isFile() && /\.(?:m?ts|m?js)$/.test(entry.name)) yield child;
+    }
+  }
+  let total = 0;
+  for await (const absolute of walk(srcRoot)) {
+    const rel = path.relative(process.cwd(), absolute);
+    const text = await readFile(absolute, "utf8");
+    total += findForbiddenBufferCalls(rel, text).length;
+  }
+  assert.equal(
+    total,
+    0,
+    "src/ must remain free of `new Buffer(...)` and `Buffer.allocUnsafe*`; see https://snyk.io/blog/exploiting-buffer/",
+  );
 });
