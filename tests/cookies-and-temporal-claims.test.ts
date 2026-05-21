@@ -1238,3 +1238,86 @@ test("findInvisibleUnicodeInPackage flags a smuggled Tag character in a syntheti
   assert.match(findings[0]!.detail, /Unicode Tag character/);
 });
 
+// ---------- verify-no-encoded-payloads (Socket Obfuscation 101 gate) ----------
+
+test("verify-no-encoded-payloads flags the documented obfuscation carrier shapes", async () => {
+  const { findEncodedPayloadLiterals } = await import(
+    "../scripts/verify-no-encoded-payloads.js"
+  );
+  // Build the offending strings at runtime so this very test file does
+  // NOT itself contain the carrier shapes (which would trip the live-tree
+  // assertion below).
+  const hexUrl =
+    "\\x68\\x74\\x74\\x70\\x73\\x3a\\x2f\\x2fexample.com";
+  const unicodeUrl =
+    "\\u0068\\u0074\\u0074\\u0070\\u0073\\u003a\\u002f\\u002fevil";
+  const opaqueBlob = "A".repeat(120) + "B".repeat(120);
+  const sample = [
+    "// safe: a normal URL literal must not trip the gate",
+    'const safeUrl = "https://example.com/api/v1/users";',
+    "",
+    "// unsafe: 4+ consecutive \\xXX hex escapes hide the URL",
+    'const a = "' + hexUrl + '";',
+    "",
+    "// unsafe: 4+ consecutive \\u00XX unicode escapes hide the URL",
+    "const b = '" + unicodeUrl + "';",
+    "",
+    "// unsafe: opaque 200+ char base64 blob is Fernet-shaped",
+    'const c = "' + opaqueBlob + '";',
+  ].join("\n");
+  const findings = findEncodedPayloadLiterals("sample.ts", sample);
+  assert.equal(findings.length, 3, JSON.stringify(findings, null, 2));
+  assert.match(findings[0]!.reason, /hex escapes/);
+  assert.match(findings[1]!.reason, /unicode escapes/);
+  assert.match(findings[2]!.reason, /opaque base64/);
+});
+
+test("verify-no-encoded-payloads ignores plain prose, real URLs, and short hashes", async () => {
+  const { findEncodedPayloadLiterals } = await import(
+    "../scripts/verify-no-encoded-payloads.js"
+  );
+  const sample = [
+    'const url = "https://daloyjs.dev/docs/security/csrf";',
+    'const msg = "Reject \\x00 NUL bytes in headers";',
+    'const snow = "\\u2603 a snowman";',
+    'const sha = "abc123def4567890abc123def4567890abc123def4567890";',
+    'const jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyIn0.signature";',
+  ].join("\n");
+  const findings = findEncodedPayloadLiterals("sample.ts", sample);
+  assert.equal(findings.length, 0, JSON.stringify(findings, null, 2));
+});
+
+test("verify-no-encoded-payloads accepts the live src/ and scripts/ trees", async () => {
+  const { findEncodedPayloadLiterals } = await import(
+    "../scripts/verify-no-encoded-payloads.js"
+  );
+  const { readFile, readdir } = await import("node:fs/promises");
+  const path = await import("node:path");
+  async function* walk(dir: string): AsyncGenerator<string> {
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
+      const child = path.join(dir, entry.name);
+      if (entry.isDirectory()) yield* walk(child);
+      else if (entry.isFile() && /\.(?:m?ts|m?js|cjs)$/.test(entry.name)) yield child;
+    }
+  }
+  let total = 0;
+  for (const root of ["src", "scripts", "bin", "examples"]) {
+    const abs = path.resolve(process.cwd(), root);
+    try {
+      for await (const absolute of walk(abs)) {
+        const rel = path.relative(process.cwd(), absolute);
+        const text = await readFile(absolute, "utf8");
+        total += findEncodedPayloadLiterals(rel, text).length;
+      }
+    } catch {
+      // root may not exist in some checkouts; that's fine.
+    }
+  }
+  assert.equal(
+    total,
+    0,
+    "publishable source roots must remain free of `\\xXX` / `\\u00XX` escape runs and " +
+      "opaque base64 blobs; see https://socket.dev/blog/obfuscation-101-the-tricks-behind-malicious-code",
+  );
+});
+

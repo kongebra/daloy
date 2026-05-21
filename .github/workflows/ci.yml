@@ -143,6 +143,9 @@ jobs:
       - name: Verify no invisible Unicode carriers (Aikido GlassWorm gate)
         run: pnpm verify:no-invisible-unicode
 
+      - name: Verify no encoded-payload literals (Socket Obfuscation 101 gate)
+        run: pnpm verify:no-encoded-payloads
+
       - name: Audit production dependencies
         run: pnpm audit --prod
 
