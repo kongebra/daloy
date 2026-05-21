@@ -799,3 +799,55 @@ If you suspect a compromised version of `@daloyjs/core` or `create-daloy`:
 - Look in the unpacked tarball for files outside of `dist/` and `README.md`
   (the only paths in our `files` field).
 - Report to <https://github.com/daloyjs/daloy/security/advisories/new>.
+
+### JPMorganChase SaaS open letter (Opet 2025 pillars)
+
+On 2025-04-26, JPMorganChase CISO Patrick Opet published
+[an open letter to third-party suppliers](https://www.jpmorganchase.com/about/technology/blog/open-letter-to-our-suppliers),
+timed to RSA Conference 2025, warning that the SaaS delivery model "is
+quietly enabling cyber attackers and — as its adoption grows — is creating
+a substantial vulnerability that is weakening the global economic system."
+Snyk's [coverage of the letter](https://snyk.io/blog/snyk-covers-jpmorgan-cyber-list/)
+distills it into four pillars third-party software providers must address.
+
+DaloyJS is **a framework, not a SaaS product**, but the letter's posture
+applies transitively to every app built on it. The table below maps each
+of Opet's pillars to existing Daloy controls so consumers, procurement
+reviewers, and incident-response teams can answer the letter's questions
+without re-reading the rest of this file.
+
+| Opet pillar | What Daloy already ships |
+| --- | --- |
+| **1. Security must be prioritized — built in or enabled by default, not gated behind a premium tier.** | Twelve **secure-by-default waves** (see [`otherdocs/secure-by-default-plan.md`](otherdocs/secure-by-default-plan.md) and the `PROJECT_HISTORY` `0.15.0` → `0.33.0` band) shipped in the open-source `@daloyjs/core` package with no paid tier. Every control listed in § "In scope (the framework MUST defend)" above is on by default in `NODE_ENV=production`. The framework **refuses to boot** on known-bad configs: weak session secrets (< 32 UTF-8 bytes, known-weak strings) in [`src/security.ts`](src/security.ts) via `assertStrongSecret()`; `cors({ origin: "*" })` paired with credentialed routes; `session()` + a state-changing route without `csrf()`; `X-Forwarded-*` headers without an explicit proxy trust opt-in; `app.healthcheck()` / `app.readinesscheck()` exposed in production without `acknowledgeUnauthenticated: true`. Opt-out exists (`app({ secureDefaults: false })`) and requires an explicit, auditable decision in the consumer app. There is no "enterprise edition" toggle for any of these. |
+| **2. Security architecture must be modernized — no "single-factor explicit trust" via OAuth tokens that collapse authentication into authorization.** | First-party `createJwtSigner()` / `createJwtVerifier()` in [`src/jwt.ts`](src/jwt.ts) refuse `alg: "none"` at both signer and verifier construction, **require** an explicit `algorithms` allowlist at the verifier (no implicit "any RS256"), refuse HS+JWK / HS+resolver combinations (closing the classic JWKS confused-deputy attack), require `maxLifetimeSeconds` at the signer (no implicit "forever"), require `exp`, and refuse `exp - iat > maxLifetimeSeconds`. `jwk()` provides first-party JWKS resolution with refresh + cache controls. `bearerAuth`, `basicAuth`, and signed-cookie `session` are separate primitives so authentication (who) and authorization (allowed) never collapse into one token: the route's authorization policy is the developer's explicit decision in the handler or in a per-route hook, not implicit from "the token verified". The CSWSH guard on `app.ws()` runs the Origin check **before** any cookie-bearing `beforeUpgrade` hook, refusing the drive-by hijack class even when a valid session cookie is present. `secureHeaders()` ships CSP nonce + Trusted Types so a stored-XSS pivot cannot silently swap a victim's OAuth flow into an attacker's. |
+| **3. Inadequately secured authentication tokens, opaque privileged third-party access, and "fourth-party" vendor dependencies silently expanding the risk surface.** | **Token theft / reuse**: log redaction (`src/logger.ts`) covers `authorization`, `cookie`, `set-cookie`, `x-api-key`, `api-key`, `apikey`, `password`, `passwd`, `secret`, `token`, `access_token`, `refresh_token`, `id_token`, `client_secret`, every common LLM-provider key header, JWT-shaped strings, and (case-insensitive) at every depth of the log record. `timingSafeEqual()` plus `pnpm verify:secret-comparisons` reject any new `===` / `!==` against a secret-shaped variable in `src/`. Stripped `Server` / `X-Powered-By` headers; duplicate `Host` / `Content-Length` rejection. **Opaque fourth-party deps**: `@daloyjs/core` has **zero runtime dependencies** ([`scripts/verify-no-runtime-deps.ts`](scripts/verify-no-runtime-deps.ts) gates every release); `zod` is the only peer. The hardened [`.npmrc`](.npmrc) enforces `minimum-release-age=1440`, `ignore-scripts=true`, `verify-store-integrity=true`, `prefer-frozen-lockfile=true`, `provenance=true`. `blockExoticSubdeps: true` in [`pnpm-workspace.yaml`](pnpm-workspace.yaml) plus `pnpm verify:lockfile` reject git/ssh/http tarball sources. **Privileged third-party access**: every scaffolded template inherits the same `_npmrc` + `pnpm-workspace.yaml` discipline so a downstream app cannot accidentally widen the supply-chain trust boundary just by adding a dep. |
+| **4. Continuous, demonstrable evidence of controls — not annual compliance checks — plus customer-side options like confidential computing, self-hosting, and BYOC.** | **Continuous evidence**: [OpenSSF Scorecard](https://securityscorecards.dev/viewer/?uri=github.com/daloyjs/daloy) and CodeQL run on every push; [`zizmor`](.github/workflows/zizmor.yml) statically analyses every workflow on every PR; `pnpm typecheck` + `pnpm test` + `pnpm coverage` (≥90% line/function, ≥90% branch) + `pnpm verify:no-runtime-deps` + `pnpm verify:no-lifecycle-scripts` + `pnpm verify:lockfile` + `pnpm verify:secret-comparisons` + `pnpm verify:wave9-audits` … `pnpm verify:wave12-audits` all run in CI and on every release tag. Every published tarball carries an npm provenance attestation bound to its source commit and workflow run via Sigstore. `step-security/harden-runner` monitors and blocks egress on the publish workflow. **Customer self-hosting**: the framework's only contract with the runtime is `Request → Response`, so the same app runs on Node, Bun, Deno, Cloudflare Workers, and Vercel Edge — the consumer chooses **where** their data is processed, including fully on-prem or in a private VPC. There is no Daloy-operated SaaS control plane, no telemetry call-home, and no required cloud account; the [`AGENTS.md`](AGENTS.md) "Quality Gates" and `pnpm coverage` thresholds are the only continuous-evidence loop, and they run inside the consumer's CI. BYOC and confidential-compute deployments work because the framework never assumes egress to a vendor-owned service is available. |
+
+**What this section does NOT claim:**
+
+- That the framework can make a *consumer's* OAuth flow correct. OAuth-flow
+  correctness, refresh-token rotation discipline, scope minimization, and
+  consent-screen review remain the consumer app's responsibility (see
+  § Explicitly out of scope — "Credential storage and rotation"). Daloy
+  ships safe primitives (`bearerAuth`, signed-cookie `session`, JWT helpers
+  with strict `alg` discipline); the policy is still on the developer.
+- That zero-runtime-deps eliminates fourth-party risk for the *whole app*.
+  A consumer that pulls in a 400-dep ORM, an SDK with `postinstall` hooks
+  disabled by `ignore-scripts=true` only at the framework level, or a
+  vendor whose own supply chain is opaque inherits that risk on top of
+  Daloy's. The scaffolded `create-daloy` templates ship the same
+  hardened `_npmrc` so a green-field app starts from the same posture,
+  but the consumer's dep choices still matter.
+- That a runtime-portable framework eliminates concentration risk
+  industry-wide. The letter's macroeconomic point about "a small set of
+  leading service providers, embedding concentration risk into global
+  critical infrastructure" is about the SaaS market shape; a framework can
+  only ensure that **its own** consumers are not forced into one
+  provider. Daloy does this by treating every adapter as equally
+  supported, with no preferred "Daloy Cloud" — but the broader market
+  shape is not something a library can fix on its own.
+
+If a future incident report describes an attack step that any control in
+this section should have blocked, treat the gap as a release-blocking bug
+and open a private advisory via
+<https://github.com/daloyjs/daloy/security/advisories/new>.
