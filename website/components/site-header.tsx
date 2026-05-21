@@ -11,6 +11,7 @@ import {
   XIcon,
 } from "@phosphor-icons/react/ssr";
 import { buttonVariants } from "./ui/button";
+import { LogoMark } from "./daloyjs-logo";
 import { ThemeSwitcher } from "./theme-switcher";
 import { CORE_PACKAGE_VERSION } from "@/lib/seo";
 
@@ -101,10 +102,12 @@ export function SiteHeader() {
             href="/"
             className="flex min-w-0 items-center gap-2 font-semibold"
           >
-            <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-md bg-primary text-xs font-bold text-primary-foreground">
-              dj
+            <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-md bg-foreground/4 ring-1 ring-foreground/10 dark:bg-white/5 dark:ring-white/10">
+              <LogoMark className="size-5 text-sky-500" title="" />
             </span>
-            <span className="truncate">DaloyJS</span>
+            <span className="truncate">
+              Daloy<span className="text-sky-500 dark:text-sky-400">JS</span>
+            </span>
             <span className="ml-1 hidden font-mono text-xs text-muted-foreground sm:inline-block">
               v{CORE_PACKAGE_VERSION}
             </span>

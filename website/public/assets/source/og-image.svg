@@ -1,0 +1,37 @@
+<!-- Static OG image fallback (1200×630). The dynamic version is rendered by
+     /opengraph-image route via next/og; this file is a fallback for crawlers
+     that prefer a static URL. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="og-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#020617" />
+      <stop offset="100%" stop-color="#0a0a0a" />
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#og-bg)" />
+
+  <!-- Subtle background waves -->
+  <g fill="none" stroke-linecap="round" stroke-width="4" opacity="0.25">
+    <path d="M -20 120 C 200 40 400 200 600 120 C 800 40 1000 200 1220 120" stroke="#7dd3fc" />
+    <path d="M -20 540 C 200 460 400 620 600 540 C 800 460 1000 620 1220 540" stroke="#0369a1" />
+  </g>
+
+  <!-- Mark + wordmark -->
+  <g transform="translate(96 96)">
+    <rect width="96" height="96" rx="22" fill="#0c0c0c" stroke="#1f2937" stroke-width="1" />
+    <g transform="translate(12 12)" fill="none" stroke-linecap="round" stroke-width="6">
+      <path d="M 4 14 C 22 -2 38 30 56 14" stroke="#bae6fd" />
+      <path d="M 4 36 C 22 20 38 52 56 36" stroke="#38bdf8" />
+      <path d="M 4 58 C 22 42 38 74 56 58" stroke="#0284c7" />
+    </g>
+  </g>
+  <text x="220" y="158" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif" font-size="58" font-weight="800" letter-spacing="-1">
+    <tspan fill="#f8fafc">Daloy</tspan><tspan fill="#38bdf8">JS</tspan>
+  </text>
+
+  <text x="96" y="380" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif" font-size="72" font-weight="800" fill="#f8fafc" letter-spacing="-1">Runtime-portable</text>
+  <text x="96" y="460" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif" font-size="72" font-weight="800" fill="#f8fafc" letter-spacing="-1">TypeScript APIs</text>
+  <text x="96" y="540" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif" font-size="30" font-weight="500" fill="#94a3b8">Contract-first routing, Standard Schema validation, OpenAPI 3.1, typed clients.</text>
+
+  <text x="1104" y="586" text-anchor="end" font-family="ui-monospace, 'SF Mono', Menlo, monospace" font-size="26" fill="#7dd3fc">daloyjs.dev</text>
+</svg>

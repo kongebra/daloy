@@ -1,0 +1,9 @@
+<!-- Transparent-background icon used as the masked monochrome PWA icon
+     and the SVG favicon. Uses currentColor so it adapts to theme. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <g stroke-linecap="round" fill="none" stroke-width="32">
+    <path d="M 64 160 C 200 32 312 288 448 160" stroke="#bae6fd" opacity="0.6" />
+    <path d="M 64 256 C 200 128 312 384 448 256" stroke="#38bdf8" />
+    <path d="M 64 352 C 200 224 312 480 448 352" stroke="#0284c7" />
+  </g>
+</svg>

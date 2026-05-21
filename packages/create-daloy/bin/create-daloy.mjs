@@ -250,15 +250,27 @@ function renderBox(lines, options = {}) {
   return out.join("\n");
 }
 
-// Block-letter "DALOYJS" banner rendered with a left-to-right golden
-// gradient (dark goldenrod → bright gold) on truecolor terminals. Falls back
-// to a single bold-yellow line on 256-color TTYs and to plain text in dumb
-// terminals. The shape is built from half-block characters so it stays
-// compact (2 lines tall) and each glyph is 3 columns wide with a single
-// space between letters, keeping the top and bottom rows perfectly aligned.
-const LOGO_LINES = [
-  " \u2588\u2580\u2584 \u2584\u2580\u2588 \u2588   \u2588\u2580\u2588 \u2588 \u2588   \u2588 \u2584\u2580\u2580 ",
-  " \u2588\u2584\u2580 \u2588\u2580\u2588 \u2588\u2584\u2584 \u2588\u2584\u2588  \u2588  \u2584\u2584\u2588 \u2584\u2584\u2580 ",
+// "Flowing waves" banner that mirrors the DaloyJS brand mark: three sine
+// curves cascading left-to-right in sky-blue tones. Each row is rendered
+// with a left-to-right gradient on truecolor terminals, falls back to ANSI
+// cyan on 256-color TTYs, and degrades to ASCII tildes in dumb terminals.
+//
+// "Daloy" means "flow" in Filipino — the three waves represent contracts,
+// requests, and responses moving cleanly between client and server.
+const LOGO_WAVE_LINES = SUPPORTS_UNICODE
+  ? [
+      "\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F",
+      "\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F",
+      "\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F\u223F",
+    ]
+  : ["~".repeat(25), "~".repeat(25), "~".repeat(25)];
+
+// Sky-blue palette tuned to match `tailwindcss` sky-200/400/700 — the same
+// colors used in the wordmark on https://daloyjs.dev.
+const LOGO_WAVE_GRADIENTS = [
+  { start: [186, 230, 253], end: [125, 211, 252] }, // sky-200 -> sky-300
+  { start: [56, 189, 248], end: [14, 165, 233] }, //   sky-400 -> sky-500
+  { start: [2, 132, 199], end: [3, 105, 161] }, //     sky-600 -> sky-700
 ];
 
 function gradientLine(line, startRgb, endRgb) {
@@ -278,25 +290,27 @@ function gradientLine(line, startRgb, endRgb) {
 
 function printBanner(version) {
   if (!SUPPORTS_UNICODE) {
-    console.log(`\n${color(COLORS.bold + COLORS.yellow, "create-daloy")}  ${color(COLORS.dim, `v${version}`)}`);
+    console.log(`\n${color(COLORS.bold + COLORS.cyan, "create-daloy")}  ${color(COLORS.dim, `v${version}`)}`);
     console.log(color(COLORS.dim, "Contract-first REST APIs for Node, Bun, Deno, Vercel Edge, and Workers"));
     console.log(color(COLORS.dim, "https://daloyjs.dev\n"));
     return;
   }
-  // Golden gradient: DarkGoldenrod → Gold. Evokes the DaloyJS "flow of gold"
-  // brand and stays legible on both light and dark terminal backgrounds.
-  const start = [184, 134, 11]; // DarkGoldenrod
-  const end = [255, 215, 0]; // Gold
   console.log("");
-  for (const line of LOGO_LINES) {
-    console.log(` ${gradientLine(line, start, end)}`);
+  for (let i = 0; i < LOGO_WAVE_LINES.length; i += 1) {
+    const { start, end } = LOGO_WAVE_GRADIENTS[i];
+    console.log(`  ${gradientLine(LOGO_WAVE_LINES[i], start, end)}`);
   }
+  // Centered wordmark beneath the waves: "Daloy" in neutral text, "JS" in
+  // brand sky-blue. Mirrors the SVG lockup used on the website.
+  const wordmark = `${color(COLORS.bold + COLORS.white, "Daloy")}${color(COLORS.bold + COLORS.cyan, "JS")}`;
+  const wordmarkPadding = " ".repeat(Math.max(0, Math.floor((stringWidth(LOGO_WAVE_LINES[0]) - 7) / 2)));
+  console.log(`  ${wordmarkPadding}${wordmark}`);
   // Build the welcome content lines (each contains its own ANSI color codes).
-  const headline = `${color(COLORS.bold + COLORS.yellow, "Welcome to DaloyJS")}  ${color(COLORS.gray, `\u2014 v${version}`)}`;
+  const headline = `${color(COLORS.bold + COLORS.cyan, "Welcome to DaloyJS")}  ${color(COLORS.gray, `\u2014 v${version}`)}`;
   const subline = color(COLORS.dim, "Contract-first REST APIs for Node, Bun, Deno, Vercel Edge, and Workers.");
   const docs = `${color(COLORS.gray, "docs:")} ${color(COLORS.cyan, "https://daloyjs.dev/docs")}`;
   console.log("");
-  console.log(renderBox([headline, subline, "", docs], { accent: COLORS.yellow }));
+  console.log(renderBox([headline, subline, "", docs], { accent: COLORS.cyan }));
   console.log("");
 }
 

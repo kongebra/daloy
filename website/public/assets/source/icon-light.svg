@@ -1,0 +1,9 @@
+<!-- Light-background variant. Same wave geometry, white card. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#ffffff" />
+  <g stroke-linecap="round" fill="none" stroke-width="22">
+    <path d="M 80 168 C 208 60 304 280 432 168" stroke="#7dd3fc" />
+    <path d="M 80 256 C 208 148 304 368 432 256" stroke="#0ea5e9" />
+    <path d="M 80 344 C 208 236 304 456 432 344" stroke="#0369a1" />
+  </g>
+</svg>

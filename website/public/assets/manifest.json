@@ -1,0 +1,63 @@
+{
+  "generatedAt": "2026-05-21T15:28:48.759Z",
+  "generator": "scripts/render-assets.mjs",
+  "source": "public/assets/source/",
+  "files": [
+    {
+      "name": "favicon-16.png",
+      "bytes": 396
+    },
+    {
+      "name": "favicon-32.png",
+      "bytes": 677
+    },
+    {
+      "name": "favicon-48.png",
+      "bytes": 833
+    },
+    {
+      "name": "apple-touch-icon.png",
+      "bytes": 6723
+    },
+    {
+      "name": "icon-192.png",
+      "bytes": 7172
+    },
+    {
+      "name": "icon-512.png",
+      "bytes": 22557
+    },
+    {
+      "name": "social-avatar-400.png",
+      "bytes": 16579
+    },
+    {
+      "name": "social-avatar-512.png",
+      "bytes": 22557
+    },
+    {
+      "name": "social-avatar-1000.png",
+      "bytes": 55079
+    },
+    {
+      "name": "google-profile-720.png",
+      "bytes": 35594
+    },
+    {
+      "name": "social-avatar-light-1000.png",
+      "bytes": 32294
+    },
+    {
+      "name": "banner-x-1500x500.png",
+      "bytes": 76737
+    },
+    {
+      "name": "banner-bluesky-3000x1000.png",
+      "bytes": 194991
+    },
+    {
+      "name": "og-image.png",
+      "bytes": 73952
+    }
+  ]
+}

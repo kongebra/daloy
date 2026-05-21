@@ -65,7 +65,23 @@ export const metadata: Metadata = {
     },
   },
   icons: {
-    icon: "/favicon.ico",
+    icon: [
+      { url: "/assets/logo.svg", type: "image/svg+xml" },
+      { url: "/assets/favicon.ico", sizes: "any" },
+      { url: "/assets/favicon-16.png", type: "image/png", sizes: "16x16" },
+      { url: "/assets/favicon-32.png", type: "image/png", sizes: "32x32" },
+      { url: "/assets/favicon-48.png", type: "image/png", sizes: "48x48" },
+      { url: "/assets/icon-192.png", type: "image/png", sizes: "192x192" },
+      { url: "/assets/icon-512.png", type: "image/png", sizes: "512x512" },
+    ],
+    apple: [
+      {
+        url: "/assets/apple-touch-icon.png",
+        sizes: "180x180",
+        type: "image/png",
+      },
+    ],
+    shortcut: ["/assets/favicon.ico"],
   },
   formatDetection: {
     telephone: false,
