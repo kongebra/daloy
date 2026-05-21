@@ -321,6 +321,48 @@ installing a typosquat of some **other** package, but it does not contribute
 attack surface of its own and the scaffolded template inherits the same
 posture.
 
+### Socket "vulnerability scanning isn't enough" mapping (unknown-vuln / malicious-package class)
+
+Socket's 2022 write-up
+["Why Vulnerability Scanning Isn't Enough To Protect Your App"](https://socket.dev/blog/vuln-scanning-is-not-enough)
+argues that CVE / NVD-style scanners only catch **known** vulnerabilities and
+cannot stop an attacker who hijacks a package, ships obfuscated code, drops a
+`preinstall` hook, or republishes after a long dormancy — using the November
+2021 `coa` hijack as the canonical example (long-dormant package suddenly
+re-published with `preinstall` + obfuscated code that stole credentials).
+DaloyJS's daily `pnpm audit --prod` ([`.github/workflows/vuln-scan.yml`](.github/workflows/vuln-scan.yml))
+is the known-vuln baseline; the controls below are the framework's answer to
+each unknown-vuln signal the article calls out, so operators get explicit
+traceability rather than guessing.
+
+| Signal Socket flags (unknown vulns / malicious packages) | DaloyJS control |
+| --- | --- |
+| **Lifecycle hooks running attacker code on install** (`preinstall` / `install` / `postinstall` / `prepare`, the carrier in the `coa` hijack) | `ignore-scripts=true` in the root [`.npmrc`](.npmrc) **and** in every scaffolded template `_npmrc` blocks every transitive lifecycle hook on Daloy CI, maintainer machines, and any application scaffolded with `create-daloy`. `pnpm verify:no-lifecycle-scripts` ([`scripts/verify-no-lifecycle-scripts.ts`](scripts/verify-no-lifecycle-scripts.ts)) refuses any forbidden hook in the published manifest of `@daloyjs/core` or `create-daloy` itself. The explicit `onlyBuiltDependencies` allowlist in [`package.json`](package.json) is the only sanctioned exception. |
+| **Sudden republish after long dormancy** (the `coa` pattern: years of quiet, then a malicious version pushed to a popular package) | `minimum-release-age=1440` (24 h) in the root [`.npmrc`](.npmrc) and every scaffolded template `_npmrc` refuses to install any dependency that was published less than a day ago, which is the window in which freshly-published worm versions (Shai-Hulud, BlokTrooper, TanStack 2026-05-11) are typically detected and yanked. A surprise republish therefore cannot reach a Daloy CI run or a consumer install inside the high-risk window. |
+| **Obfuscated code / code on npm differs from GitHub** (the article's "addition of obfuscated code" signal) | `pnpm verify:no-invisible-unicode` refuses Unicode-Tag, zero-width, bidi-override, Private-Use-Area, and mid-file BOM carriers in every published file and every in-repo source root. `pnpm verify:no-remote-exec` refuses `eval(...)`, `new Function(...)` from a string, dynamic remote `import("https://...")`, and `child_process` / `vm` imports in `src/**` — the primitives an obfuscated payload needs to land. `package.json#files` whitelists the tarball to `dist/` + `bin/` + `README.md`, and every tarball ships `npm provenance` (Sigstore + OIDC) bound to the public `release.yml` workflow run, closing the "npm bytes ≠ GitHub bytes" gap. |
+| **Reviewing the entire open-source supply chain** (the article's "review all dependencies, not just direct ones") | `@daloyjs/core` declares **zero runtime dependencies** (enforced by [`pnpm verify:no-runtime-deps`](scripts/verify-no-runtime-deps.ts)). There is no transitive runtime tree to review. Adapter bindings are `peerDependencies` chosen by the consumer. The dev/test tree is pinned in [`pnpm-lock.yaml`](pnpm-lock.yaml) and [`pnpm verify:lockfile`](scripts/verify-lockfile-sources.ts) refuses any entry resolved from a non-registry source. |
+| **Researching maintainers, update cadence, and security practices** (the article's "evolve security reviews as new cracks emerge") | Active release authors are listed in [`SECURITY-CONTACTS.md`](SECURITY-CONTACTS.md) and the pre-publish `verify` job in [`release.yml`](.github/workflows/release.yml) refuses to publish unless the GitHub actor is in the **Active** block. Every release tag and release commit is signed. Mandatory hardware-backed 2FA is enforced at both the GitHub org level and the npm registry level (§ Maintainer accounts). The recurring quarterly disclosure exercise (above) re-verifies the private-report inbox, the active rotation, and the `npm-publish` Environment so a stale handoff fails CI loud. |
+| **Continuous review of unchanged code as new vulns are disclosed** (the article's "continuously check existing, unchanged code") | The daily SCA workflow ([`.github/workflows/vuln-scan.yml`](.github/workflows/vuln-scan.yml)) runs `pnpm audit --prod` against the committed lockfile on a fixed schedule (06:13 UTC), independent of PR/push activity, so newly-disclosed CVEs in pinned dependencies are surfaced even on quiet days. OpenSSF Scorecard publishes a continuous score ([`.github/workflows/scorecard.yml`](.github/workflows/scorecard.yml)) and CodeQL re-scans on schedule ([`.github/workflows/codeql.yml`](.github/workflows/codeql.yml)). |
+| **The "overconfidence" failure mode the article warns about** (a green vuln scan ≠ secure) | This file documents what core does **not** defend (§ Explicitly out of scope and § AI-accelerated attackers) so operators do not treat a green `pnpm audit` as a complete posture. Network DoS, insecure handler code, integrated template engines, credential storage, TLS termination, and runtime compromise are called out as operator responsibilities, with the recommended layer for each. |
+
+What this **does not** defend against, and we say so explicitly:
+
+- A malicious package landing in the consumer's *application* dependency
+  tree, outside of `@daloyjs/core` and `create-daloy`. Consumers should
+  layer their own Socket / Aikido / Snyk lookup on the rest of their tree
+  — Daloy's zero-runtime-deps + scaffolded `ignore-scripts` + 24 h
+  cooldown shrinks the framework's contribution to that tree to zero, but
+  cannot police what else the consumer installs.
+- An attacker who compromises a Daloy *dev* dependency, gets past the 24 h
+  cooldown, and ships a payload that only fires under Daloy's CI runner
+  identity. The publish job's `step-security/harden-runner` egress block,
+  the `verify:no-leaked-credentials` and `verify:no-invisible-unicode`
+  gates that run on the assembled tarball **after** `pnpm build`, and the
+  `npm-publish` Environment approval together shrink the blast radius, but
+  the residual risk is non-zero and is the reason the Hardening roadmap
+  lists `npm audit signatures`, SLSA build-level-3 attestations, and a
+  CycloneDX SBOM as planned work.
+
 ### npm publishing
 
 - **Releases are isolated.** The publish workflow
