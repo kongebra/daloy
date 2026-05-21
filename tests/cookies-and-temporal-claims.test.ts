@@ -721,6 +721,56 @@ test("verify-no-registry-exfiltration flags the xrpl.js / Ripple SDK exfiltratio
   assert.ok(findings.every((f) => /xrpl/i.test(f.reason)));
 });
 
+test("verify-no-registry-exfiltration flags Telegram-bot SSH-backdoor IOCs", async () => {
+  // Socket 2025-04-18 typosquat campaign documented at
+  // https://socket.dev/blog/npm-malware-targets-telegram-bot-developers —
+  // `node-telegram-utils` / `node-telegram-bots-api` / `node-telegram-util`
+  // appended attacker SSH public keys to `~/.ssh/authorized_keys`, used
+  // `ipinfo.io/ip` to discover the victim's external IP, and POSTed it
+  // (with the Unix username) to `solana.validator.blog`.
+  const { findForbiddenRegistryExfilCalls } = await import(
+    "../scripts/verify-no-registry-exfiltration.js"
+  );
+  const sample = [
+    "// unsafe: the SSH key injection target file",
+    'const target = path.join(home, ".ssh/authorized_keys");',
+    "",
+    "// unsafe: ssh dir reference",
+    'const sshDir = home + "/.ssh/";',
+    "",
+    "// unsafe: documented Telegram-bot C2 host (case-insensitive)",
+    'const c2 = "https://Solana.Validator.Blog/v1/check";',
+    "",
+    "// unsafe: ipinfo.io/ip external-IP discovery",
+    'const ip1 = "https://ipinfo.io/ip";',
+    "",
+    "// unsafe: icanhazip.com discovery",
+    'const ip2 = "https://icanhazip.com/";',
+    "",
+    "// unsafe: ifconfig.me discovery",
+    'const ip3 = "https://ifconfig.me/ip";',
+    "",
+    "// unsafe: ipify.org discovery",
+    'const ip4 = "https://api.ipify.org/";',
+    "",
+    "// unsafe: AWS checkip discovery",
+    'const ip5 = "https://checkip.amazonaws.com/";',
+  ].join("\n");
+  const findings = findForbiddenRegistryExfilCalls("sample.ts", sample);
+  // Line 1 (`.ssh/authorized_keys`) trips two patterns but `findForbidden…`
+  // breaks on first match, so each of the 8 forbidden lines produces
+  // exactly one finding.
+  assert.equal(findings.length, 8, JSON.stringify(findings, null, 2));
+  assert.match(findings[0]!.reason, /authorized_keys/);
+  assert.match(findings[1]!.reason, /\.ssh/);
+  assert.match(findings[2]!.reason, /solana\.validator\.blog/i);
+  assert.match(findings[3]!.reason, /ipinfo\.io\/ip/);
+  assert.match(findings[4]!.reason, /icanhazip\.com/);
+  assert.match(findings[5]!.reason, /ifconfig\.me/);
+  assert.match(findings[6]!.reason, /api\.ipify\.org/);
+  assert.match(findings[7]!.reason, /checkip\.amazonaws\.com/);
+});
+
 test("verify-no-registry-exfiltration accepts the live src/ tree", async () => {
   const { findForbiddenRegistryExfilCalls } = await import(
     "../scripts/verify-no-registry-exfiltration.js"

