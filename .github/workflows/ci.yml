@@ -122,6 +122,12 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      - name: Build
+        run: pnpm build
+
+      - name: Generate CycloneDX 1.5 + SPDX 2.3 SBOMs (Aikido SBOM-standards gate)
+        run: pnpm gen:sbom
+
       - name: Test
         run: pnpm test
 
@@ -130,12 +136,6 @@ jobs:
 
       - name: Branch coverage gate (compiled JS)
         run: pnpm coverage:branches
-
-      - name: Build
-        run: pnpm build
-
-      - name: Generate CycloneDX 1.5 + SPDX 2.3 SBOMs (Aikido SBOM-standards gate)
-        run: pnpm gen:sbom
 
       - name: Verify SBOMs match published manifests (Aikido SBOM-standards gate)
         run: pnpm verify:sbom
