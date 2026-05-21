@@ -55,12 +55,14 @@ export interface IpRestrictionOptions {
   message?: string;
 }
 
-interface ParsedIp {
+/** @internal Parsed IP address (shared with `fetchGuard()`). */
+export interface ParsedIp {
   bytes: Uint8Array;
   family: 4 | 6;
 }
 
-interface IpMatcher {
+/** @internal Compiled CIDR matcher (shared with `fetchGuard()`). */
+export interface IpMatcher {
   family: 4 | 6;
   prefix: number;
   bytes: Uint8Array;
@@ -124,7 +126,8 @@ function forwardedIpResolver(ctx: BaseContext<any, any>): string | undefined {
   return headers.get("x-real-ip") ?? undefined;
 }
 
-function matchesMatcher(ip: ParsedIp, m: IpMatcher): boolean {
+/** @internal */
+export function matchesMatcher(ip: ParsedIp, m: IpMatcher): boolean {
   const candidate = normalizeFamily(ip, m.family);
   if (!candidate) return false;
   const expected = m.bytes;
@@ -140,7 +143,8 @@ function matchesMatcher(ip: ParsedIp, m: IpMatcher): boolean {
   return ((candidate[fullBytes]! ^ expected[fullBytes]!) & mask) === 0;
 }
 
-function compileCidrMatcher(input: string): IpMatcher {
+/** @internal */
+export function compileCidrMatcher(input: string): IpMatcher {
   let addr = input;
   let prefixStr: string | undefined;
   if (input.includes("/")) {
@@ -196,7 +200,8 @@ function applyPrefixMask(bytes: Uint8Array, prefix: number): Uint8Array {
   return out;
 }
 
-function parseIp(input: string): ParsedIp | undefined {
+/** @internal */
+export function parseIp(input: string): ParsedIp | undefined {
   const trimmed = input.trim();
   if (trimmed.includes(":")) return parseIPv6(trimmed);
   return parseIPv4(trimmed);

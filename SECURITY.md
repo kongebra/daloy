@@ -202,8 +202,6 @@ remains auditable.
   heap), returning `503` before the runtime hangs. Exposed as `loadShedding()`
   with the `LOAD_SHEDDING_MARKER` integration hook. **(shipped)**
 - **First-party WebAuthn / passkeys** via a thin wrapper over a vetted library.
-- **SSRF guard** (`fetchGuard()`) blocking outbound `fetch` to RFC1918,
-  loopback, link-local, and metadata-service IPs unless explicitly allowlisted.
 - **Per-route capability-based body limits** derived from the route schema
   (override the global cap when the schema implies a tighter ceiling).
 - **SLSA build-level-3 attestations** and **CycloneDX SBOM** generated and
@@ -1008,7 +1006,7 @@ class of app.
 | Stored / exfiltrated **provider API keys** appearing in structured logs (a single `logger.info({ headers: req.headers })` is enough) | The default logger from [`src/logger.ts`](src/logger.ts) redacts not just `authorization` / `cookie` / `x-api-key` / `token` but also **every common LLM-provider credential header** as of `@daloyjs/core` 0.34.0: `openai-api-key`, `x-openai-api-key`, `anthropic-api-key`, `x-anthropic-api-key`, `x-api-key-anthropic`, `x-goog-api-key`, `google-api-key`, `x-google-api-key`, `azure-api-key`, `x-azure-api-key`, `api-key-azure`, `cohere-api-key`, `x-cohere-api-key`, `mistral-api-key`, `x-mistral-api-key`, `groq-api-key`, `x-groq-api-key`, `replicate-api-token`, `huggingface-api-key`, `x-huggingface-api-key`, `x-litellm-master-key`, `litellm-master-key`, `litellm-api-key`. Matched case-insensitively at every depth of the log record. Locked by a regression test in [`tests/logger-redaction-and-header-smuggling.test.ts`](tests/logger-redaction-and-header-smuggling.test.ts). Combined with the existing JWT-shaped-string redaction (`redactJwtLikeStrings: true` by default), an accidental `logger.info({ req })` cannot leak a provider key into the log stream. |
 | 5xx error pages leaking the SQL fragment / prompt / provider key in the `detail` field of a problem+json response | Production mode strips `detail` from every 5xx problem+json automatically (see § In scope — "5xx info disclosure"). Stack traces never reach the client in `NODE_ENV=production`. |
 | Supply-chain compromise of the AI gateway itself (the LiteLLM CVE-2026-33634 path: a trojaned release executes on first import) | Same controls as every other supply-chain section above: `minimum-release-age=1440` (24 h cooldown) in root [`.npmrc`](.npmrc) and every template `_npmrc`; `ignore-scripts=true` in both; [`scripts/verify-no-lifecycle-scripts.ts`](scripts/verify-no-lifecycle-scripts.ts) refuses any install-time hook on a published manifest; `blockExoticSubdeps: true` in [`pnpm-workspace.yaml`](pnpm-workspace.yaml); [`pnpm verify:lockfile`](scripts/verify-lockfile-sources.ts) rejects any tarball whose origin is not `registry.npmjs.org`; `@daloyjs/core`'s zero-runtime-dep posture means importing the framework cannot transitively pull a trojanized package. |
-| Outbound SSRF from a handler to a provider endpoint chosen by the attacker (`POST /chat { provider_url: "http://169.254.169.254/..." }`) | On the hardening roadmap as `fetchGuard()` (RFC1918 + loopback + link-local + metadata-service IP blocklist). Until it ships, the documented mitigation is "never accept a provider base URL from a request body; pick it server-side from an allowlist". |
+| Outbound SSRF from a handler to a provider endpoint chosen by the attacker (`POST /chat { provider_url: "http://169.254.169.254/..." }`) | Wrap user-controlled outbound `fetch` calls with `fetchGuard()` from [`src/fetch-guard.ts`](src/fetch-guard.ts). The guard blocks loopback (`127.0.0.0/8`, `::1`), RFC1918 private ranges, link-local (`169.254.0.0/16`, `fe80::/10` — every documented cloud metadata IP for AWS/Azure/DigitalOcean), IPv6 unique-local (`fc00::/7`), plus an always-deny floor covering CGNAT (`100.64.0.0/10` — Alibaba `100.100.100.200`), `192.0.0.0/24` (Oracle Cloud `192.0.0.192`), all IANA-reserved / multicast / broadcast ranges, and rejects non-`http`/`https` protocols (`file:`, `data:`, `gopher:`, `ftp:`). Redirects are followed manually with re-validation at every hop — a `302 -> http://169.254.169.254/` cannot bypass the check. IPv4-mapped IPv6 (`::ffff:a.b.c.d`) is recursively checked against the embedded IPv4 address. Closes the Aikido [“simple email form” cloud-takeover SSRF chain](https://www.aikido.dev/blog/how-a-startups-cloud-got-taken-over-by-a-simple-form-that-sends-an-email). |
 | Cross-Site WebSocket Hijacking on a streaming-chat WebSocket route (`wss://app/chat`) that already has the user's session cookie | `app.ws()` refuses-at-registration in production unless the route sets `allowedOrigins` (`"same-origin"`, a string allowlist, or a predicate) or explicitly opts in via `acknowledgeCrossOriginUpgrade: true`. Closes the [Storybook CVE-2026-27148](https://www.aikido.dev/blog/storybooks-websockets-attack) class of bug for AI chat sockets that often carry both a session cookie *and* the user's provider key. |
 | Maintainer of the consumer app published their AI app's npm package with a `postinstall` that leaks `process.env.OPENAI_API_KEY` from CI | Scaffolded `create-daloy` templates ship `ignore-scripts=true` and an empty `pnpm.onlyBuiltDependencies` allowlist; the template `_gitignore` excludes `.env*` so a provider key in `.env.local` cannot be committed by accident; `step-security/harden-runner` on our own publish workflow is the model we recommend consumers copy. |
 
@@ -1031,9 +1029,11 @@ class of app.
   provider keys in the runtime's secret store (Vault, Doppler, AWS Secrets
   Manager, Cloudflare Workers Secrets, Vercel Encrypted Env), not in
   application database rows.
-- A handler that builds an outbound `fetch(req.body.provider_url, …)`. Until
-  `fetchGuard()` ships, the runtime's network policy is the only line of
-  defense.
+- A handler that builds an outbound `fetch(req.body.provider_url, …)`
+  without wrapping it through `fetchGuard()`. The guard is opt-in (Daloy
+  cannot rewrite `globalThis.fetch` safely for every runtime), so a
+  handler that imports the raw `fetch` and skips the wrapper is on its
+  own — the runtime's network policy is then the only line of defense.
 - A LiteLLM (or any other AI gateway) instance running **alongside** a Daloy
   app. The Daloy app's controls apply to the Daloy process, not to a
   sibling Python service on the same network. If you run LiteLLM in

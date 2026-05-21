@@ -173,6 +173,8 @@ export { every, some, except } from "./combine.js";
 export type { ExceptPredicate } from "./combine.js";
 export { ipRestriction } from "./ip-restriction.js";
 export type { IpRestrictionOptions } from "./ip-restriction.js";
+export { fetchGuard, SsrfBlockedError } from "./fetch-guard.js";
+export type { FetchGuardOptions, SsrfBlockReason } from "./fetch-guard.js";
 export { loadShedding, LOAD_SHEDDING_MARKER } from "./load-shedding.js";
 export type {
   LoadSheddingOptions,
