@@ -10,7 +10,8 @@
     "start": "next start",
     "lint": "eslint",
     "format": "prettier --write \"**/*.{ts,tsx}\"",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "assets:render": "node scripts/render-assets.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",
@@ -39,6 +40,7 @@
     "postcss": "^8.5.14",
     "prettier": "^3.8.3",
     "prettier-plugin-tailwindcss": "^0.8.0",
+    "sharp": "^0.34.5",
     "tailwindcss": "^4.3.0",
     "typescript": "^6.0.3"
   }

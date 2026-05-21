@@ -550,6 +550,150 @@ test("verify-no-remote-exec accepts the live src/ tree", async () => {
   );
 });
 
+// ---------- verify-no-vulnerable-sandboxes (Socket vm2 CVE-2026-26956 gate) ----------
+
+test("verify-no-vulnerable-sandboxes flags every forbidden sandbox package across every dep bucket", async () => {
+  const { findForbiddenSandboxesInPackageJson, FORBIDDEN_SANDBOX_PACKAGES } =
+    await import("../scripts/verify-no-vulnerable-sandboxes.js");
+  // All forbidden names appear in at least one bucket, plus
+  // `bundledDependencies` (array form) to exercise that branch.
+  const pkg = {
+    dependencies: { vm2: "3.10.4", left_pad: "1.3.0" },
+    devDependencies: { "safe-eval": "0.4.1" },
+    peerDependencies: { notevil: "1.0.0" },
+    optionalDependencies: { "static-eval": "2.1.0", "vm2-sandbox-escape": "1.0.0" },
+    bundledDependencies: ["eval-sandbox", "lodash"],
+  };
+  const findings = findForbiddenSandboxesInPackageJson("fake/package.json", pkg);
+  const names = findings.map((f) => f.packageName).sort();
+  assert.deepEqual(names, [...FORBIDDEN_SANDBOX_PACKAGES].sort());
+  assert.ok(findings.every((f) => f.file === "fake/package.json"));
+  assert.ok(
+    findings.some((f) => /bundledDependencies/.test(f.reason)),
+    "bundledDependencies entries should be reported",
+  );
+});
+
+test("verify-no-vulnerable-sandboxes ignores benign package.json content", async () => {
+  const { findForbiddenSandboxesInPackageJson } = await import(
+    "../scripts/verify-no-vulnerable-sandboxes.js"
+  );
+  const pkg = {
+    name: "ok",
+    dependencies: { zod: "^4.0.0", "isolated-vm": "^5.0.0" }, // isolated-vm is allowed
+    devDependencies: { typescript: "^6.0.0", tsx: "^4.0.0" },
+    peerDependencies: { "@daloyjs/core": "^0.45.0" },
+  };
+  const findings = findForbiddenSandboxesInPackageJson("ok/package.json", pkg);
+  assert.deepEqual(findings, []);
+});
+
+test("verify-no-vulnerable-sandboxes flags pnpm-9 lockfile snapshots of forbidden packages", async () => {
+  const { findForbiddenSandboxesInLockfile } = await import(
+    "../scripts/verify-no-vulnerable-sandboxes.js"
+  );
+  const lock = [
+    "lockfileVersion: '9.0'",
+    "",
+    "snapshots:",
+    "",
+    "  vm2@3.10.4:",
+    "    resolution: {integrity: sha512-xxx}",
+    "",
+    "  'safe-eval@0.4.1':",
+    "    resolution: {integrity: sha512-yyy}",
+    "",
+    "  notevil@1.3.3:",
+    "    resolution: {integrity: sha512-zzz}",
+    "",
+    "  lodash@4.17.21:",
+    "    resolution: {integrity: sha512-aaa}",
+  ].join("\n");
+  const findings = findForbiddenSandboxesInLockfile("pnpm-lock.yaml", lock);
+  const names = findings.map((f) => f.packageName).sort();
+  assert.deepEqual(names, ["notevil", "safe-eval", "vm2"]);
+  assert.ok(findings.every((f) => /pnpm-lock\.yaml:\d+/.test(f.file)));
+});
+
+test("verify-no-vulnerable-sandboxes does not false-positive on benign lockfile substrings", async () => {
+  const { findForbiddenSandboxesInLockfile } = await import(
+    "../scripts/verify-no-vulnerable-sandboxes.js"
+  );
+  // `evm2-foo` and `static-evaluator` share substrings with forbidden
+  // names but are *not* the forbidden packages themselves.
+  const lock = [
+    "  evm2-foo@1.0.0:",
+    "    resolution: {integrity: sha512-aaa}",
+    "  static-evaluator@2.0.0:",
+    "    resolution: {integrity: sha512-bbb}",
+    "  # vm2 mentioned only in a comment, never resolved",
+    "  zod@4.4.3:",
+    "    resolution: {integrity: sha512-ccc}",
+  ].join("\n");
+  const findings = findForbiddenSandboxesInLockfile("pnpm-lock.yaml", lock);
+  assert.deepEqual(findings, []);
+});
+
+test("verify-no-vulnerable-sandboxes accepts the live tracked package.json + lockfile set", async () => {
+  const {
+    findForbiddenSandboxesInPackageJson,
+    findForbiddenSandboxesInLockfile,
+  } = await import("../scripts/verify-no-vulnerable-sandboxes.js");
+  const { readFile, readdir, stat } = await import("node:fs/promises");
+  const path = await import("node:path");
+  const root = process.cwd();
+  const SKIP = new Set([
+    "node_modules",
+    ".git",
+    ".next",
+    "dist",
+    "dist-coverage",
+    "coverage",
+    "temp_tarball",
+    "generated",
+  ]);
+  async function* walk(dir: string): AsyncGenerator<string> {
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
+      if (entry.name.startsWith(".") && entry.name !== ".github") continue;
+      if (SKIP.has(entry.name)) continue;
+      const child = path.join(dir, entry.name);
+      if (entry.isDirectory()) yield* walk(child);
+      else if (entry.isFile() && entry.name === "package.json") yield child;
+    }
+  }
+  let total = 0;
+  for await (const absolute of walk(root)) {
+    const text = await readFile(absolute, "utf8");
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      continue;
+    }
+    const rel = path.relative(root, absolute);
+    total += findForbiddenSandboxesInPackageJson(
+      rel,
+      parsed as Parameters<typeof findForbiddenSandboxesInPackageJson>[1],
+    ).length;
+  }
+  const lockPath = path.join(root, "pnpm-lock.yaml");
+  try {
+    const stats = await stat(lockPath);
+    if (stats.isFile()) {
+      const lock = await readFile(lockPath, "utf8");
+      total += findForbiddenSandboxesInLockfile("pnpm-lock.yaml", lock).length;
+    }
+  } catch {
+    /* no lockfile present */
+  }
+  assert.equal(
+    total,
+    0,
+    "Daloy repo must not depend on `vm2` or related in-process JS sandboxes; see " +
+      "https://socket.dev/blog/free-certified-patches-for-critical-vm2-sandbox-escape",
+  );
+});
+
 // ---------- verify-no-leaked-credentials ----------
 
 test("scanFileContentForCredentials catches every documented secret pattern", () => {

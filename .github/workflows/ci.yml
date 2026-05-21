@@ -95,6 +95,9 @@ jobs:
       - name: Verify no runtime remote-exec primitives (Aikido BlokTrooper gate)
         run: pnpm verify:no-remote-exec
 
+      - name: Verify no vulnerable JS sandbox dependencies (Socket vm2 CVE-2026-26956 gate)
+        run: pnpm verify:no-vulnerable-sandboxes
+
       - name: Verify Wave 9 pattern-agnostic parity audits (Wave 9 governance gate)
         run: pnpm verify:wave9-audits
 
