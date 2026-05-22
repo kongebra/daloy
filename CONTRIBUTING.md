@@ -63,3 +63,29 @@ If you have been added to the `daloyjs` org as a member or as an explicit
 repository collaborator, the workflow will not close your PRs. Follow the
 normal quality gates in [AGENTS.md](./AGENTS.md) and the PR template in
 [.github/PULL_REQUEST_TEMPLATE.md](./.github/PULL_REQUEST_TEMPLATE.md).
+
+### Release notes
+
+SBOM generation and verification are part of the release contract.
+
+The relevant commands are:
+
+```bash
+pnpm gen:sbom
+pnpm verify:sbom
+```
+
+You can run them locally before a release if you want a quick preflight, but
+they are already enforced automatically:
+
+- [`.github/workflows/ci.yml`](./.github/workflows/ci.yml) runs both commands on PRs and pushes to `main`.
+- [`.github/workflows/release.yml`](./.github/workflows/release.yml) reruns both commands before either publish job can reach npm.
+
+In other words, forgetting to run them locally should not let a bad release through.
+
+To avoid duplicate-version failures on npm, pick one publish path per version:
+
+- the protected GitHub release workflow, or
+- a one-off local publish
+
+Do not use both for the same version.

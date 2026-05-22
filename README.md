@@ -110,6 +110,30 @@ Run `pnpm audit --prod` regularly (or `pnpm run audit` in this repo) — and `pn
 
 ---
 
+## SBOM + release automation
+
+Daloy ships a CycloneDX 1.5 + SPDX 2.3 SBOM for both `@daloyjs/core` and `create-daloy`.
+
+If you want to run the SBOM flow locally, the two commands are:
+
+```bash
+pnpm gen:sbom
+pnpm verify:sbom
+```
+
+`pnpm gen:sbom` regenerates the publishable SBOM files for both packages. `pnpm verify:sbom` checks that the generated SBOMs match the current package manifests and that `@daloyjs/core` still declares zero runtime dependencies.
+
+You do **not** need to remember to run those commands manually for CI or publish:
+
+- [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs `pnpm gen:sbom` and `pnpm verify:sbom` on every push to `main` and every PR.
+- [`.github/workflows/release.yml`](.github/workflows/release.yml) reruns `pnpm gen:sbom` and `pnpm verify:sbom` before either npm publish job is allowed to proceed.
+
+That means a release will fail before publish if the SBOMs are missing, stale, or inconsistent with `package.json`.
+
+For maintainers, the safe rule is: use one publish path per version. Either publish through the protected GitHub release workflow, or publish locally for an exceptional case, but do not do both for the same version.
+
+---
+
 ## Hello world
 
 ```ts
