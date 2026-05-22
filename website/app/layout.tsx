@@ -4,6 +4,7 @@ import Link from "next/link";
 import "./globals.css";
 import { RouteTransition } from "@/components/route-transition";
 import { SiteHeader } from "@/components/site-header";
+import { LogoLockup } from "@/components/daloyjs-logo";
 import { ThemeProvider } from "@/components/theme-provider";
 import { cn } from "@/lib/utils";
 import { DEFAULT_KEYWORDS, SITE_NAME, SITE_URL } from "@/lib/seo";
@@ -136,29 +137,35 @@ export default function RootLayout({
             className="border-t px-6 py-6 text-sm text-muted-foreground"
             style={{ viewTransitionName: "site-footer" }}
           >
-            <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-2 sm:flex-row">
-              <p className="text-center sm:text-left">
-                Built with DaloyJS · MIT licensed · Distributed via{" "}
-                <a
-                  className="underline"
-                  href="https://pnpm.io/motivation"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  pnpm
-                </a>{" "}
-                ·{" "}
-                <Link className="underline underline-offset-4" href="/blog">
-                  Blog
-                </Link>{" "}
-                ·{" "}
-                <Link
-                  className="underline underline-offset-4"
-                  href="/about-the-name"
-                >
-                  About the name
+            <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 sm:flex-row">
+              <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-center">
+                <Link href="/" aria-label="DaloyJS Home">
+                  <LogoLockup className="h-6 w-auto transition-opacity hover:opacity-80" />
                 </Link>
-              </p>
+                <span className="hidden text-border sm:inline-block">|</span>
+                <p className="text-center sm:text-left">
+                  MIT licensed · Distributed via{" "}
+                  <a
+                    className="underline"
+                    href="https://pnpm.io/motivation"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    pnpm
+                  </a>{" "}
+                  ·{" "}
+                  <Link className="underline underline-offset-4" href="/blog">
+                    Blog
+                  </Link>{" "}
+                  ·{" "}
+                  <Link
+                    className="underline underline-offset-4"
+                    href="/about-the-name"
+                  >
+                    About the name
+                  </Link>
+                </p>
+              </div>
               <p className="text-center sm:text-right">
                 <a
                   className="underline underline-offset-4"
