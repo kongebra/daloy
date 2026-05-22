@@ -226,22 +226,22 @@ const BANNER_OUTPUT = `╭──────────────────
 #   DALOY_ASCII=1 (or non-UTF8 LANG) falls back to ASCII glyphs
 #   Non-TTY (CI, piping to a file) drops the colors`;
 
-const WITH_CI_FILES = `# pnpm create daloy@latest my-api --with-ci --code-owner @acme/security
+const WITH_CI_FILES = `# pnpm create daloy@latest my-api --with-ci
 # adds, on top of the application files:
 
 .github/
   workflows/
-    ci.yml            # pnpm install --frozen-lockfile --ignore-scripts; typecheck; test
+    ci.yml            # pnpm install --frozen-lockfile --ignore-scripts; typecheck; test; verify lockfile
     codeql.yml        # TS/JS static analysis
-    release.yml       # OIDC trusted publishing + provenance (no NODE_AUTH_TOKEN)
     scorecard.yml     # weekly OpenSSF Scorecard
     zizmor.yml        # workflow lint on every push/PR
-    lockfile-verify.yml # runs scripts/verify-lockfile-sources.ts
+    vuln-scan.yml     # checks for known vulnerabilities
+    container-scan.yml # runs Trivy scans on your dockerfile
   dependabot.yml      # weekly bumps, grouped per ecosystem
-  CODEOWNERS          # @acme/security on workflow files
+  CODEOWNERS          # assigns ownership to the repo owner 
 SECURITY.md           # disclosure policy + supported versions
 scripts/
-  verify-lockfile-sources.ts  # catches non-npm registry / git / tarball drift`;
+  verify-lockfile-sources.mjs # catches non-npm registry / git / tarball drift`;
 
 const jsonLd = {
   "@context": "https://schema.org",
@@ -427,10 +427,9 @@ export default function BlogPostPage() {
             That&apos;s the entire story for most people. One command. You get
             an HTTP server, an OpenAPI document, Swagger UI, hardened security
             middleware preloaded (CSRF, sessions, secure headers, rate limit), a
-            sensible folder structure, and a CI pipeline that&apos;s pinned,
-            sandboxed, and provenance-aware. The scaffolder is opinionated{" "}
-            <em>for</em> you so you can start making the opinionated decisions
-            about your <em>own</em> app.
+            sensible folder structure, and a CI pipeline that&apos;s pinned and
+            sandboxed. The scaffolder is opinionated <em>for</em> you so you can
+            start making the opinionated decisions about your <em>own</em> app.
           </p>
 
           <h2>The interactive flow, when you don&apos;t pass arguments</h2>

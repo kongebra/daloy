@@ -213,7 +213,7 @@ jobs:
       - uses: github/codeql-action/upload-sarif@4f3212b61783c3c68e8309a0f18a699764811cda
         with: { sarif_file: results.sarif }`;
 
-const VERIFY_LOCKFILE = `// scripts/verify-lockfile-sources.ts — run in CI before install
+const VERIFY_LOCKFILE = `// scripts/verify-lockfile-sources.mjs — run in CI before install
 // Catches "registry override sneaks into pnpm-lock.yaml" attacks.
 
 import { readFileSync } from "node:fs";
@@ -246,13 +246,14 @@ pnpm create daloy@latest my-api \\
 # What this drops into the new repo:
 #   .github/workflows/ci.yml         — pinned actions, no cache, --ignore-scripts
 #   .github/workflows/codeql.yml     — TS/JS static analysis
+#   .github/workflows/container-scan.yml — runs Trivy scans on your dockerfile
 #   .github/workflows/scorecard.yml  — weekly OpenSSF Scorecard
+#   .github/workflows/vuln-scan.yml  — checks for known vulnerabilities
 #   .github/workflows/zizmor.yml     — workflow lint on every push
-#   .github/workflows/release.yml    — OIDC publish with provenance
 #   .github/dependabot.yml           — weekly bumps, grouped by ecosystem
 #   .github/CODEOWNERS               — @acme/security on workflow files
 #   SECURITY.md                      — disclosure policy + supported versions
-#   scripts/verify-lockfile-sources.ts — the script above, runnable as
+#   scripts/verify-lockfile-sources.mjs — the script above, runnable as
 #                                        pnpm verify:lockfile`;
 
 const ATTACK_PATHS = `# A short, opinionated map of the attack paths the above shuts down:
@@ -270,7 +271,7 @@ Workflow exfiltrates secrets to an attacker → zizmor checks for it, blocks PR
 Long-lived npm token leaks from a runner    → trusted publishing (OIDC) only
 Build artifacts can't be traced to a commit → --provenance attaches a Sigstore
                                               attestation to every publish
-Lockfile silently picks a wrong registry    → verify-lockfile-sources.ts in CI`;
+Lockfile silently picks a wrong registry    → verify-lockfile-sources.mjs in CI`;
 
 const jsonLd = {
   "@context": "https://schema.org",
@@ -655,8 +656,8 @@ export default function BlogPostPage() {
           </p>
 
           <EditorFrame
-            files={["scripts/verify-lockfile-sources.ts"]}
-            activeFile="scripts/verify-lockfile-sources.ts"
+            files={["scripts/verify-lockfile-sources.mjs"]}
+            activeFile="scripts/verify-lockfile-sources.mjs"
             status="run before install in CI · grep is plenty here"
           >
             <CodeBlock language="ts" code={VERIFY_LOCKFILE} />
@@ -690,7 +691,7 @@ export default function BlogPostPage() {
             <code>.npmrc</code>, the <code>pnpm-workspace.yaml</code> keys,
             every workflow SHA-pinned with{" "}
             <code>permissions: &#123;&#125;</code>, CODEOWNERS, Dependabot,
-            SECURITY.md, and <code>verify-lockfile-sources.ts</code> as a{" "}
+            SECURITY.md, and <code>verify-lockfile-sources.mjs</code> as a{" "}
             <code>pnpm verify:lockfile</code> script. You don&apos;t opt into
             security; you opt out of it (with <code>--no-ci</code>) if you
             insist.

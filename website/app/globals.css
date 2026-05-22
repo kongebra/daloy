@@ -984,3 +984,8 @@
     background-clip: border-box;
   }
 }
+
+@keyframes reading-progress {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}

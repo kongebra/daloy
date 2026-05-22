@@ -6,6 +6,7 @@ import { RouteTransition } from "@/components/route-transition";
 import { SiteHeader } from "@/components/site-header";
 import { LogoLockup } from "@/components/daloyjs-logo";
 import { ThemeProvider } from "@/components/theme-provider";
+import { ReadingProgress } from "@/components/reading-progress";
 import { cn } from "@/lib/utils";
 import { DEFAULT_KEYWORDS, SITE_NAME, SITE_URL } from "@/lib/seo";
 import { GoogleAnalytics } from "@next/third-parties/google";
@@ -131,6 +132,7 @@ export default function RootLayout({
     >
       <body className="flex min-h-screen flex-col bg-background font-sans antialiased">
         <ThemeProvider>
+          <ReadingProgress />
           <SiteHeader />
           <RouteTransition>{children}</RouteTransition>
           <footer
