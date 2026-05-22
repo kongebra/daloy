@@ -15,6 +15,7 @@ import { runContractTests } from "./contract.js";
 import { generateOpenAPI, openapiToYAML } from "./openapi.js";
 import type { RouteDefinition, RouteMeta } from "./types.js";
 
+/** I/O hooks used by {@link runCli} to read modules, write output, and spawn child processes. */
 export interface CliIO {
   stdout: (chunk: string) => void;
   stderr: (chunk: string) => void;
@@ -35,10 +36,12 @@ export interface CliIO {
   detectRuntime?: () => DevRuntime;
 }
 
+/** Return value of {@link runCli}. The caller wires `exitCode` into `process.exit(...)`. */
 export interface CliResult {
   exitCode: number;
 }
 
+/** Parsed CLI flags accepted by {@link runCli}. See {@link parseArgs}. */
 export interface CliOptions {
   json: boolean;
   check: boolean;
@@ -231,6 +234,10 @@ async function resolveDevEntry(entry: string | undefined): Promise<string> {
   );
 }
 
+/**
+ * Parse a process-style argv (without the `node`/`daloy` prefix) into a
+ * `{ command, opts }` pair. Throws on unknown flags or invalid enum values.
+ */
 export function parseArgs(argv: readonly string[]): { command: string; opts: CliOptions } {
   const opts: CliOptions = {
     json: false,
@@ -323,6 +330,11 @@ function readFlagValue(argv: readonly string[], index: number, flag: string): st
   return value;
 }
 
+/**
+ * Execute the CLI against the supplied argv and {@link CliIO}. Does not read
+ * `process.argv`, write to process stdio, or call `process.exit()` directly,
+ * so tests can drive `inspect`/`dev`/`doctor` with in-memory stdio.
+ */
 export async function runCli(argv: readonly string[], io: CliIO): Promise<CliResult> {
   let parsed: ReturnType<typeof parseArgs>;
   try {

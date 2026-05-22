@@ -17,6 +17,7 @@
  */
 import type { App } from "../app.js";
 
+/** Module shape expected by the Cloudflare Workers runtime as `export default`. */
 export interface ExportedFetchHandler<Env = unknown> {
   fetch: (request: Request, env?: Env, ctx?: ExecutionContextLike) => Promise<Response>;
 }
@@ -26,6 +27,7 @@ interface ExecutionContextLike {
   passThroughOnException?: () => void;
 }
 
+/** Wrap an {@link App} in the `{ fetch }` object expected by Cloudflare Workers and other web-standard hosts. */
 export function toFetchHandler<Env = unknown>(app: App): ExportedFetchHandler<Env> {
   return {
     fetch: (req) => app.fetch(req),

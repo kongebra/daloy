@@ -7,6 +7,10 @@
 
 export type LogLevel = "trace" | "debug" | "info" | "warn" | "error" | "fatal";
 
+/**
+ * Minimal structured-logger contract. Compatible with pino/winston via a
+ * thin adapter; the default implementation is {@link createLogger}.
+ */
 export interface Logger {
   level: LogLevel;
   trace(obj: object | string, msg?: string): void;
@@ -115,6 +119,7 @@ export const DEFAULT_REDACT_KEYS: readonly string[] = Object.freeze([
   "litellm-api-key",
 ]);
 
+/** Options for {@link createLogger}. */
 export interface ConsoleLoggerOptions {
   level?: LogLevel;
   bindings?: Record<string, unknown>;

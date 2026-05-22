@@ -20,6 +20,7 @@ import {
   type WebSocketHandler,
 } from "../websocket.js";
 
+/** TLS material accepted by Bun's `serve({ tls })` option. */
 export interface BunTLSOptions {
   /** PEM certificate. */
   cert: string;
@@ -31,6 +32,7 @@ export interface BunTLSOptions {
   ca?: string;
 }
 
+/** Options forwarded to `Bun.serve` by {@link serve}. */
 export interface BunServeOptions {
   port?: number;
   hostname?: string;
@@ -46,12 +48,14 @@ export interface BunServeOptions {
   tls?: BunTLSOptions;
 }
 
+/** Handle returned by {@link serve} for shutdown and listener introspection. */
 export interface BunServerHandle {
   port: number;
   url: URL | undefined;
   stop: () => Promise<void>;
 }
 
+/** Start `Bun.serve` bound to the given {@link App}, wiring HTTP and WebSocket routes. */
 export function serve(app: App, opts: BunServeOptions = {}): BunServerHandle {
   const Bun = (
     globalThis as {

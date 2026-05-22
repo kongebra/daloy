@@ -359,7 +359,9 @@ async function verifyMagicBytes(
 export function fileField(
   options: FileFieldOptions & { optional: true }
 ): FileFieldSchema<UploadedFile | null | undefined>;
+/** Validator for a required single uploaded `File`/`Blob` field. */
 export function fileField(options?: FileFieldOptions): FileFieldSchema<UploadedFile>;
+/** Shared implementation for the `fileField` overloads above. */
 export function fileField(
   options: FileFieldOptions = {}
 ): FileFieldSchema<UploadedFile | null | undefined> {

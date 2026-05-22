@@ -88,6 +88,7 @@ export interface RequestSchemas {
   body?: StandardSchemaV1;
 }
 
+/** Infer the validated output of a Standard Schema validator, or `undefined` when no schema is present. */
 export type InferOut<S> = S extends StandardSchemaV1
   ? StandardSchemaV1.InferOutput<S>
   : undefined;
@@ -158,6 +159,7 @@ export type ResponsesMap = {
   [Status in number]?: ResponseSpec;
 };
 
+/** Union of declared status-code literals in a {@link ResponsesMap}. */
 export type StatusOf<R extends ResponsesMap> = Extract<keyof R, number>;
 
 /**

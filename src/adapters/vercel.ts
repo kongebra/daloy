@@ -19,14 +19,18 @@
  */
 import type { App } from "../app.js";
 
+/** Web-standard handler shape used by Vercel Edge Functions, Next.js route handlers, and middleware. */
 export type WebHandler = (req: Request) => Promise<Response>;
+/** Default export shape for Vercel's web-standard `{ fetch }` runtime. */
 export interface FetchHandler {
   fetch: WebHandler;
 }
 
 const NEXT_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"] as const;
+/** Record of per-method handlers expected by a Next.js App Router `route.ts` file. */
 export type RouteHandlers = Record<(typeof NEXT_METHODS)[number], WebHandler>;
 
+/** Wrap an {@link App} as a single web-standard fetch handler. */
 export function toWebHandler(app: App): WebHandler {
   return (req) => app.fetch(req);
 }

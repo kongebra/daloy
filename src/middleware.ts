@@ -250,6 +250,13 @@ export const SECURE_HEADERS_MARKER: unique symbol = Symbol.for(
   "daloyjs.middleware.secureHeaders",
 );
 
+/**
+ * Apply a Helmet-equivalent baseline of secure response headers (see
+ * {@link SecureHeadersOptions} for the full list). Pass `false` for any
+ * field to disable that header; handler-set headers always win.
+ *
+ * @since 0.1.0
+ */
 export function secureHeaders(opts: SecureHeadersOptions = {}): Hooks {
   const headers: Record<string, string> = {};
   let cspOpt = opts.contentSecurityPolicy ?? "default-src 'self'; frame-ancestors 'none'";
@@ -1405,6 +1412,7 @@ export function basicAuth(opts: BasicAuthOptions): Hooks {
  */
 export const REQUIRE_SCOPES_AGGREGATE_KEY = "__daloyRequiredScopes" as const;
 
+/** Marker on the `Hooks` object returned by {@link requireScopes}, used to detect installed scope guards. */
 export const REQUIRE_SCOPES_HOOK_MARKER: unique symbol = Symbol.for(
   "daloyjs.middleware.requireScopes",
 );

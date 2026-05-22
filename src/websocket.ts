@@ -342,6 +342,7 @@ export function normalizeWebSocketOptions(
   };
 }
 
+/** Non-nullable `beforeUpgrade` hook type from {@link WebSocketHandler}, useful for adapter authors composing upgrade gates. */
 export type WebSocketBeforeUpgrade<P extends string = string, S = AppState> = NonNullable<
   WebSocketHandler<P, S>["beforeUpgrade"]
 >;
@@ -662,6 +663,7 @@ export function checkWebSocketOrigin(
 
 // ---------- Frame protocol (RFC 6455 §5) ----------
 
+/** A single decoded RFC 6455 frame, as returned by {@link parseFrame}. */
 export interface ParsedFrame {
   fin: boolean;
   opcode: number;
@@ -886,6 +888,7 @@ export class WebSocketProtocolError extends Error {
   }
 }
 
+/** Specialization of {@link WebSocketProtocolError} thrown when an inbound message exceeds the configured `maxPayloadLength`. */
 export class WebSocketPayloadTooLargeError extends WebSocketProtocolError {
   constructor(
     readonly limit: number,
@@ -910,6 +913,7 @@ export interface MessageEvent {
   isBinary: boolean;
 }
 
+/** Callbacks supplied to a {@link FrameSink} by an adapter to receive decoded frames and protocol events. */
 export interface FrameSinkEvents {
   onMessage(ev: MessageEvent): void;
   onPing(payload: Uint8Array): void;

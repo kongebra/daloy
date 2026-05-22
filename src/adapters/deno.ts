@@ -8,6 +8,7 @@
  */
 import type { App } from "../app.js";
 
+/** Options forwarded to `Deno.serve` by {@link serve}. */
 export interface DenoServeOptions {
   port?: number;
   hostname?: string;
@@ -27,10 +28,12 @@ export interface DenoServeOptions {
   shutdownTimeoutMs?: number;
 }
 
+/** Handle returned by {@link serve}; call `shutdown()` to drain. */
 export interface DenoServerHandle {
   shutdown: () => Promise<void>;
 }
 
+/** Start `Deno.serve` bound to the given {@link App} with graceful-shutdown wiring. */
 export function serve(app: App, opts: DenoServeOptions = {}): DenoServerHandle {
   const D = (globalThis as {
     Deno?: {

@@ -22,6 +22,7 @@ export const DEPENDENCY_MARKER: unique symbol = Symbol.for(
 /** Per-request cache of dependency results, keyed by dependency name. */
 const RESULTS_KEY: unique symbol = Symbol.for("daloyjs.dependency.results");
 
+/** Configuration passed to {@link defineDependency}. */
 export interface DependencyOptions<TName extends string, TValue, TStateKey extends string> {
   /** Unique dependency name. Used for cycle detection and dedup. */
   name: TName;

@@ -117,6 +117,7 @@ export interface SubdomainsOptions {
   _now?: Date;
 }
 
+/** Maximum age, in days, before startup fails because the bundled Public Suffix List snapshot is stale. */
 export const MAX_SNAPSHOT_AGE_DAYS = 90;
 
 /**

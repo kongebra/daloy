@@ -273,6 +273,16 @@ test("every template ships a hardened _Dockerfile and _dockerignore", async () =
       /^\.env$/m,
       `${template} .dockerignore must exclude .env`,
     );
+    assert.doesNotMatch(
+      dockerignore,
+      /^(pnpm-lock\.yaml|package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|bun\.lock|bun\.lockb|deno\.lock)$/m,
+      `${template} .dockerignore must keep lockfiles in the build context`,
+    );
+    if (template === "deno-basic") {
+      assert.match(dockerignore, /^\.deno\/$/m);
+    } else {
+      assert.match(dockerignore, /^\.pnpm-store\/$/m);
+    }
   }
 });
 
@@ -610,14 +620,19 @@ test("--with-ci keeps non-pnpm scaffolds clean while generating matching CI comm
       dockerfile,
       /pnpm install --frozen-lockfile --ignore-scripts/,
     );
+
+    const dockerignore = await readFile(path.join(projectDir, ".dockerignore"), "utf8");
+    assert.match(dockerignore, /^\.npm\/$/m);
+    assert.doesNotMatch(dockerignore, /^\.pnpm-store\/$/m);
+    assert.doesNotMatch(dockerignore, /^package-lock\.json$/m);
   } finally {
     await rm(tmpDir, { recursive: true, force: true });
   }
 });
 
-test("Dockerfile scaffolding follows the selected bun package manager", async () => {
+test("Docker ignore scaffolding follows the selected yarn package manager", async () => {
   const tmpDir = await mkdtemp(path.join(os.tmpdir(), "create-daloy-"));
-  const projectName = "bun-pm-docker";
+  const projectName = "yarn-pm-dockerignore";
   try {
     const exitCode = await new Promise((resolve) => {
       const proc = spawn(
@@ -628,7 +643,7 @@ test("Dockerfile scaffolding follows the selected bun package manager", async ()
           "--template",
           "node-basic",
           "--package-manager",
-          "bun",
+          "yarn",
           "--no-ci",
           "--no-install",
           "--no-git",
@@ -645,16 +660,80 @@ test("Dockerfile scaffolding follows the selected bun package manager", async ()
       path.join(tmpDir, projectName, "Dockerfile"),
       "utf8",
     );
-    assert.match(dockerfile, /^ARG BUN_IMAGE=oven\/bun:1-alpine$/m);
-    assert.match(dockerfile, /^FROM \$\{BUN_IMAGE\} AS builder$/m);
-    assert.match(dockerfile, /COPY package\.json bun\.lock\* bun\.lockb\* \./);
-    assert.match(dockerfile, /RUN bun install --frozen-lockfile --ignore-scripts/);
-    assert.match(dockerfile, /RUN bun run build/);
-    assert.match(dockerfile, /^FROM \$\{NODE_IMAGE\} AS runner$/m);
-    assert.doesNotMatch(
-      dockerfile,
-      /pnpm install --frozen-lockfile --ignore-scripts/,
+    assert.match(dockerfile, /COPY package\.json yarn\.lock\* \./);
+    assert.match(dockerfile, /RUN corepack enable && yarn install --frozen-lockfile --ignore-scripts/);
+
+    const dockerignore = await readFile(
+      path.join(tmpDir, projectName, ".dockerignore"),
+      "utf8",
     );
+    assert.match(dockerignore, /^\.yarn\/cache\/$/m);
+    assert.match(dockerignore, /^\.yarn\/unplugged\/$/m);
+    assert.match(dockerignore, /^\.yarn\/build-state\.yml$/m);
+    assert.match(dockerignore, /^\.yarn\/install-state\.gz$/m);
+    assert.match(dockerignore, /^\.pnp\.\*$/m);
+    assert.doesNotMatch(dockerignore, /^\.pnpm-store\/$/m);
+    assert.doesNotMatch(dockerignore, /^yarn\.lock$/m);
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("Dockerfile scaffolding follows the selected bun package manager", async () => {
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "create-daloy-"));
+  try {
+    for (const template of ["node-basic", "bun-basic"]) {
+      const projectName = `bun-pm-docker-${template}`;
+      const exitCode = await new Promise((resolve) => {
+        const proc = spawn(
+          process.execPath,
+          [
+            path.join(pkgRoot, "bin/create-daloy.mjs"),
+            projectName,
+            "--template",
+            template,
+            "--package-manager",
+            "bun",
+            "--no-ci",
+            "--no-install",
+            "--no-git",
+            "--yes",
+          ],
+          { cwd: tmpDir, stdio: "ignore" },
+        );
+        proc.on("exit", (code) => resolve(code ?? 1));
+        proc.on("error", () => resolve(1));
+      });
+      assert.equal(exitCode, 0);
+
+      const dockerfile = await readFile(
+        path.join(tmpDir, projectName, "Dockerfile"),
+        "utf8",
+      );
+      assert.match(dockerfile, /^ARG BUN_IMAGE=oven\/bun:1-alpine$/m);
+      assert.match(dockerfile, /^FROM \$\{BUN_IMAGE\} AS builder$/m);
+      assert.match(dockerfile, /COPY package\.json bun\.lock\* bun\.lockb\* \./);
+      assert.match(dockerfile, /RUN bun install --frozen-lockfile --ignore-scripts/);
+      if (template === "node-basic") {
+        assert.match(dockerfile, /RUN bun run build/);
+        assert.match(dockerfile, /^FROM \$\{NODE_IMAGE\} AS runner$/m);
+      } else {
+        assert.doesNotMatch(dockerfile, /RUN bun run build/);
+        assert.match(dockerfile, /^FROM \$\{BUN_IMAGE\} AS runner$/m);
+      }
+      assert.doesNotMatch(
+        dockerfile,
+        /pnpm install --frozen-lockfile --ignore-scripts/,
+      );
+
+      const dockerignore = await readFile(
+        path.join(tmpDir, projectName, ".dockerignore"),
+        "utf8",
+      );
+      assert.match(dockerignore, /^\.bun\/$/m);
+      assert.doesNotMatch(dockerignore, /^\.pnpm-store\/$/m);
+      assert.doesNotMatch(dockerignore, /^bun\.lockb?$/m);
+    }
   } finally {
     await rm(tmpDir, { recursive: true, force: true });
   }
@@ -1069,10 +1148,10 @@ test("deno-basic template ships a runtime-native scaffold", async () => {
   );
   assert.match(denoJson.tasks.dev, /^deno run.*--watch src\/main\.ts$/);
   assert.match(denoJson.tasks.test, /^deno test\b/);
-  assert.equal(denoJson.imports["@daloyjs/core"], "npm:@daloyjs/core@^0.34.0");
+  assert.equal(denoJson.imports["@daloyjs/core"], "npm:@daloyjs/core@^0.34.1");
   assert.equal(
     denoJson.imports["@daloyjs/core/"],
-    "npm:@daloyjs/core@^0.34.0/",
+    "npm:@daloyjs/core@^0.34.1/",
   );
 });
 

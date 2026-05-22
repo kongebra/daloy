@@ -19,6 +19,7 @@
  */
 import type { App } from "../app.js";
 
+/** Wrap an {@link App} in a `(req) => Promise<Response>` function suitable for Fastly Compute. */
 export function toFastlyHandler(app: App): (req: Request) => Promise<Response> {
   return (req) => app.fetch(req);
 }
@@ -28,6 +29,7 @@ interface FastlyFetchEvent {
   respondWith: (response: Response | Promise<Response>) => void;
 }
 
+/** Register a Fastly Compute `fetch` event listener that delegates to the given {@link App}. */
 export function installFastlyListener(app: App): void {
   const g = globalThis as { addEventListener?: (type: string, listener: (event: FastlyFetchEvent) => void) => void };
   if (typeof g.addEventListener !== "function") {

@@ -27,12 +27,13 @@ export const metadata = buildMetadata({
   title:
     "DaloyJS - The runtime-portable framework for a Zero-Trust supply chain",
   description:
-    "DaloyJS is a secure-by-default TypeScript/JavaScript web framework for LLM-era supply-chain risk. create-daloy scaffolds projects with blocked install scripts, a 24h pnpm release-age cooldown, lockfile source verification, pinned CI, Dependabot, CODEOWNERS, and SECURITY.md; DaloyJS itself ships through a hardened provenance-backed release pipeline. Runtime-portable across Node.js, Bun, Deno, Cloudflare Workers, and Vercel Edge. Typed end-to-end with Standard Schema validation, OpenAPI 3.1, and Hey API typed clients.",
+    "DaloyJS is a secure-by-default TypeScript/JavaScript web framework for LLM-era supply-chain risk. It combines FastAPI-grade docs, Hono-style portability, Fastify-style ops, Elysia-level typing, and Hey API clients while create-daloy scaffolds projects with blocked install scripts, a 24h pnpm release-age cooldown, lockfile source verification, pinned CI, Dependabot, CODEOWNERS, and SECURITY.md.",
   path: "/",
   keywords: [
     "DaloyJS",
     "secure by default",
     "secure-by-default framework",
+    "secure JavaScript framework",
     "zero-trust supply chain",
     "supply-chain attack protection",
     "slopsquatting protection",
@@ -79,6 +80,29 @@ serve(app, { port: 3000 });`;
 
 const CREATE_COMMAND = "pnpm create daloy@latest my-api";
 
+const DEVELOPER_PITCH = [
+  {
+    icon: ShieldCheckIcon,
+    title: "Security is the product",
+    body: "Most frameworks leave supply-chain posture as a company checklist. DaloyJS puts runtime guardrails, pnpm hardening, CI hygiene, ownership files, and release discipline on the happy path from the first scaffold.",
+  },
+  {
+    icon: FileCodeIcon,
+    title: "One contract, fewer moving parts",
+    body: "Define the route once and get validation, types, OpenAPI 3.1, Scalar docs, Hey API clients, and contract tests from the same source. Less glue code, fewer stale specs, fewer places for an agent or teammate to drift.",
+  },
+  {
+    icon: CubeIcon,
+    title: "Portable without giving up ops",
+    body: "You get a web-standard core that runs on Node, Bun, Deno, Workers, and Edge, plus the production pieces teams expect: request ids, structured logs, plugin encapsulation, graceful shutdown, and first-party middleware.",
+  },
+  {
+    icon: RobotIcon,
+    title: "Built for AI-assisted teams",
+    body: "LLMs make teams faster, and they also make attackers faster at finding dependency mistakes. DaloyJS assumes coding agents are in the loop and ships scaffolds with security defaults, agent guidance, and source-verified installs.",
+  },
+];
+
 const FEATURES = [
   {
     icon: LockIcon,
@@ -88,7 +112,7 @@ const FEATURES = [
   {
     icon: ShieldCheckIcon,
     title: "Secure-by-default runtime",
-    body: "The core starts with production guardrails: body limits, prototype-pollution-safe JSON, path-traversal rejection, request timeouts, content-type checks, RFC 9457 errors with prod 5xx redaction, secure headers, stripped Server / X-Powered-By, and structured-log redaction for credentials and JWT-shaped values.",
+    body: "Unlike frameworks that leave basic protections to plugins or manual error routing, the DaloyJS core starts with guardrails on: prototype-pollution-safe JSON, built-in load shedding, proper 405 Method Not Allowed responses, automatic 5xx info-disclosure stripping in production, and a rate-limited CSP violation receiver.",
   },
   {
     icon: RobotIcon,
@@ -96,9 +120,14 @@ const FEATURES = [
     body: "Attackers can use LLMs to scale package impersonation, slopsquatting, dependency reconnaissance, and vulnerability hunting. DaloyJS answers with boring but sharp defaults: blocked lifecycle scripts, delayed fresh-package resolution, source-verified lockfiles, and a zero-runtime-dependency core.",
   },
   {
+    icon: RobotIcon,
+    title: "AI-native scaffolding",
+    body: "Every project scaffolded by create-daloy includes an AGENTS.md and context skills. Copilot, Claude, and Cursor automatically understand your framework's conventions, routing rules, and security primitives without a prompt-engineering ritual.",
+  },
+  {
     icon: FileCodeIcon,
     title: "Contract-first by design",
-    body: "One route definition is the source of truth for validation, types, OpenAPI 3.1, the typed client, and contract tests, so drift has fewer places to hide.",
+    body: "One route definition is the source of truth for validation, types, OpenAPI 3.1, the typed client, and built-in contract tests, so drift has fewer places to hide.",
   },
   {
     icon: CubeIcon,
@@ -155,7 +184,7 @@ export default function HomePage() {
       applicationCategory: "DeveloperApplication",
       operatingSystem: "Cross-platform",
       description:
-        "The secure-by-default, runtime-portable TypeScript web framework for a Zero-Trust supply chain. create-daloy scaffolds projects with blocked install scripts, a 24h pnpm release-age cooldown, lockfile source verification, pinned CI, Dependabot, CODEOWNERS, and SECURITY.md; DaloyJS itself ships through a hardened provenance-backed release pipeline. Built for the LLM-era surge in supply-chain attacks, with contract-first routing, Standard Schema validation, OpenAPI 3.1 generation, typed clients, streaming, OpenTelemetry tracing, edge-friendly sessions, and core-enforced security guardrails.",
+        "The secure-by-default, runtime-portable TypeScript web framework for a Zero-Trust supply chain. DaloyJS combines FastAPI-grade docs, Hono-style portability, Fastify-style ops, Elysia-level typing, and Hey API clients while create-daloy scaffolds projects with blocked install scripts, a 24h pnpm release-age cooldown, lockfile source verification, pinned CI, Dependabot, CODEOWNERS, and SECURITY.md. Built for the LLM-era surge in supply-chain attacks, with contract-first routing, Standard Schema validation, OpenAPI 3.1 generation, typed clients, streaming, OpenTelemetry tracing, edge-friendly sessions, and core-enforced security guardrails.",
       url: SITE_URL,
       offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
       programmingLanguage: "TypeScript",
@@ -203,27 +232,19 @@ export default function HomePage() {
               className="float-up max-w-3xl text-base font-medium text-foreground/80 sm:text-lg"
               style={{ animationDelay: "120ms" }}
             >
-              Secure by default. Blocked install scripts. 24h release-age
-              cooldown. Pinned CI. Provenance-backed releases. Typed end-to-end.
+              Blocked install scripts. SHA-pinned actions. OIDC provenance.
+              Typed end-to-end.
             </p>
             <ContractFlowVisual />
             <p
               className="float-up max-w-2xl text-lg leading-8 text-muted-foreground"
               style={{ animationDelay: "180ms" }}
             >
-              DaloyJS is the JS framework that treats{" "}
-              <strong>secure by default</strong> as a feature, not a checklist.
-              Supply-chain attacks are surging as bad actors use LLMs to scale
-              typosquatting, slopsquatting, dependency reconnaissance, and
-              exploit discovery. A default <code>create-daloy</code> project
-              starts with pnpm hardening, blocked lifecycle scripts, a 24-hour
-              release-age cooldown, lockfile source verification, pinned CI,
-              Dependabot, CODEOWNERS, and SECURITY.md. DaloyJS itself keeps the
-              framework supply chain tight with zero runtime dependencies and
-              provenance-backed releases. You still get contract-first routing,
-              Standard Schema validation, OpenAPI 3.1 with Hey API typed client
-              codegen, streaming, OpenTelemetry tracing, and edge-friendly
-              sessions. One line on the <code>App</code> constructor —{" "}
+              Contract-first routing, Standard Schema validation, OpenAPI 3.1
+              with Hey API typed client codegen, streaming and OpenTelemetry
+              tracing, edge-friendly sessions, a security-focused runtime by
+              default, and a supply-chain-hardened release pipeline for the
+              framework itself. One line on the <code>App</code> constructor —{" "}
               <code>docs: true</code> — auto-mounts a Scalar API reference at{" "}
               <code>/docs</code> and the live OpenAPI 3.1 spec at{" "}
               <code>/openapi.json</code>, the same DX as FastAPI.
@@ -267,12 +288,56 @@ export default function HomePage() {
               <code className="text-sm">$ {CREATE_COMMAND}</code>
             </div>
             <div className='flex flex-wrap justify-center gap-x-6 gap-y-2 font-features-["tnum"] text-xs text-muted-foreground'>
-              <span>443/443 tests passing</span>
+              <span>1,184/1,184 tests passing</span>
               <span aria-hidden>·</span>
               <span>≥90% line, function, and branch coverage gates</span>
               <span aria-hidden>·</span>
               <span>Node 24+, Bun, Deno, Cloudflare, Vercel</span>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Developer pitch */}
+      <section className="border-b">
+        <div className="mx-auto max-w-7xl px-6 py-16">
+          <div className="mb-12 text-center">
+            <h2 className="text-3xl font-bold tracking-tight">
+              Why developers pick DaloyJS
+            </h2>
+            <p className="mx-auto mt-3 max-w-3xl leading-8 text-muted-foreground">
+              The pitch is simple: keep the delightful parts of the modern web
+              framework ecosystem, then move security and supply-chain posture
+              from &quot;later&quot; to &quot;already handled.&quot; That is the
+              difference.
+            </p>
+          </div>
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+            {DEVELOPER_PITCH.map((item, index) => {
+              const accent = FEATURE_ACCENTS[index % FEATURE_ACCENTS.length];
+
+              return (
+                <Card
+                  key={item.title}
+                  className={`${accent.card} group float-up transition duration-300 hover:-translate-y-1 hover:border-primary/40 hover:shadow-lg`}
+                  style={{ animationDelay: `${index * 80}ms` }}
+                >
+                  <CardHeader>
+                    <span
+                      className={`${accent.icon} mb-2 inline-flex size-11 items-center justify-center rounded-xl transition-transform duration-300 group-hover:scale-110`}
+                    >
+                      <item.icon className="size-6" />
+                    </span>
+                    <CardTitle>{item.title}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <CardDescription className="text-sm leading-relaxed">
+                      {item.body}
+                    </CardDescription>
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         </div>
       </section>
@@ -351,11 +416,11 @@ export default function HomePage() {
       <section className="border-b">
         <div className="mx-auto max-w-5xl px-6 py-16">
           <h2 className="mb-2 text-center text-3xl font-bold tracking-tight">
-            Proven ideas, one contract
+            Competitor strengths, fewer tradeoffs
           </h2>
           <p className="mb-10 text-center leading-8 text-muted-foreground">
-            DaloyJS is inspired by the strongest parts of modern web stacks and
-            makes the route definition the place where they meet.
+            DaloyJS is not trying to win one checkbox. It is trying to remove
+            the glue work between the best ideas developers already like.
           </p>
           <div className="dim:scrollbar-thumb-mist-800 scrollbar-thin scrollbar-thumb-mist-300 scrollbar-track-transparent overflow-x-auto rounded-lg border dark:scrollbar-thumb-mist-700">
             <table className="w-full text-sm">

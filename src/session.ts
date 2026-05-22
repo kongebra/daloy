@@ -55,6 +55,7 @@ export const SESSION_SECRETS_MARKER: unique symbol = Symbol.for(
 
 // ---------- Public types ----------
 
+/** A persisted session entry as stored by a {@link SessionStore}. */
 export interface SessionRecord {
   /** Arbitrary serializable session payload. Mutating this object marks the session dirty. */
   data: Record<string, unknown>;
@@ -75,6 +76,7 @@ export interface SessionStore {
   touch?(sid: string, expiresAt: number): void | Promise<void>;
 }
 
+/** Attributes for the session id cookie set by the {@link session} middleware. */
 export interface SessionCookieOptions {
   /** `Strict` | `Lax` | `None`. Default: `"Lax"`. */
   sameSite?: "Strict" | "Lax" | "None";
@@ -92,6 +94,7 @@ export interface SessionCookieOptions {
   httpOnly?: boolean;
 }
 
+/** Options for the {@link session} middleware. */
 export interface SessionOptions {
   /**
    * HMAC secret(s) used to sign session cookies. Pass an array to rotate

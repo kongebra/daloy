@@ -604,16 +604,10 @@ async function patchDockerfileForPackageManager(dir, packageManager) {
 
   const raw = await readFile(file, "utf8");
   const install = dockerInstallSnippet(packageManager);
-  const defaultPnpmInstallBlock = [
-    "COPY package.json pnpm-lock.yaml* ./",
-    "RUN corepack enable && corepack prepare pnpm@latest --activate && \\",
-    "    pnpm install --frozen-lockfile --ignore-scripts",
-  ].join("\n");
   let next = raw.replace(
-    "COPY package.json pnpm-lock.yaml* ./\nRUN corepack enable && corepack prepare pnpm@latest --activate && \\\n    pnpm install --frozen-lockfile --ignore-scripts",
+    /COPY package\.json pnpm-lock\.yaml\* \.\/\nRUN corepack enable && corepack prepare pnpm@latest --activate && \\\n+\s+pnpm install --frozen-lockfile --ignore-scripts/,
     `${install.copy}\n${install.run}`,
   );
-  next = next.replace(defaultPnpmInstallBlock, `${install.copy}\n${install.run}`);
 
   if (packageManager !== "pnpm") {
     next = next.replaceAll(
@@ -633,6 +627,50 @@ async function patchDockerfileForPackageManager(dir, packageManager) {
     next = next.replace("FROM ${NODE_IMAGE} AS builder", "FROM ${BUN_IMAGE} AS builder");
   }
 
+  if (next !== raw) await writeFile(file, next, "utf8");
+}
+
+const DOCKERIGNORE_PACKAGE_MANAGER_ENTRIES = {
+  npm: [".npm/"],
+  yarn: [
+    ".yarn/cache/",
+    ".yarn/unplugged/",
+    ".yarn/build-state.yml",
+    ".yarn/install-state.gz",
+    ".pnp.*",
+  ],
+  bun: [".bun/"],
+  pnpm: [".pnpm-store/"],
+};
+
+const ALL_DOCKERIGNORE_PACKAGE_MANAGER_ENTRIES = new Set(
+  Object.values(DOCKERIGNORE_PACKAGE_MANAGER_ENTRIES).flat(),
+);
+
+function dockerignorePackageManagerEntries(packageManager) {
+  return DOCKERIGNORE_PACKAGE_MANAGER_ENTRIES[packageManager] ?? DOCKERIGNORE_PACKAGE_MANAGER_ENTRIES.pnpm;
+}
+
+async function patchDockerignoreForPackageManager(dir, packageManager) {
+  const file = path.join(dir, ".dockerignore");
+  if (!existsSync(file)) return;
+
+  const raw = await readFile(file, "utf8");
+  const wanted = dockerignorePackageManagerEntries(packageManager);
+  const wantedSet = new Set(wanted);
+  const lines = raw
+    .split(/\r?\n/)
+    .filter((line) => {
+      const trimmed = line.trim();
+      return !ALL_DOCKERIGNORE_PACKAGE_MANAGER_ENTRIES.has(trimmed) || wantedSet.has(trimmed);
+    });
+  const existing = new Set(lines.map((line) => line.trim()).filter(Boolean));
+  const missing = wanted.filter((entry) => !existing.has(entry));
+  let next = lines.join("\n").trimEnd();
+  if (missing.length) {
+    next = `${next}${next ? "\n" : ""}${missing.join("\n")}`;
+  }
+  next = `${next}\n`;
   if (next !== raw) await writeFile(file, next, "utf8");
 }
 
@@ -1395,6 +1433,7 @@ async function main() {
       await patchPackageJson(targetDir, projectName, packageManager);
       logStep("Package metadata written", projectName);
       await patchTemplateTextFiles(targetDir, packageManager);
+      await patchDockerignoreForPackageManager(targetDir, packageManager);
       if (packageManager !== "pnpm") {
         await patchDockerfileForPackageManager(targetDir, packageManager);
       }

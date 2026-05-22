@@ -32,6 +32,7 @@ import {
   type WebSocketHandler,
 } from "../websocket.js";
 
+/** Options for the Node.js {@link serve} entry point. */
 export interface NodeServerOptions {
   port?: number;
   hostname?: string;
@@ -52,8 +53,10 @@ export interface NodeServerOptions {
   trustProxy?: boolean;
 }
 
+/** Handle returned by {@link serve} exposing the underlying Node `Server` plus a `close()` for graceful shutdown. */
 export interface NodeServerHandle { server: Server; port: number; close(): Promise<void>; }
 
+/** Start a Node.js HTTP (and optional WebSocket) server bound to the given {@link App}. */
 export function serve(app: App, opts: NodeServerOptions = {}): NodeServerHandle {
   const trustProxy = opts.trustProxy === true;
   const server = createServer({ maxHeaderSize: opts.maxHeaderBytes ?? 16 * 1024 }, async (req, res) => {

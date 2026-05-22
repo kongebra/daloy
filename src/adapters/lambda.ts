@@ -31,6 +31,7 @@ export interface LambdaEventV1 {
   isBase64Encoded?: boolean;
 }
 
+/** API Gateway HTTP API or Lambda Function URL event (payload format v2.0). */
 export interface LambdaEventV2 {
   version?: string;
   rawPath?: string;
@@ -45,8 +46,10 @@ export interface LambdaEventV2 {
   isBase64Encoded?: boolean;
 }
 
+/** Either payload format accepted by {@link toLambdaHandler}. */
 export type LambdaEvent = LambdaEventV1 | LambdaEventV2;
 
+/** Lambda response shape required by API Gateway REST API (payload format v1.0). */
 export interface LambdaResponseV1 {
   statusCode: number;
   headers: Record<string, string>;
@@ -56,6 +59,7 @@ export interface LambdaResponseV1 {
   isBase64Encoded: boolean;
 }
 
+/** Lambda response shape required by API Gateway HTTP API and Function URLs (payload format v2.0). */
 export interface LambdaResponseV2 {
   statusCode: number;
   headers: Record<string, string>;
@@ -65,11 +69,14 @@ export interface LambdaResponseV2 {
   isBase64Encoded: boolean;
 }
 
+/** Either response shape produced by {@link toLambdaHandler}, chosen automatically per event. */
 export type LambdaResponse = LambdaResponseV1 | LambdaResponseV2;
+/** Async handler shape consumed by AWS Lambda / Netlify Functions runtimes. */
 export type LambdaHandler = (event: LambdaEvent) => Promise<LambdaResponse>;
 
 const TEXT_TYPE_RE = /^(text\/|application\/(json|xml|javascript|x-www-form-urlencoded|.*\+json|.*\+xml))/i;
 
+/** Wrap an {@link App} as a Lambda/Netlify handler accepting either v1.0 or v2.0 event payloads. */
 export function toLambdaHandler(app: App): LambdaHandler {
   return async (event) => {
     const request = eventToRequest(event);
