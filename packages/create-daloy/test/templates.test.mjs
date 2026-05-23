@@ -507,9 +507,17 @@ test("--with-ci scaffolds hardened GitHub security files for pnpm projects", asy
     assert.match(deploy, /permissions:\s*\{\}/);
     assert.match(deploy, /environment:\s*\n\s*name:\s*production/);
     assert.match(deploy, /packages:\s*write/);
+    assert.match(deploy, /id-token:\s*write/);
     assert.match(deploy, /docker login ghcr\.io/);
     assert.match(deploy, /docker build/);
     assert.match(deploy, /docker push/);
+    // Image signing + SBOM attestation (Aikido container-security checklist).
+    assert.match(deploy, /sigstore\/cosign-installer@[0-9a-f]{40}\s+# v4/);
+    assert.match(deploy, /anchore\/sbom-action@[0-9a-f]{40}\s+# v0/);
+    assert.match(deploy, /cosign sign --yes/);
+    assert.match(deploy, /cosign attest --yes/);
+    assert.match(deploy, /--type spdxjson/);
+    assert.match(deploy, /IMAGE_DIGEST=/);
     assert.match(deploy, /step-security\/harden-runner@[0-9a-f]{40}\s+# v2/);
     assert.match(deploy, /actions\/checkout@[0-9a-f]{40}\s+# v6/);
     assert.match(deploy, /pnpm verify:lockfile/);
@@ -1105,8 +1113,13 @@ test("--with-ci scaffolds runtime-native security files for deno-basic", async (
     );
     assert.match(deploy, /on:\s*\n\s*workflow_dispatch:/);
     assert.match(deploy, /packages:\s*write/);
+    assert.match(deploy, /id-token:\s*write/);
     assert.match(deploy, /denoland\/setup-deno@[0-9a-f]{40}\s+# v2\.0\.4/);
     assert.match(deploy, /docker login ghcr\.io/);
+    assert.match(deploy, /sigstore\/cosign-installer@[0-9a-f]{40}\s+# v4/);
+    assert.match(deploy, /anchore\/sbom-action@[0-9a-f]{40}\s+# v0/);
+    assert.match(deploy, /cosign sign --yes/);
+    assert.match(deploy, /cosign attest --yes/);
     assert.match(deploy, /if: github\.ref == 'refs\/heads\/main' \|\| github\.ref_type == 'tag'/);
     assert.doesNotMatch(deploy, /__[A-Z_]+__/);
 

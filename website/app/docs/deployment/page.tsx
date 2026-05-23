@@ -153,6 +153,48 @@ EXPOSE 3000
 CMD ["dist/server.js"]`}
       />
 
+      <h3>Signed images + SBOM attestation</h3>
+      <p>
+        <code>create-daloy --with-ci</code> ships a <code>deploy.yml</code>{" "}
+        that, after every successful push to GHCR, resolves the immutable{" "}
+        <code>@sha256:&lt;digest&gt;</code>, signs the image with{" "}
+        <a
+          href="https://docs.sigstore.dev/cosign/signing/signing_with_blobs/"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Sigstore Cosign
+        </a>{" "}
+        (keyless / OIDC — no long-lived signing key), generates an SPDX SBOM for
+        the image, and uploads it as a Cosign attestation (
+        <code>--type spdxjson</code>). The job grants{" "}
+        <code>id-token: write</code> alongside <code>packages: write</code>; the
+        top-level workflow keeps <code>permissions: {`{}`}</code>. This closes
+        the Aikido{" "}
+        <a
+          href="https://www.aikido.dev/blog/container-security-best-practices"
+          target="_blank"
+          rel="noreferrer"
+        >
+          container-security checklist
+        </a>{" "}
+        items for &quot;Use Signed Images&quot; and &quot;Generate an
+        SBOM.&quot; Verify any pulled image with:
+      </p>
+      <CodeBlock
+        language="bash"
+        code={`# Replace owner/repo and the digest with your values.
+cosign verify ghcr.io/<owner>/<repo>@sha256:<digest> \\
+  --certificate-identity-regexp 'https://github\\.com/<owner>/<repo>/\\.github/workflows/deploy\\.yml@.*' \\
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+
+cosign verify-attestation \\
+  --type spdxjson \\
+  --certificate-identity-regexp 'https://github\\.com/<owner>/<repo>/\\.github/workflows/deploy\\.yml@.*' \\
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \\
+  ghcr.io/<owner>/<repo>@sha256:<digest>`}
+      />
+
       <h2>Graceful shutdown</h2>
       <p>
         The Node adapter installs SIGTERM/SIGINT handlers by default. DaloyJS

@@ -791,11 +791,18 @@ function containerRegistryHeader() {
 # After the image is published, point your platform at GHCR or replace the
 # final push steps with your provider's deploy command.
 #
+# Every pushed image is also signed and attested with Sigstore Cosign
+# (keyless / OIDC) and an SPDX SBOM, so consumers can verify provenance
+# with \`cosign verify\` and \`cosign verify-attestation --type spdxjson\`
+# instead of trusting the registry alone. See Aikido's "Container
+# Security Best Practices" (https://www.aikido.dev/blog/container-security-best-practices)
+# for why signed images + SBOM attestation are the supply-chain floor.
+#
 # Optional container-host handoff examples:
 #   - Fly.io: install flyctl in a later step and run
-#       flyctl deploy --image "$IMAGE_REPO:sha-\${GITHUB_SHA}" --remote-only
+#       flyctl deploy --image "$IMAGE_REPO@\${IMAGE_DIGEST}" --remote-only
 #   - Render: create an image-backed service that tracks
-#       ghcr.io/<owner>/<repo>:sha-\${GITHUB_SHA}`;
+#       ghcr.io/<owner>/<repo>@\${IMAGE_DIGEST}`;
 }
 
 function containerPublishSteps() {
@@ -828,7 +835,60 @@ function containerPublishSteps() {
         run: |
           set -eu
           docker push "$IMAGE_REPO:sha-\${GITHUB_SHA}"
-          docker push "$IMAGE_REPO:latest"`;
+          docker push "$IMAGE_REPO:latest"
+
+      - name: Resolve pushed image digest
+        # Resolve and pin the immutable digest the rest of the workflow
+        # signs and attests against. Signing a mutable tag would let any
+        # later push silently re-point a "verified" tag at attacker
+        # content; binding cosign + the SBOM attestation to
+        # \${IMAGE_REPO}@sha256:<digest> closes that race.
+        run: |
+          set -eu
+          digest="$(docker inspect --format='{{index .RepoDigests 0}}' "$IMAGE_REPO:sha-\${GITHUB_SHA}" | awk -F@ '{print $2}')"
+          if [ -z "$digest" ]; then
+            echo "::error::Failed to resolve image digest for $IMAGE_REPO:sha-\${GITHUB_SHA}" >&2
+            exit 1
+          fi
+          echo "IMAGE_DIGEST=$digest" >> "$GITHUB_ENV"
+          echo "IMAGE_REF=$IMAGE_REPO@$digest" >> "$GITHUB_ENV"
+          echo "::notice::Signed image reference: $IMAGE_REPO@$digest"
+
+      - name: Install Cosign
+        # SHA-pinned per the project's actions-pinning policy. v4.1.2,
+        # commit 6f9f17788090df1f26f669e9d70d6ae9567deba6.
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Sign image with Cosign (keyless / OIDC)
+        # Keyless signing uses the workflow's \`id-token\` OIDC identity
+        # — no long-lived signing key to leak. Verifiers can pin to
+        # \`--certificate-identity\` matching this workflow URL.
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          set -eu
+          cosign sign --yes "$IMAGE_REF"
+
+      - name: Generate SPDX SBOM for image
+        # SHA-pinned per the project's actions-pinning policy. v0.24.0,
+        # commit e22c389904149dbc22b58101806040fa8d37a610.
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          image: \${{ env.IMAGE_REF }}
+          format: spdx-json
+          output-file: sbom.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Attest SBOM with Cosign
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          set -eu
+          cosign attest --yes \
+            --predicate sbom.spdx.json \
+            --type spdxjson \
+            "$IMAGE_REF"`;
 }
 
 function vercelDeployHeader() {
@@ -904,7 +964,11 @@ function renderDeployConfig({ template, packageManager, needsBunRuntime }) {
   return {
     header: containerRegistryHeader(),
     jobName: "Publish container image",
-    jobPermissions: "      packages: write",
+    // `packages: write` lets us push to GHCR; `id-token: write` lets
+    // Cosign mint a short-lived OIDC identity for keyless image signing
+    // + SBOM attestation. Both are scoped to this single job — the
+    // top-level workflow still has `permissions: {}`.
+    jobPermissions: "      packages: write\n      id-token: write",
     setupSteps: "",
     steps: containerPublishSteps(),
   };
