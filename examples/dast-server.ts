@@ -12,10 +12,15 @@
  * a running server.
  *
  * Closes the DAST half of the Aikido "SAST vs DAST" guidance
- * (https://www.aikido.dev/blog/sast-vs-dast-what-you-need-to-now):
- * SAST is covered by CodeQL + zizmor + the ~20 first-party
- * `verify:*` gates; this entry point is what makes a real DAST scan
- * possible in CI without needing a deployed endpoint.
+ * (https://www.aikido.dev/blog/sast-vs-dast-what-you-need-to-now)
+ * and the OpenAPI-guided-DAST half of the Aikido "API security
+ * testing" guidance
+ * (https://www.aikido.dev/blog/api-security-testing): SAST is
+ * covered by CodeQL + zizmor + the ~20 first-party `verify:*` gates;
+ * this entry point is what makes a real DAST scan (both the passive
+ * `zap-baseline.py` pass and the OpenAPI-fed active `zap-api-scan.py`
+ * pass wired up in `.github/workflows/dast.yml`) possible in CI
+ * without needing a deployed endpoint.
  */
 
 import { serve } from "../src/adapters/node.js";

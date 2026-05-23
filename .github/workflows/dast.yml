@@ -9,14 +9,24 @@
 #   (https://www.aikido.dev/blog/sast-vs-dast-what-you-need-to-now)
 #   makes the case that static analysis and dynamic analysis catch
 #   different bug classes — SAST sees the source but not the runtime,
-#   DAST sees the runtime but not the source. The framework already
-#   has heavyweight SAST; this workflow adds the dynamic half by
-#   booting `examples/dast-server.ts` (the same `buildExampleApp()`
-#   surface that powers the bookstore demo) and pointing OWASP ZAP's
-#   baseline scanner at it. ZAP exercises header sanitization,
-#   `secureHeaders()` output, CORS, redirect handling, body-cap, and
-#   the router's path-traversal rejection against a real listening
-#   server rather than against the source AST.
+#   DAST sees the runtime but not the source. The follow-up "API
+#   security testing" guide
+#   (https://www.aikido.dev/blog/api-security-testing) goes further:
+#   DAST is most effective when it's *guided by an OpenAPI definition*
+#   so the scanner actively probes every declared route rather than
+#   just whatever a spider stumbles onto from the index page. The
+#   framework already has heavyweight SAST; this workflow adds the
+#   dynamic half by booting `examples/dast-server.ts` (the same
+#   `buildExampleApp()` surface that powers the bookstore demo) and
+#   running TWO ZAP scans against it: (1) `zap-baseline.py` for the
+#   passive header / CORS / redirect / cookie checks, and (2)
+#   `zap-api-scan.py -f openapi -t .../openapi.json` for an active
+#   probe of every contract-declared route. The combination exercises
+#   header sanitization, `secureHeaders()` output, CORS, redirect
+#   handling, body-cap, path-traversal rejection, and the OWASP API
+#   Top 10 classes (BOLA, broken auth, injection, mass assignment)
+#   against a real listening server rather than against the source
+#   AST.
 #
 # Trigger surface:
 #   * Weekly cron — newly-disclosed ZAP rules apply to unchanged code.
@@ -148,6 +158,36 @@ jobs:
               -I \
               || true
 
+      - name: Run OWASP ZAP API scan (OpenAPI-guided)
+        # Aikido's "API security testing" guide
+        # (https://www.aikido.dev/blog/api-security-testing) calls out
+        # that a DAST tool "doesn't need source code; it just needs a
+        # live API endpoint and, ideally, a definition file to guide
+        # its attacks." Daloy serves the contract-first OpenAPI 3.1
+        # spec at `/openapi.json` out of the box, so feeding it to ZAP
+        # turns the passive baseline scan above into an active probe of
+        # every route the framework actually declares — not just what
+        # the spider stumbles onto from the index page. That closes
+        # the BOLA / broken-auth / injection / mass-assignment classes
+        # the article calls out on the *full route surface*, including
+        # any route that requires path / query / body params the
+        # spider has no way to synthesize.
+        #
+        # Same exit-code-swallow + HIGH-gate convention as the baseline
+        # step: the JSON report is what `Summarize ZAP findings` reads.
+        run: |
+          docker run --rm --network host \
+            -v "$PWD/dast-results:/zap/wrk/:rw" \
+            -t ghcr.io/zaproxy/zaproxy:stable \
+            zap-api-scan.py \
+              -t http://localhost:3000/openapi.json \
+              -f openapi \
+              -J zap-api-report.json \
+              -w zap-api-report.md \
+              -r zap-api-report.html \
+              -I \
+              || true
+
       - name: Stop DAST target
         if: always()
         run: |
@@ -156,44 +196,55 @@ jobs:
           fi
 
       - name: Summarize ZAP findings and fail on HIGH
-        # Baseline scan is read-only and conservative; HIGH-risk alerts
-        # in this surface are the ones we want to block on. MEDIUM /
-        # LOW / INFO alerts are printed for triage visibility in the
-        # workflow log but do not fail the run. The full JSON / HTML
-        # / Markdown reports are written to `dast-results/` inside the
-        # runner and visible in the job log via the cat below; this
+        # Baseline scan is read-only and conservative; the API scan
+        # added above is OpenAPI-guided and active. HIGH-risk alerts
+        # from *either* report are the ones we want to block on.
+        # MEDIUM / LOW / INFO alerts are printed for triage visibility
+        # in the workflow log but do not fail the run. The full JSON /
+        # HTML / Markdown reports are written to `dast-results/` inside
+        # the runner and visible in the job log via the cat below; this
         # keeps the workflow free of new third-party actions (the
         # SHA-pin gate stays satisfied without adding `upload-artifact`
         # as a fresh pinned dependency just for this scan).
         if: always()
         run: |
-          report=dast-results/zap-report.json
-          if [ ! -f "$report" ]; then
-            echo "::warning::No ZAP JSON report produced (scan may have failed to start)."
+          have_any=0
+          aggregate_high=0
+          for report in dast-results/zap-report.json dast-results/zap-api-report.json; do
+            if [ ! -f "$report" ]; then
+              echo "::warning::No ZAP JSON report at ${report} (scan may have failed to start)."
+              continue
+            fi
+            have_any=1
+            counts=$(node -e "
+              const r = JSON.parse(require('node:fs').readFileSync(process.argv[1], 'utf8'));
+              const c = { high: 0, medium: 0, low: 0, info: 0 };
+              for (const site of r.site ?? []) {
+                for (const alert of site.alerts ?? []) {
+                  const code = String(alert.riskcode);
+                  if (code === '3') c.high++;
+                  else if (code === '2') c.medium++;
+                  else if (code === '1') c.low++;
+                  else c.info++;
+                }
+              }
+              process.stdout.write(JSON.stringify(c));
+            " "$report")
+            echo "ZAP findings for ${report}: ${counts}"
+            high=$(node -e "process.stdout.write(String(JSON.parse(process.argv[1]).high))" "$counts")
+            aggregate_high=$((aggregate_high + high))
+          done
+          for md in dast-results/zap-report.md dast-results/zap-api-report.md; do
+            if [ -f "$md" ]; then
+              echo "----- ${md} -----"
+              cat "$md"
+              echo "----- end report -----"
+            fi
+          done
+          if [ "${have_any}" -eq 0 ]; then
             exit 0
           fi
-          counts=$(node -e "
-            const r = JSON.parse(require('node:fs').readFileSync(process.argv[1], 'utf8'));
-            const c = { high: 0, medium: 0, low: 0, info: 0 };
-            for (const site of r.site ?? []) {
-              for (const alert of site.alerts ?? []) {
-                const code = String(alert.riskcode);
-                if (code === '3') c.high++;
-                else if (code === '2') c.medium++;
-                else if (code === '1') c.low++;
-                else c.info++;
-              }
-            }
-            process.stdout.write(JSON.stringify(c));
-          " "$report")
-          echo "ZAP findings: ${counts}"
-          high=$(node -e "process.stdout.write(String(JSON.parse(process.argv[1]).high))" "$counts")
-          if [ -f dast-results/zap-report.md ]; then
-            echo "----- ZAP markdown report -----"
-            cat dast-results/zap-report.md
-            echo "----- end report -----"
-          fi
-          if [ "${high}" -gt 0 ]; then
-            echo "::error::ZAP reported ${high} HIGH-risk finding(s) against the example app surface."
+          if [ "${aggregate_high}" -gt 0 ]; then
+            echo "::error::ZAP reported ${aggregate_high} HIGH-risk finding(s) across baseline + API scans against the example app surface."
             exit 1
           fi
