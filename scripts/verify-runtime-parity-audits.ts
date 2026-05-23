@@ -1,11 +1,10 @@
 /**
- * Wave 11 - multi-runtime web-standard ergonomic-framework parity bake-ins
- * (target `0.30.x`).
+ * Multi-runtime web-standard ergonomic-framework parity audits.
  *
- * Converts the Wave 11 ROADMAP items into a standing CI gate so the
- * focused-slice defaults shipped in the wave cannot silently regress, and
- * so the documented "if we ever ship" non-goals cannot land unaudited.
- * Each numbered audit below is a check, not a one-time change.
+ * Standing CI gate so the focused-slice defaults baked into the framework
+ * cannot silently regress, and the documented "if we ever ship" non-goals
+ * cannot land unaudited. Each numbered audit below is a check, not a
+ * one-time change.
  *
  * Audits covered here:
  *   1. Reverse-proxy / `proxy()` helper does not exist - if a future
@@ -89,7 +88,7 @@ export async function auditReverseProxyAbsence(): Promise<readonly Finding[]> {
           line: i + 1,
           text: line.trim(),
           message:
-            "Wave 11 refuses to ship a `proxy()` / `reverseProxy()` helper " +
+            "This audit refuses to ship a `proxy()` / `reverseProxy()` helper " +
             "unless it strips RFC 7230 hop-by-hop headers (Connection, " +
             "Keep-Alive, Proxy-Authenticate, Proxy-Authorization, TE, " +
             "Trailers, Transfer-Encoding, Upgrade) on BOTH directions and " +
@@ -139,7 +138,7 @@ export async function auditAuthFailureCacheControl(): Promise<readonly Finding[]
         message:
           `${name} must construct itself with \`cache-control: no-store\` ` +
           "in its default headers so auth-failure responses are never " +
-          "cached (Wave 11 item 4).",
+          "cached (audit item 4).",
       });
     }
   }
@@ -167,7 +166,7 @@ export async function auditCompressionSkipEncoded(): Promise<readonly Finding[]>
       message:
         "compression() must read the response `Content-Encoding` header " +
         "and short-circuit when any encoding is already present " +
-        "(Wave 11 item 6).",
+        "(audit item 6).",
     });
   }
   for (const needle of ["image/", "video/", "audio/", "application/zip"]) {
@@ -179,7 +178,7 @@ export async function auditCompressionSkipEncoded(): Promise<readonly Finding[]>
         text: needle,
         message:
           `compression() must keep \`${needle}\` on the entropy-coded ` +
-          "content-type deny-list (Wave 11 item 6).",
+          "content-type deny-list (audit item 6).",
       });
     }
   }
@@ -206,7 +205,7 @@ export async function auditCspReportHardening(): Promise<readonly Finding[]> {
       message:
         "cspReportRoute() must refuse `maxBodyBytes` above 64 KiB " +
         "(65536 bytes) to defend against DoS-via-report-flood " +
-        "(Wave 11 item 7).",
+        "(audit item 7).",
     });
   }
   for (const contentType of [
@@ -221,7 +220,7 @@ export async function auditCspReportHardening(): Promise<readonly Finding[]> {
         text: contentType,
         message:
           `cspReportRoute() must keep \`${contentType}\` in the exact ` +
-          "accepted content-type allowlist (Wave 11 item 7).",
+          "accepted content-type allowlist (audit item 7).",
       });
     }
   }
@@ -234,7 +233,7 @@ export async function auditCspReportHardening(): Promise<readonly Finding[]> {
       message:
         "cspReportRoute() must refuse `application/json`; only " +
         "`application/csp-report` and `application/reports+json` are " +
-        "accepted per RFC 9116 / Reporting API v1 (Wave 11 item 7).",
+        "accepted per RFC 9116 / Reporting API v1 (audit item 7).",
     });
   }
   if (!/opts\.logCspReportBodies\s*\?\?\s*!this\.isProduction\(\)/.test(text)) {
@@ -246,7 +245,7 @@ export async function auditCspReportHardening(): Promise<readonly Finding[]> {
       message:
         "cspReportRoute() must omit the parsed report body from the " +
         "default structured logger in production unless " +
-        "`logCspReportBodies: true` is set explicitly (Wave 11 item 7).",
+        "`logCspReportBodies: true` is set explicitly (audit item 7).",
     });
   }
   if (!/rateLimitConfig\s*=\s*\n\s*opts\.rateLimit\s*===\s*false[\s\S]*limit:\s*60[\s\S]*windowMs:\s*60_000/.test(text)) {
@@ -258,7 +257,7 @@ export async function auditCspReportHardening(): Promise<readonly Finding[]> {
       message:
         "cspReportRoute() must keep the default per-IP report rate limit " +
         "at 60 reports per 60 seconds unless explicitly disabled " +
-        "(Wave 11 item 7).",
+        "(audit item 7).",
     });
   }
   return out;
@@ -285,7 +284,7 @@ export async function auditCorsAllowMethodsDefault(): Promise<readonly Finding[]
         "cors() default `allowMethods` must be the read-only set " +
         '`["GET", "HEAD", "POST"]`. Adding PUT/PATCH/DELETE to the ' +
         "default cross-origin-exposes every state-changing endpoint " +
-        "without an explicit developer opt-in (Wave 11 item 9).",
+        "without an explicit developer opt-in (audit item 9).",
     });
   }
   if (!/cors\(\): methods cannot include "\*"/.test(text)) {
@@ -298,14 +297,14 @@ export async function auditCorsAllowMethodsDefault(): Promise<readonly Finding[]
         "cors() must refuse `methods: [\"*\"]` at construction with a " +
         "structured error. `*` is a response-only token per the Fetch " +
         "standard, not a developer-facing allowlist value " +
-        "(Wave 11 item 9).",
+        "(audit item 9).",
     });
   }
   return out;
 }
 
 /**
- * Item 2 (Wave 11 leftover slice, shipped in 0.32.0): `app.ws()` refuses
+ * Item 2 (shipped in 0.32.0): `app.ws()` refuses
  * registration when a header-mutating middleware (`secureHeaders()`,
  * `cors()`, `csrf()`, `compression()`) is mounted on a matching path,
  * unless the handler opts in via `acknowledgeHeaderMutatingMiddleware`.
@@ -325,7 +324,7 @@ export async function auditWebSocketHeaderMutationRefusal(): Promise<readonly Fi
       message:
         "src/app.ts must consult `handler.acknowledgeHeaderMutatingMiddleware` " +
         "in `app.ws()` and refuse-at-registration when header-mutating " +
-        "middleware is mounted on a matching path (Wave 11 leftover slice).",
+        "middleware is mounted on a matching path (audit gate).",
     });
   }
   if (!/acknowledgeUnauthenticated/.test(text) || !/handler\.beforeUpgrade\s*===\s*undefined/.test(text)) {
@@ -337,7 +336,7 @@ export async function auditWebSocketHeaderMutationRefusal(): Promise<readonly Fi
       message:
         "src/app.ts must refuse production WebSocket routes without a " +
         "beforeUpgrade decision hook unless the handler explicitly declares " +
-        "acknowledgeUnauthenticated: true (Wave 11 leftover slice).",
+        "acknowledgeUnauthenticated: true (audit gate).",
     });
   }
   if (!/acknowledgeUnauthenticated\??\s*:/.test(websocketText)) {
@@ -393,7 +392,7 @@ export async function auditWebSocketHeaderMutationRefusal(): Promise<readonly Fi
 }
 
 /**
- * Item 5 (Wave 11 leftover slice, shipped in 0.32.0): `httpError({ res })`
+ * Item 5 (shipped in 0.32.0): `httpError({ res })`
  * refuses-at-construction when the supplied custom response would leak
  * request-scoped state (Set-Cookie, server-timing, X-*-Token, cache
  * directives other than no-store/no-cache).
@@ -429,14 +428,14 @@ export async function auditHttpErrorResHeaderRefusal(): Promise<readonly Finding
       message:
         "ProblemRenderOptions must accept `contextHeaders` so direct " +
         "callers of `toResponse()` get the same Context-merge as the " +
-        "framework boundary (Wave 11 leftover slice).",
+        "framework boundary (audit gate).",
     });
   }
   return out;
 }
 
 /**
- * Item 8 (Wave 11 leftover slice, shipped in 0.32.0): plugin extensions
+ * Item 8 (shipped in 0.32.0): plugin extensions
  * that mutate overlapping response headers must declare a `before` /
  * `after` ordering. `topoSortExtensions` refuses-at-registration when
  * neither side does.
@@ -453,7 +452,7 @@ export async function auditPluginExtensionHeaderConflictRefusal(): Promise<reado
       message:
         "PluginExtension interface must declare " +
         "`responseHeaders?: readonly string[]` so the topo-sort can detect " +
-        "overlapping mutations (Wave 11 leftover slice).",
+        "overlapping mutations (audit gate).",
     });
   }
   if (!/Plugin extension header conflict/.test(text)) {
@@ -475,7 +474,7 @@ export async function auditPluginExtensionHeaderConflictRefusal(): Promise<reado
  * Top-level orchestrator. Runs every audit, reports findings to stderr,
  * exits non-zero on any finding.
  */
-export async function runWave11Audits(): Promise<readonly Finding[]> {
+export async function runRuntimeParityAudits(): Promise<readonly Finding[]> {
   const all: Finding[] = [];
   all.push(...(await auditReverseProxyAbsence()));
   all.push(...(await auditAuthFailureCacheControl()));
@@ -489,7 +488,7 @@ export async function runWave11Audits(): Promise<readonly Finding[]> {
 }
 
 async function main(): Promise<void> {
-  const findings = await runWave11Audits();
+  const findings = await runRuntimeParityAudits();
   const warnings = findings.filter((f) => f.level === "warn");
   const errors = findings.filter((f) => f.level !== "warn");
   for (const f of warnings) {
@@ -500,8 +499,8 @@ async function main(): Promise<void> {
   if (errors.length === 0) {
     console.log(
       warnings.length === 0
-        ? "verify-wave11-audits: all static gates passed (items 1, 2, 4, 5, 6, 7, 8, 9)."
-        : `verify-wave11-audits: all static gates passed with ${warnings.length} warning${warnings.length === 1 ? "" : "s"} (items 1, 2, 4, 5, 6, 7, 8, 9).`,
+        ? "verify-runtime-parity-audits: all static gates passed (items 1, 2, 4, 5, 6, 7, 8, 9)."
+        : `verify-runtime-parity-audits: all static gates passed with ${warnings.length} warning${warnings.length === 1 ? "" : "s"} (items 1, 2, 4, 5, 6, 7, 8, 9).`,
     );
     return;
   }
@@ -511,7 +510,7 @@ async function main(): Promise<void> {
     console.error(`    ${f.message}`);
   }
   console.error(
-    `verify-wave11-audits: ${errors.length} error${errors.length === 1 ? "" : "s"}` +
+    `verify-runtime-parity-audits: ${errors.length} error${errors.length === 1 ? "" : "s"}` +
       (warnings.length === 0
         ? "."
         : ` and ${warnings.length} warning${warnings.length === 1 ? "" : "s"}.`),

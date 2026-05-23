@@ -1,6 +1,6 @@
 /**
- * Wave 6 — production fitness & deploy hardening tests.
- * Focused happy-path + critical refusal tests for the 16 Wave 6 items.
+ * Production fitness & deploy hardening tests.
+ * Focused happy-path + critical refusal tests for the 16 production-hardening items.
  */
 
 import { describe, it } from "node:test";
@@ -18,7 +18,7 @@ import {
 } from "../src/index.js";
 import { topoSortExtensions } from "../src/app.js";
 
-describe("Wave 6 — behindProxy declarative model", () => {
+describe("behindProxy declarative model", () => {
   it("accepts the four shapes", () => {
     assertBehindProxy("none");
     assertBehindProxy("loopback");
@@ -61,7 +61,7 @@ describe("Wave 6 — behindProxy declarative model", () => {
   });
 });
 
-describe("Wave 6 — ConnInfo abstraction", () => {
+describe("ConnInfo abstraction", () => {
   it("set + get round-trip", () => {
     const req = new Request("http://test/");
     setConnInfo(req, { remoteAddress: "192.0.2.1", remotePort: 4242, tls: true });
@@ -97,7 +97,7 @@ describe("Wave 6 — ConnInfo abstraction", () => {
   });
 });
 
-describe("Wave 6 — subdomains PSL helper", () => {
+describe("subdomains PSL helper", () => {
   it("splits a single-label TLD", () => {
     const r = subdomains("api.example.com");
     assert.equal(r.baseDomain, "example.com");
@@ -167,7 +167,7 @@ describe("Wave 6 — subdomains PSL helper", () => {
   });
 });
 
-describe("Wave 6 — namespace-protected decorators", () => {
+describe("namespace-protected decorators", () => {
   it("refuses to overwrite an existing decoration", () => {
     const app = new App();
     app.decorate("db", { a: 1 });
@@ -180,7 +180,7 @@ describe("Wave 6 — namespace-protected decorators", () => {
   });
 });
 
-describe("Wave 6 — plugin dependencies / seed / stateful", () => {
+describe("plugin dependencies / seed / stateful", () => {
   it("refuses-to-boot when a declared dependency is missing", () => {
     const app = new App();
     assert.throws(() =>
@@ -216,7 +216,7 @@ describe("Wave 6 — plugin dependencies / seed / stateful", () => {
   });
 });
 
-describe("Wave 6 — plugin extension ordering", () => {
+describe("plugin extension ordering", () => {
   it("topoSortExtensions orders by before/after", () => {
     const out = topoSortExtensions([
       { name: "b", event: "onRequest", handler: () => {}, after: ["a"] },
@@ -243,7 +243,7 @@ describe("Wave 6 — plugin extension ordering", () => {
   });
 });
 
-describe("Wave 6 — defineDependency", () => {
+describe("defineDependency", () => {
   it("refuses missing dependency names", () => {
     assert.throws(() => defineDependency({ name: "" as any, resolve: () => 1 }));
   });

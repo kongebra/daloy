@@ -8,7 +8,7 @@ import {
 import { createJwtSigner, createJwtVerifier } from "../src/jwt.js";
 
 // ============================================================
-// Wave 8 — secureDefaults: false master-flag enforcement
+// secureDefaults: false master-flag enforcement
 // ============================================================
 
 test("secureDefaults: false in production without acknowledgement refuses-to-construct", () => {
@@ -99,7 +99,7 @@ test("secureDefaults: true does not trigger the warning log", () => {
 });
 
 // ============================================================
-// Wave 8 — JWT HS-secret length refusal
+// JWT HS-secret length refusal
 // ============================================================
 
 test("createJwtSigner refuses HS256 secret < 32 bytes at construction", () => {
@@ -136,7 +136,7 @@ test("createJwtVerifier refuses HS384 secret < 32 bytes", () => {
 });
 
 // ============================================================
-// Wave 8 — secureHeaders refuse-to-construct: no framing defense
+// secureHeaders refuse-to-construct: no framing defense
 // ============================================================
 
 test("secureHeaders refuses frameOptions: false + contentSecurityPolicy: false", () => {

@@ -420,7 +420,7 @@ app.use(basicAuth({
       </p>
       <p>
         For credential-entry routes, use{" "}
-        <a href="/docs/security/wave-5-remaining">
+        <a href="/docs/security/websocket-login-throttle">
           <code>loginThrottle()</code>
         </a>{" "}
         across <code>/login</code>, OTP, and password-reset routes, and{" "}

@@ -6,7 +6,7 @@ export const metadata = buildMetadata({
   title: "Auth-cohesive slice (0.22.0)",
   description:
     "Daloy 0.22.0 ships the auth-cohesive leftover slice: jwk() asymmetric-only JWKS middleware, per-scheme verify() revalidation hook on bearerAuth() and jwk(), basicAuth({ onAuthSuccess }) typed callback, and Cache-Control: no-store on every first-party auth helper 401 challenge.",
-  path: "/docs/security/wave-5-auth",
+  path: "/docs/security/auth-slice",
   keywords: [
     "DaloyJS jwk",
     "JWKS",
@@ -184,7 +184,10 @@ app.use(
         helper, the file-upload MIME + magic-byte + size guard, the{" "}
         <code>requirePayloadAuth</code> scheme flag, and the WebSocket-helper
         safe defaults — shipped in the{" "}
-        <a href="/docs/security/wave-5-remaining">0.23.0 remaining slice</a>.
+        <a href="/docs/security/websocket-login-throttle">
+          0.23.0 remaining slice
+        </a>
+        .
       </p>
     </>
   );

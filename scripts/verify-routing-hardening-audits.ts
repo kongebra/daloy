@@ -1,10 +1,10 @@
 /**
- * Wave 12 - mature-Node ergonomic-framework second-pass bake-ins
- * (target `0.31.x`).
+ * Routing-hardening audits — mature-Node ergonomic-framework second-pass
+ * bake-ins.
  *
- * Converts the Wave 12 ROADMAP items into a standing CI gate so the
- * focused-slice defaults shipped in the wave cannot silently regress.
- * Every audit below is a check, not a one-time change.
+ * Standing CI gate so the focused-slice routing-hardening defaults shipped
+ * by the framework cannot silently regress. Every audit below is a check,
+ * not a one-time change.
  *
  * Audits covered here:
  *   1. `useSemicolonDelimiter: false` hardline default - `src/router.ts`
@@ -93,7 +93,7 @@ export async function auditSemicolonDelimiterRefusal(): Promise<readonly Finding
         line: i + 1,
         text: line.trim(),
         message:
-          "Wave 12 item 2 refuses to split path segments on `;`. The " +
+          "Audit item 2 refuses to split path segments on `;`. The " +
           "router must treat `;` as a literal path character so a " +
           "request to `/users/42;admin=true` is a single segment and " +
           "cannot smuggle attacker-controlled query data past the " +
@@ -155,7 +155,7 @@ export async function auditErrorHandlerOverrideRefusal(): Promise<readonly Findi
           line: i + 1,
           text: line.trim(),
           message:
-            "Wave 12 item 3 refuses to ship a standalone " +
+            "Audit item 3 refuses to ship a standalone " +
             "`setErrorHandler()` API. Error handlers must compose " +
             "through `use({ onError })` Hook bundles so two plugins " +
             "cannot silently overwrite each other.",
@@ -168,7 +168,7 @@ export async function auditErrorHandlerOverrideRefusal(): Promise<readonly Findi
           line: i + 1,
           text: line.trim(),
           message:
-            "Wave 12 item 3 refuses to expose a standalone `onError()` " +
+            "Audit item 3 refuses to expose a standalone `onError()` " +
             "method on the `App` class. Hook bundle keys (`onError` " +
             "inside an object literal) are unaffected; only class " +
             "methods are forbidden.",
@@ -195,7 +195,7 @@ export async function auditRequestIdTrustDefault(): Promise<readonly Finding[]> 
       line: 0,
       text: "opts.trustIncoming ? ctx.request.headers.get(header) : null",
       message:
-        "Wave 12 item 6 requires `requestId()` to default to " +
+        "Audit item 6 requires `requestId()` to default to " +
         "`trustIncoming: false` so a client-supplied `X-Request-ID` " +
         "header is NEVER honored unless the developer opts in. The " +
         "incoming-header read MUST be gated on `opts.trustIncoming`.",
@@ -209,7 +209,7 @@ export async function auditRequestIdTrustDefault(): Promise<readonly Finding[]> 
       line: 0,
       text: "trustIncoming default = true",
       message:
-        "Wave 12 item 6 refuses to default `trustIncoming` to `true`. " +
+        "Audit item 6 refuses to default `trustIncoming` to `true`. " +
         "The default must be `false` (opt-in trust) so client-injected " +
         "correlation IDs cannot poison framework logs by default.",
     });
@@ -236,7 +236,7 @@ export async function auditHttpMethodAllowlist(): Promise<readonly Finding[]> {
       line: 0,
       text: "export type HttpMethod",
       message:
-        "Wave 12 item 11 requires an `HttpMethod` union in src/types.ts " +
+        "Audit item 11 requires an `HttpMethod` union in src/types.ts " +
         "with the exact RFC 7231 + RFC 5789 method set.",
     });
     return out;
@@ -258,7 +258,7 @@ export async function auditHttpMethodAllowlist(): Promise<readonly Finding[]> {
         text: member,
         message:
           `\`${member}\` is not on the RFC 7231 + RFC 5789 method ` +
-          "allowlist. Wave 12 item 11 refuses to extend `HttpMethod` " +
+          "allowlist. Audit item 11 refuses to extend `HttpMethod` " +
           "without an explicit `acknowledgeExtendedHTTPMethods: true` " +
           "opt-in (closes TRACE / CONNECT / WebDAV bypass surfaces).",
       });
@@ -295,7 +295,7 @@ export async function auditHttpMethodAllowlist(): Promise<readonly Finding[]> {
           line: i + 1,
           text: line.trim(),
           message:
-            "Wave 12 item 11 refuses to expose an `addHttpMethod()` " +
+            "Audit item 11 refuses to expose an `addHttpMethod()` " +
             "runtime API. Adding a method must require an `AppOptions` " +
             "opt-in routed through the type-system allowlist.",
         });
@@ -307,7 +307,7 @@ export async function auditHttpMethodAllowlist(): Promise<readonly Finding[]> {
 
 /**
  * Item 5: the `App.fetch` arrow sets `connection: close` on every
- * response produced while the app is draining. Reaffirms the Wave 4
+ * response produced while the app is draining. Reaffirms the prior
  * default so a future refactor of the dispatch path cannot drop the
  * header.
  */
@@ -326,7 +326,7 @@ export async function auditDrainingConnectionClose(): Promise<readonly Finding[]
       line: 0,
       text: 'if (this.draining && !response.headers.has("connection")) { response.headers.set("connection", "close") }',
       message:
-        "Wave 12 item 17 requires `App.fetch` to set " +
+        "Audit item 17 requires `App.fetch` to set " +
         "`Connection: close` on every response produced while the app " +
         "is draining so HTTP/1.1 load balancers immediately stop " +
         "re-using the socket for new requests on the closing instance.",
@@ -339,7 +339,7 @@ export async function auditDrainingConnectionClose(): Promise<readonly Finding[]
  * Top-level orchestrator. Runs every audit, reports findings to stderr,
  * exits non-zero on any finding.
  */
-export async function runWave12Audits(): Promise<readonly Finding[]> {
+export async function runRoutingHardeningAudits(): Promise<readonly Finding[]> {
   const all: Finding[] = [];
   all.push(...(await auditSemicolonDelimiterRefusal()));
   all.push(...(await auditErrorHandlerOverrideRefusal()));
@@ -350,7 +350,7 @@ export async function runWave12Audits(): Promise<readonly Finding[]> {
 }
 
 async function main(): Promise<void> {
-  const findings = await runWave12Audits();
+  const findings = await runRoutingHardeningAudits();
   const warnings = findings.filter((f) => f.level === "warn");
   const errors = findings.filter((f) => f.level !== "warn");
   for (const f of warnings) {
@@ -361,8 +361,8 @@ async function main(): Promise<void> {
   if (errors.length === 0) {
     console.log(
       warnings.length === 0
-        ? "verify-wave12-audits: all static gates passed (items 1, 2, 3, 4, 5)."
-        : `verify-wave12-audits: all static gates passed with ${warnings.length} warning${warnings.length === 1 ? "" : "s"} (items 1, 2, 3, 4, 5).`,
+        ? "verify-routing-hardening-audits: all static gates passed (items 1, 2, 3, 4, 5)."
+        : `verify-routing-hardening-audits: all static gates passed with ${warnings.length} warning${warnings.length === 1 ? "" : "s"} (items 1, 2, 3, 4, 5).`,
     );
     return;
   }
@@ -372,7 +372,7 @@ async function main(): Promise<void> {
     console.error(`    ${f.message}`);
   }
   console.error(
-    `verify-wave12-audits: ${errors.length} error${errors.length === 1 ? "" : "s"}` +
+    `verify-routing-hardening-audits: ${errors.length} error${errors.length === 1 ? "" : "s"}` +
       (warnings.length === 0
         ? "."
         : ` and ${warnings.length} warning${warnings.length === 1 ? "" : "s"}.`),

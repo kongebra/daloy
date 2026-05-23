@@ -1,9 +1,9 @@
 /**
- * Wave 12 - mature-Node ergonomic-framework second-pass bake-ins
+ * Routing-hardening audits — mature-Node second-pass
  * regression coverage.
  *
  * Exercises the static gates exported from
- * `scripts/verify-wave12-audits.ts` against the live source tree, and
+ * `scripts/verify-routing-hardening-audits.ts` against the live source tree, and
  * the runtime behavior of the focused-slice defaults:
  *
  *   - The router does not split path segments on `;` (item 1).
@@ -27,12 +27,12 @@ import assert from "node:assert/strict";
 import { App } from "../src/app.js";
 import { requestId } from "../src/middleware.js";
 
-import { runWave12Audits } from "../scripts/verify-wave12-audits.js";
+import { runRoutingHardeningAudits } from "../scripts/verify-routing-hardening-audits.js";
 
 // ---------- live tree: every static audit passes ----------
 
-test("wave12: all static audits pass on the live source tree", async () => {
-  const findings = await runWave12Audits();
+test("routing-hardening: all static audits pass on the live source tree", async () => {
+  const findings = await runRoutingHardeningAudits();
   const errors = findings.filter((f) => f.level !== "warn");
   if (errors.length > 0) {
     const summary = errors
@@ -41,13 +41,13 @@ test("wave12: all static audits pass on the live source tree", async () => {
           `[${f.audit}] ${f.file}${f.line > 0 ? `:${f.line}` : ""} - ${f.text}: ${f.message}`,
       )
       .join("\n");
-    assert.fail(`Wave 12 audit gates flagged ${errors.length} error(s):\n${summary}`);
+    assert.fail(`Routing-hardening audit gates flagged ${errors.length} error(s):\n${summary}`);
   }
 });
 
 // ---------- item 1: router does not split on `;` ----------
 
-test("wave12: `/foo;bar` and `/foo` are distinct routes (no semicolon delimiter)", async () => {
+test("routing-hardening: `/foo;bar` and `/foo` are distinct routes (no semicolon delimiter)", async () => {
   const app = new App({ secureDefaults: false });
   app.route({
     method: "GET",
@@ -68,7 +68,7 @@ test("wave12: `/foo;bar` and `/foo` are distinct routes (no semicolon delimiter)
   );
 });
 
-test("wave12: a route registered with a literal `;` in its path is matched only on the literal", async () => {
+test("routing-hardening: a route registered with a literal `;` in its path is matched only on the literal", async () => {
   const app = new App({ secureDefaults: false });
   app.route({
     method: "GET",
@@ -89,7 +89,7 @@ test("wave12: a route registered with a literal `;` in its path is matched only 
 
 // ---------- item 2: no standalone error-handler API on App ----------
 
-test("wave12: App does not expose a `setErrorHandler` method", () => {
+test("routing-hardening: App does not expose a `setErrorHandler` method", () => {
   const app = new App({ secureDefaults: false });
   assert.equal(
     (app as unknown as Record<string, unknown>).setErrorHandler,
@@ -99,7 +99,7 @@ test("wave12: App does not expose a `setErrorHandler` method", () => {
   );
 });
 
-test("wave12: App does not expose a standalone `onError` method", () => {
+test("routing-hardening: App does not expose a standalone `onError` method", () => {
   const app = new App({ secureDefaults: false });
   // `onError` may appear as a Hook bundle key inside object literals
   // passed to `use({ onError })` - that is the intended composition
@@ -117,7 +117,7 @@ test("wave12: App does not expose a standalone `onError` method", () => {
 
 // ---------- item 3: requestId() trust default ----------
 
-test("wave12: requestId() ignores client-supplied X-Request-ID by default", async () => {
+test("routing-hardening: requestId() ignores client-supplied X-Request-ID by default", async () => {
   const app = new App({ secureDefaults: false });
   app.use(requestId());
   let observed: string | undefined;
@@ -139,7 +139,7 @@ test("wave12: requestId() ignores client-supplied X-Request-ID by default", asyn
   assert.notEqual(
     observed,
     attacker,
-    "Wave 12 item 6: requestId() must NOT honor client-supplied " +
+    "audit item 6: requestId() must NOT honor client-supplied " +
       "`X-Request-ID` by default.",
   );
   assert.equal(
@@ -149,7 +149,7 @@ test("wave12: requestId() ignores client-supplied X-Request-ID by default", asyn
   );
 });
 
-test("wave12: requestId({ trustIncoming: true }) accepts a valid client header", async () => {
+test("routing-hardening: requestId({ trustIncoming: true }) accepts a valid client header", async () => {
   const app = new App({ secureDefaults: false });
   app.use(requestId({ trustIncoming: true }));
   let observed: string | undefined;
@@ -177,7 +177,7 @@ test("wave12: requestId({ trustIncoming: true }) accepts a valid client header",
 
 // ---------- item 4: HttpMethod allowlist ----------
 
-test("wave12: registering a route with a non-canonical HTTP method is refused", () => {
+test("routing-hardening: registering a route with a non-canonical HTTP method is refused", () => {
   const app = new App({ secureDefaults: false });
   assert.throws(
     () =>
@@ -191,14 +191,14 @@ test("wave12: registering a route with a non-canonical HTTP method is refused", 
         handler: async () => ({ status: 200 as const, body: undefined }),
       }),
     /TRACE|method/i,
-    "Wave 12 item 11: route registration must refuse non-canonical " +
+    "audit item 11: route registration must refuse non-canonical " +
       "HTTP methods at runtime (TRACE, CONNECT, WebDAV verbs, etc.).",
   );
 });
 
 // ---------- item 5: 503 during draining carries Connection: close ----------
 
-test("wave12: responses produced while draining carry `Connection: close`", async () => {
+test("routing-hardening: responses produced while draining carry `Connection: close`", async () => {
   const app = new App({ secureDefaults: false });
   app.route({
     method: "GET",
@@ -222,7 +222,7 @@ test("wave12: responses produced while draining carry `Connection: close`", asyn
   assert.equal(
     during.headers.get("connection"),
     "close",
-    "Wave 12 item 17: every response produced while draining must " +
+    "audit item 17: every response produced while draining must " +
       "carry `Connection: close`.",
   );
 });

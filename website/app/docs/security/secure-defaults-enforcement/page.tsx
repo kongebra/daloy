@@ -6,7 +6,7 @@ export const metadata = buildMetadata({
   title: "secureDefaults enforcement (0.26.0)",
   description:
     "Daloy 0.26.0 ships a focused cross-cutting bake-in: secureDefaults: false master-flag enforcement (production refuse + once-per-process audit log), JWT HS-secret length refuse-to-construct (< 32 bytes), secureHeaders() refusing simultaneous frame-defense disable, and mandatory hardware-backed 2FA for every contributor with publish access.",
-  path: "/docs/security/wave-8-slice",
+  path: "/docs/security/secure-defaults-enforcement",
   keywords: [
     "DaloyJS 0.26.0",
     "secureDefaults",

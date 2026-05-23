@@ -1,10 +1,9 @@
 /**
- * Wave 10 - zero-runtime-dependency batteries-included parity & governance
- * audit (target `0.29.0`).
+ * Zero-runtime-dependency batteries-included parity & governance audit.
  *
- * Converts the Wave 10 ROADMAP items into a standing CI gate so the
- * framework cannot quietly drop a Wave 1-9 default. Each numbered audit
- * below is a check, not a one-time change.
+ * Converts the cross-cutting governance items into a standing CI gate so the
+ * framework cannot quietly drop a previously-shipped default. Each numbered
+ * audit below is a check, not a one-time change.
  *
  * Audits covered here:
  *   1. Recurring security-disclosure exercise - the rotation file
@@ -13,14 +12,15 @@
  *      is younger than 180 days (warn at 90, fail at 180).
  *   2. Zero-runtime-dependency posture - reaffirms the empty `dependencies`
  *      block in `@daloyjs/core/package.json` (delegates to
- *      `verify-no-runtime-deps.ts`; also reaffirmed by Wave 9 item 19).
+ *      `verify-no-runtime-deps.ts`; also reaffirmed by the parity-audits
+ *      runtime-deps gate).
  *   3. Transitive-dep audit - root `package.json` MUST NOT declare any
  *      production `dependencies`; the transitive runtime closure is
  *      therefore trivially zero. A non-empty block requires an explicit
  *      `SECURITY.md` waiver naming every transitive dep.
  *   4. Plugin-prerequisite enforcement - `src/app.ts` MUST still contain a
  *      missing-dependency refuse-to-boot path on the plugin registration
- *      flow (companion to Wave 9 items 16 and 18).
+ *      flow.
  *   5. Extension-order determinism - `src/app.ts` MUST still expose a
  *      `topoSortExtensions` deterministic-ordering pass that throws on
  *      cycles, so a new plugin can never silently reorder the security
@@ -175,7 +175,7 @@ export function auditSecurityContactsText(
         line: 0,
         text: `last-exercise=${parsed.lastExercise.toISOString().slice(0, 10)} (${age}d old)`,
         message:
-          `Disclosure exercise is ${age} days old; the Wave 10 fail ` +
+          `Disclosure exercise is ${age} days old; the fail ` +
           `threshold is ${EXERCISE_FAIL_DAYS} days. Run a fresh ` +
           "simulated exercise, record it in PROJECT_HISTORY.md, and bump " +
           "the `<!-- last-exercise: -->` marker.",
@@ -188,7 +188,7 @@ export function auditSecurityContactsText(
         line: 0,
         text: `last-exercise=${parsed.lastExercise.toISOString().slice(0, 10)} (${age}d old)`,
         message:
-          `Disclosure exercise is ${age} days old; the Wave 10 warning ` +
+          `Disclosure exercise is ${age} days old; the warning ` +
           `threshold is ${EXERCISE_WARN_DAYS} days. Schedule the next ` +
           "quarterly simulation before the hard 180-day gate.",
       });
@@ -214,7 +214,7 @@ export async function auditSecurityContacts(
       line: 0,
       text: "(missing)",
       message:
-        "Wave 10 requires a `SECURITY-CONTACTS.md` rotation file at the " +
+        "A `SECURITY-CONTACTS.md` rotation file is required at the " +
         "repository root. Create it before the next publish.",
     });
     return out;
@@ -242,7 +242,7 @@ export async function auditRuntimeDeps(): Promise<readonly Finding[]> {
       message:
         "@daloyjs/core ships zero runtime dependencies. Any addition " +
         "requires a SECURITY.md waiver naming every transitive runtime dep " +
-        "(Wave 10 transitive-closure rule).",
+        "(transitive-closure rule).",
     });
   }
   return out;
@@ -289,8 +289,8 @@ export async function auditPluginPrerequisite(): Promise<readonly Finding[]> {
       message:
         "src/app.ts must still refuse-to-boot when a plugin declares a " +
         "missing dependency: a negated `this.installedPlugins.has(dep)` " +
-        "guard paired with a `throw new Error(...)` is required (Wave 6 " +
-        "plugin-prerequisite contract reaffirmed by Wave 10).",
+        "guard paired with a `throw new Error(...)` is required " +
+        "(plugin-prerequisite contract).",
     });
   }
   return out;
@@ -386,7 +386,7 @@ export async function auditGovernanceFloor(): Promise<readonly Finding[]> {
       line: 0,
       text: "(empty)",
       message:
-        "No workflow files found under `.github/workflows/`. Wave 10 " +
+        "No workflow files found under `.github/workflows/`. The audit " +
         "requires at least one workflow file with the documented governance " +
         "floor in place.",
     });
@@ -433,7 +433,7 @@ export async function auditGovernanceFloor(): Promise<readonly Finding[]> {
           message:
             "Third-party actions must be pinned to a 40-hex commit SHA " +
             "(managed by Dependabot). Tags and floating refs are " +
-            "forbidden by the Wave 10 governance floor.",
+            "forbidden by the governance floor.",
         });
       }
     }
@@ -491,7 +491,7 @@ export async function auditGovernanceFloor(): Promise<readonly Finding[]> {
  * Top-level orchestrator. Runs every audit, reports findings to stderr,
  * exits non-zero on any finding.
  */
-export async function runWave10Audits(
+export async function runGovernanceAudits(
   now: Date = new Date(),
 ): Promise<readonly Finding[]> {
   const all: Finding[] = [];
@@ -504,7 +504,7 @@ export async function runWave10Audits(
 }
 
 async function main(): Promise<void> {
-  const findings = await runWave10Audits();
+  const findings = await runGovernanceAudits();
   const warnings = findings.filter((f) => f.level === "warn");
   const errors = findings.filter((f) => f.level !== "warn");
   for (const f of warnings) {
@@ -515,8 +515,8 @@ async function main(): Promise<void> {
   if (errors.length === 0) {
     console.log(
       warnings.length === 0
-        ? "verify-wave10-audits: all static gates passed (items 1, 2/3, 4, 5, 6)."
-        : `verify-wave10-audits: all static gates passed with ${warnings.length} warning${warnings.length === 1 ? "" : "s"} (items 1, 2/3, 4, 5, 6).`,
+        ? "verify-governance-audits: all static gates passed (items 1, 2/3, 4, 5, 6)."
+        : `verify-governance-audits: all static gates passed with ${warnings.length} warning${warnings.length === 1 ? "" : "s"} (items 1, 2/3, 4, 5, 6).`,
     );
     return;
   }
@@ -526,7 +526,7 @@ async function main(): Promise<void> {
     console.error(`    ${f.message}`);
   }
   console.error(
-    `verify-wave10-audits: ${errors.length} error${errors.length === 1 ? "" : "s"}` +
+    `verify-governance-audits: ${errors.length} error${errors.length === 1 ? "" : "s"}` +
       (warnings.length === 0
         ? "."
         : ` and ${warnings.length} warning${warnings.length === 1 ? "" : "s"}.`),

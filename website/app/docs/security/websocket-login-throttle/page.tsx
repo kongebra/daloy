@@ -6,7 +6,7 @@ export const metadata = buildMetadata({
   title: "WebSocket + login throttle slice (0.23.0)",
   description:
     "Daloy 0.23.0 ships the remaining leftover items: WebSocket upgrade rate limiting, login throttling, automatic session rotation, upload magic-byte guards, payload-auth-required security schemes, and WebSocket safe defaults.",
-  path: "/docs/security/wave-5-remaining",
+  path: "/docs/security/websocket-login-throttle",
   keywords: [
     "DaloyJS 0.23.0",
     "wsRateLimit",

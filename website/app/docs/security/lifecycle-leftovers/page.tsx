@@ -6,7 +6,7 @@ export const metadata = buildMetadata({
   title: "Lifecycle leftovers (0.20.0)",
   description:
     "Daloy 0.20.0 ships the lifecycle leftover slice of the secure-by-default initiative: loadShedding(), app.cspReportRoute() with secureHeaders reporting wiring, disconnectStatusCode: 499 default, and defineConfig({ schema, source }) boot-time validation.",
-  path: "/docs/security/wave-4-leftovers",
+  path: "/docs/security/lifecycle-leftovers",
   keywords: [
     "DaloyJS loadShedding",
     "under-pressure",

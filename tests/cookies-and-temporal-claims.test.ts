@@ -1,5 +1,5 @@
 /**
- * Wave 8 — single-source-of-truth bake-in regression coverage.
+ * Single-source-of-truth bake-in regression coverage.
  *
  * Validates the four SSoT surfaces shipped in 0.27.0:
  *

@@ -80,7 +80,7 @@ jobs:
       - name: Verify lockfile sources
         run: pnpm verify:lockfile
 
-      - name: Verify zero runtime dependencies (Wave 8 governance gate)
+      - name: Verify zero runtime dependencies
         run: pnpm verify:no-runtime-deps
 
       - name: Verify no install-time lifecycle scripts (Aikido Package Health "Supply-Chain Scripts" gate)
@@ -89,7 +89,7 @@ jobs:
       - name: Verify no bin script shadowing (Socket bin-script-confusion gate)
         run: pnpm verify:no-bin-shadowing
 
-      - name: Verify secret-comparison single source of truth (Wave 8 governance gate)
+      - name: Verify secret-comparison single source of truth
         run: pnpm verify:secret-comparisons
 
       - name: Verify no unsafe Buffer APIs (Snyk "exploiting Buffer" gate)
@@ -110,17 +110,17 @@ jobs:
       - name: Verify no vulnerable JS sandbox dependencies (Socket vm2 CVE-2026-26956 gate)
         run: pnpm verify:no-vulnerable-sandboxes
 
-      - name: Verify Wave 9 pattern-agnostic parity audits (Wave 9 governance gate)
-        run: pnpm verify:wave9-audits
+      - name: Verify pattern-agnostic parity audits
+        run: pnpm verify:parity-audits
 
-      - name: Verify Wave 10 zero-runtime-deps + governance audits (Wave 10 governance gate)
-        run: pnpm verify:wave10-audits
+      - name: Verify zero-runtime-deps + governance audits
+        run: pnpm verify:governance-audits
 
-      - name: Verify Wave 11 multi-runtime parity bake-ins (Wave 11 governance gate)
-        run: pnpm verify:wave11-audits
+      - name: Verify multi-runtime parity audits
+        run: pnpm verify:runtime-parity-audits
 
-      - name: Verify Wave 12 mature-Node second-pass bake-ins (Wave 12 governance gate)
-        run: pnpm verify:wave12-audits
+      - name: Verify routing-hardening audits
+        run: pnpm verify:routing-hardening-audits
 
       - name: Typecheck
         run: pnpm typecheck

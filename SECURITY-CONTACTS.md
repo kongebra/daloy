@@ -4,11 +4,10 @@ This file is the **single source of truth** for who is allowed to:
 
 1. Approve the protected `npm-publish` GitHub Environment for a release.
 2. Coordinate response to a privately reported vulnerability.
-3. Run the quarterly disclosure exercise tracked under
-   [Wave 10](./ROADMAP.md) and recorded in
-   [PROJECT_HISTORY.md](./PROJECT_HISTORY.md).
+3. Run the quarterly disclosure exercise (tracked in [ROADMAP](./ROADMAP.md)
+   and recorded in [PROJECT_HISTORY.md](./PROJECT_HISTORY.md)).
 
-It is machine-readable by [`scripts/verify-wave10-audits.ts`](./scripts/verify-wave10-audits.ts).
+It is machine-readable by [`scripts/verify-governance-audits.ts`](./scripts/verify-governance-audits.ts).
 A change to this file requires CODEOWNERS approval. The CI gate refuses to
 publish `@daloyjs/core` or `create-daloy` when the GitHub actor on the publish
 run is not in the rotation below.
@@ -50,7 +49,7 @@ move retired contacts to the **Off-boarded** section with the date.
 
 ## Quarterly disclosure exercise
 
-Per Wave 10 of the [ROADMAP](./ROADMAP.md), the disclosure rotation is tested
+Per the [ROADMAP](./ROADMAP.md), the disclosure rotation is tested
 at least once per quarter with a simulated report. The exercise verifies that:
 
 1. The private vulnerability-report inbox is monitored within the 3-business-day
@@ -59,7 +58,7 @@ at least once per quarter with a simulated report. The exercise verifies that:
    npm with hardware-backed 2FA.
 3. The protected `npm-publish` Environment still requires explicit approval
    before any publish job executes.
-4. The CI gate `pnpm verify:wave10-audits` exits zero on `main`.
+4. The CI gate `pnpm verify:governance-audits` exits zero on `main`.
 5. The GitHub **and** npm account-recovery email address for every handle in
    the **Active** list above still resolves to a domain the contact
    personally owns, or to a custodial provider (e.g. Gmail, iCloud, Fastmail)
@@ -73,7 +72,7 @@ at least once per quarter with a simulated report. The exercise verifies that:
 The most recent exercise must be recorded as a one-line bullet in
 [PROJECT_HISTORY.md](./PROJECT_HISTORY.md) using the form:
 
-> `_<date>_ — Wave 10 disclosure exercise completed. Findings: <short summary>.`
+> `_<date>_ — quarterly disclosure exercise completed. Findings: <short summary>.`
 
 The audit script reads the `<!-- last-exercise: YYYY-MM-DD -->` marker below,
 warns when the date is older than 90 days, and refuses with a non-zero exit
@@ -102,5 +101,5 @@ Removing (off-boarding):
    off-boarding date appended.
 2. Revoke their GitHub organization membership, their npm publish grant, and
    any granular tokens scoped to `@daloyjs/*` packages **before** their last
-   day. (Wave 8 off-boarding checklist.)
+   day.
 3. Confirm the next publish run uses an actor that is still in `### Active`.

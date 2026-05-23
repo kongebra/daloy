@@ -1,15 +1,15 @@
 /**
- * Wave 9 - pattern-agnostic-framework parity audit regression coverage.
+ * Pattern-agnostic-framework parity audit regression coverage.
  *
  * Exercises the static gates exported from
- * `scripts/verify-wave9-audits.ts` against the live source tree, and the
+ * `scripts/verify-parity-audits.ts` against the live source tree, and the
  * live-config audits added to `daloy doctor` (items 1, 4, 5, 6, 7 from the
- * Wave 9 list; item 8 is the doctor command surface itself). The static
- * gates in `runWave9Audits()` cover items 9, 10, 11, 15, 17, and 19, while
+ * audit list; item 8 is the doctor command surface itself). The static
+ * gates in `runParityAudits()` cover items 9, 10, 11, 15, 17, and 19, while
  * item 22 remains covered by `verify-secret-comparisons.ts`.
  *
- * Other already-shipped Wave 9 behaviors stay in their owning feature tests;
- * items 14, 20, and 21 are forward-looking gates for Wave 2 defaults that are
+ * Other already-shipped audit behaviors stay in their owning feature tests;
+ * items 14, 20, and 21 are forward-looking gates for secure-defaults that are
  * still tracked in the roadmap. This file avoids duplicating those assertions
  * so the audit catalogue and behavior tests do not drift apart.
  *
@@ -22,12 +22,12 @@ import { z } from "zod";
 
 import { App } from "../src/index.js";
 import { runCli, type CliIO } from "../src/cli.js";
-import { runWave9Audits } from "../scripts/verify-wave9-audits.js";
+import { runParityAudits } from "../scripts/verify-parity-audits.js";
 
 // ---------- static grep gates ----------
 
-test("wave9: static grep audits all pass on the live source tree", async () => {
-  const findings = await runWave9Audits();
+test("parity: static grep audits all pass on the live source tree", async () => {
+  const findings = await runParityAudits();
   if (findings.length > 0) {
     const summary = findings
       .map(
@@ -35,7 +35,7 @@ test("wave9: static grep audits all pass on the live source tree", async () => {
           `[${f.audit}] ${f.file}${f.line > 0 ? `:${f.line}` : ""} - ${f.text}`,
       )
       .join("\n");
-    assert.fail(`Wave 9 audit gates flagged ${findings.length} finding(s):\n${summary}`);
+    assert.fail(`Parity audit gates flagged ${findings.length} finding(s):\n${summary}`);
   }
 });
 
@@ -71,7 +71,7 @@ function dummyApp(options: Record<string, unknown> = {}): App {
   return app;
 }
 
-test("wave9 doctor: clean App passes the audit (no findings)", async () => {
+test("doctor: clean App passes the audit (no findings)", async () => {
   const app = dummyApp();
   const { io, out } = buildIO(app);
   const r = await runCli(["doctor", "--json", "entry.ts"], io);
@@ -80,7 +80,7 @@ test("wave9 doctor: clean App passes the audit (no findings)", async () => {
   assert.equal(parsed.ok, true);
 });
 
-test("wave9 doctor: item 4 - bodyLimitBytes > 25 MiB surfaces a warn", async () => {
+test("doctor: item 4 - bodyLimitBytes > 25 MiB surfaces a warn", async () => {
   const app = dummyApp({ bodyLimitBytes: 50 * 1024 * 1024 });
   const { io, out } = buildIO(app);
   const r = await runCli(["doctor", "--json", "entry.ts"], io);
@@ -91,7 +91,7 @@ test("wave9 doctor: item 4 - bodyLimitBytes > 25 MiB surfaces a warn", async () 
   assert.ok(codes.includes("audit.bodyLimit.blanket"), codes.join(","));
 });
 
-test("wave9 doctor: item 6 - allowUnsafeValidationDetails surfaces an error", async () => {
+test("doctor: item 6 - allowUnsafeValidationDetails surfaces an error", async () => {
   const app = dummyApp({ allowUnsafeValidationDetails: true });
   const { io, out } = buildIO(app);
   const r = await runCli(["doctor", "--json", "entry.ts"], io);
@@ -101,7 +101,7 @@ test("wave9 doctor: item 6 - allowUnsafeValidationDetails surfaces an error", as
   assert.ok(codes.includes("audit.validationDetails.leak"), codes.join(","));
 });
 
-test("wave9 doctor: item 6 - exposeFrameworkIdentity surfaces an error", async () => {
+test("doctor: item 6 - exposeFrameworkIdentity surfaces an error", async () => {
   const app = dummyApp({ exposeFrameworkIdentity: true });
   const { io, out } = buildIO(app);
   const r = await runCli(["doctor", "--json", "entry.ts"], io);
@@ -111,7 +111,7 @@ test("wave9 doctor: item 6 - exposeFrameworkIdentity surfaces an error", async (
   assert.ok(codes.includes("audit.identityLeak"), codes.join(","));
 });
 
-test("wave9 doctor: item 1 - cors maxAge > 24h surfaces a warn", async () => {
+test("doctor: item 1 - cors maxAge > 24h surfaces a warn", async () => {
   const app = dummyApp({ cors: { origin: ["https://example.test"], maxAge: 604_800 } });
   const { io, out } = buildIO(app);
   const r = await runCli(["doctor", "--json", "entry.ts"], io);
@@ -122,7 +122,7 @@ test("wave9 doctor: item 1 - cors maxAge > 24h surfaces a warn", async () => {
   assert.ok(codes.includes("audit.cors.maxAge"), codes.join(","));
 });
 
-test("wave9 doctor: item 1 - cors wildcard + credentials surfaces an error", async () => {
+test("doctor: item 1 - cors wildcard + credentials surfaces an error", async () => {
   // The App constructor refuses this combo at construction time when
   // cors() is used as middleware. Here we exercise the *defense-in-depth*
   // doctor check by injecting the option directly onto `app.options`
@@ -140,7 +140,7 @@ test("wave9 doctor: item 1 - cors wildcard + credentials surfaces an error", asy
   assert.ok(codes.includes("audit.cors.wildcardCredentials"), codes.join(","));
 });
 
-test("wave9 doctor: item 7 - enableServerTimingInProduction in production surfaces an error", async () => {
+test("doctor: item 7 - enableServerTimingInProduction in production surfaces an error", async () => {
   const app = dummyApp({ env: "production", enableServerTimingInProduction: true });
   const { io, out } = buildIO(app);
   const r = await runCli(["doctor", "--json", "entry.ts"], io);
@@ -150,7 +150,7 @@ test("wave9 doctor: item 7 - enableServerTimingInProduction in production surfac
   assert.ok(codes.includes("audit.serverTiming.production"), codes.join(","));
 });
 
-test("wave9 doctor: --no-audit-defaults skips every Wave 9 live check", async () => {
+test("doctor: --no-audit-defaults skips every live audit check", async () => {
   const app = dummyApp({ allowUnsafeValidationDetails: true });
   const { io, out } = buildIO(app);
   const r = await runCli(["doctor", "--json", "--no-audit-defaults", "entry.ts"], io);

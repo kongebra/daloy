@@ -5,7 +5,7 @@ import {
   _resetCrashHandlersForTests,
 } from "../src/index.js";
 
-// ---------- Wave 4: connection-draining shutdown ----------
+// ---------- connection-draining shutdown ----------
 
 test("fetch() returns 503 with Retry-After + Connection: close once draining", async () => {
   const app = new App({ env: "development" });
@@ -91,7 +91,7 @@ test("failing idle-connection close hooks are logged but do not throw", async ()
   assert.equal(errs.length, 1);
 });
 
-// ---------- Wave 4: crash handlers ----------
+// ---------- crash handlers ----------
 
 test("crashOnUnhandledRejection: false skips installation even in production", () => {
   _resetCrashHandlersForTests();
@@ -246,7 +246,7 @@ test("crash handlers still exit when the logger throws", () => {
   }
 });
 
-// ---------- Wave 4: health / readiness primitives ----------
+// ---------- health / readiness primitives ----------
 
 test("app.healthcheck() registers GET /healthz returning 200 in development", async () => {
   const app = new App({ env: "development" });

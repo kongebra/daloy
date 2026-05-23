@@ -1,5 +1,5 @@
 /**
- * Wave 9 - pattern-agnostic-framework parity audit (target `0.28.0`).
+ * Pattern-agnostic-framework parity audits.
  *
  * Converts the head-to-head feature comparison in
  * `otherdocs/security_task.txt` into a standing CI gate so the framework
@@ -11,7 +11,7 @@
  * (see `src/cli.ts`), and already-shipped runtime behavior remains covered by
  * the feature-specific tests that introduced those defaults.
  *
- * Audits covered here (numbering matches the ROADMAP Wave 9 list):
+ * Audits covered here:
  *   9.  Mutable-request-URL audit         (no `set url(`, `set path(`,
  *                                          `set method(` in `src/`)
  *  10.  Response-bypass escape hatch       (no `ctx.respond = false`-style)
@@ -24,10 +24,9 @@
  *                                          `allowInternal: true`)
  *  19.  Runtime-dependency audit           (delegates to
  *                                          `verify-no-runtime-deps.ts`;
- *                                          reaffirmed here as Wave 9
- *                                          item 19)
+ *                                          reaffirmed here as item 19)
  *
- * Wave 9 item 22 is enforced by the existing
+ * Item 22 is enforced by the existing
  * `scripts/verify-secret-comparisons.ts` gate and runs separately in CI.
  *
  * Exit code:
@@ -202,7 +201,7 @@ async function auditOpenRedirectReferer(
 }
 
 /**
- * Item 15: encrypted-cookie helper crypto audit. The Wave 1
+ * Item 15: encrypted-cookie helper crypto audit. The
  * `setEncryptedCookie` helper (and any helper module under
  * `src/cookie.ts`) must use only WebCrypto AES-GCM + HMAC-SHA256: no
  * AES-CBC fallback, no SHA-1 fallback, no third-party crypto reach.
@@ -334,7 +333,7 @@ async function auditInternalRouteExposure(): Promise<readonly Finding[]> {
 
 /**
  * Item 19: runtime-dependency audit. Reaffirms the same policy as
- * `verify-no-runtime-deps.ts`, kept local so this Wave 9 script can also run
+ * `verify-no-runtime-deps.ts`, kept local so this audit script can also run
  * from the compiled `dist-coverage/` tree used by `pnpm coverage:branches`.
  */
 async function auditRuntimeDeps(): Promise<readonly Finding[]> {
@@ -363,7 +362,7 @@ async function auditRuntimeDeps(): Promise<readonly Finding[]> {
  * Top-level orchestrator. Runs every audit, reports findings to stderr,
  * exits non-zero on any finding.
  */
-export async function runWave9Audits(): Promise<readonly Finding[]> {
+export async function runParityAudits(): Promise<readonly Finding[]> {
   const files = await listSrcFiles();
   const all: Finding[] = [];
   all.push(...(await auditMutableRequestUrl(files)));
@@ -376,10 +375,10 @@ export async function runWave9Audits(): Promise<readonly Finding[]> {
 }
 
 async function main(): Promise<void> {
-  const findings = await runWave9Audits();
+  const findings = await runParityAudits();
   if (findings.length === 0) {
     console.log(
-      "verify-wave9-audits: all static gates passed (items 9, 10, 11, 15, 17, 19).",
+      "verify-parity-audits: all static gates passed (items 9, 10, 11, 15, 17, 19).",
     );
     return;
   }
@@ -389,7 +388,7 @@ async function main(): Promise<void> {
     console.error(`    ${f.message}`);
   }
   console.error(
-    `verify-wave9-audits: ${findings.length} finding${findings.length === 1 ? "" : "s"}.`,
+    `verify-parity-audits: ${findings.length} finding${findings.length === 1 ? "" : "s"}.`,
   );
   process.exitCode = 1;
 }

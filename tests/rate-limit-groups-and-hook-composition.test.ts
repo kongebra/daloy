@@ -15,7 +15,7 @@ import {
 import type { Hooks } from "../src/index.js";
 import { generateOpenAPI } from "../src/openapi.js";
 
-// ---------- Wave 5: rateLimit({ groupId }) shared bucket ----------
+// ---------- rateLimit({ groupId }) shared bucket ----------
 
 test("rateLimit({ groupId }) shares a single bucket across calls", async () => {
   _resetSharedRateLimitStoresForTests();
@@ -233,7 +233,7 @@ test("requirePayloadAuth emits an OpenAPI-safe extension", () => {
   assert.equal(scheme["x-daloy-require-payload-auth"], true);
 });
 
-// ---------- Wave 5: combine() primitives ----------
+// ---------- combine() primitives ----------
 
 test("every() composes onRequest / beforeHandle / afterHandle / onSend in order", async () => {
   const order: string[] = [];
@@ -573,7 +573,7 @@ test("except() is a no-op when wrapped hooks have no beforeHandle", () => {
   assert.equal(wrapped, passthrough);
 });
 
-// ---------- Wave 5: ipRestriction() ----------
+// ---------- ipRestriction() ----------
 
 test("ipRestriction() allow-list permits matching IPv4 and rejects others", async () => {
   const app = new App({ env: "development", trustProxy: true });
@@ -779,7 +779,7 @@ test("ipRestriction() honours custom message", async () => {
   assert.equal(body.detail ?? body.title ?? body.message, "denied");
 });
 
-// ---------- Wave 5: internal: true + app.inject() ----------
+// ---------- internal: true + app.inject() ----------
 
 test("internal: true returns 404 via public fetch and works via inject", async () => {
   const app = new App({ env: "development" });
