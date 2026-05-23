@@ -255,7 +255,27 @@ export default function Page() {
       </ul>
 
       <h2>ISO/IEC 27001:2022 (Annex A)</h2>
+      <p>
+        Picking the 2022 revision (rather than 2013/2017) is the safer call for
+        new certifications &mdash; it adds explicit controls for secure coding,
+        threat intelligence, web filtering, and configuration management that
+        DaloyJS already covers out of the box. The mapping below is the short
+        version your auditor can use as evidence for the application-layer
+        controls.
+      </p>
       <ul>
+        <li>
+          <strong>A.5.7 Threat intelligence</strong> &mdash; OpenSSF Scorecard,
+          OSV-Scanner, CodeQL, Dependabot, and the published GHSA advisory flow
+          feed the framework&apos;s own intel loop; downstream apps inherit the
+          same signals through <code>create-daloy --with-ci</code>.
+        </li>
+        <li>
+          <strong>A.5.23 Information security for use of cloud services</strong>{" "}
+          &mdash; runtime-parity audits keep behavior identical across Node,
+          Bun, Deno, Cloudflare Workers, and Vercel Edge so the cloud provider
+          is a deployment choice, not a security trade-off.
+        </li>
         <li>
           <strong>A.5.30 ICT readiness for business continuity</strong> &mdash;
           graceful shutdown, health endpoints, and lifecycle hooks (see{" "}
@@ -283,6 +303,13 @@ export default function Page() {
           correlation, PII redaction.
         </li>
         <li>
+          <strong>A.8.16 Monitoring activities</strong> &mdash; Server-Timing
+          headers, OpenTelemetry spans, and the structured-log pipeline give
+          downstream SIEM/observability tools the signals they need; rate-limit
+          rejections, schema-validation failures, and JWT rejections all surface
+          as discrete log events with a stable request-id.
+        </li>
+        <li>
           <strong>A.8.23 Web filtering</strong> &mdash;{" "}
           <code>fetchGuard()</code> enforces an egress allow-list pattern from
           inside the app.
@@ -305,6 +332,14 @@ export default function Page() {
         <li>
           <strong>A.8.28 Secure coding</strong> &mdash; documented patterns for
           SQL injection, command injection, SSRF, CSRF, prototype pollution.
+        </li>
+        <li>
+          <strong>A.8.32 Change management</strong> &mdash; SHA-pinned GitHub
+          Actions (verified by <code>verify:actions-pinned</code>), a 24h{" "}
+          <code>minimum-release-age</code> cooldown on dependencies,
+          provenance-signed npm publishes, and the verify-* CI gates listed in{" "}
+          <code>AGENTS.md</code> make every framework change an auditable,
+          reviewable event.
         </li>
       </ul>
 
