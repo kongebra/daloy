@@ -61,8 +61,11 @@ The following channels are open to everyone and are genuinely useful:
 
 If you have been added to the `daloyjs` org as a member or as an explicit
 repository collaborator, the workflow will not close your PRs. Follow the
-normal quality gates in [AGENTS.md](./AGENTS.md) and the PR template in
-[.github/PULL_REQUEST_TEMPLATE.md](./.github/PULL_REQUEST_TEMPLATE.md).
+normal quality gates in [AGENTS.md](./AGENTS.md), the PR template in
+[.github/PULL_REQUEST_TEMPLATE.md](./.github/PULL_REQUEST_TEMPLATE.md),
+and the reviewer checklist in [CODE_REVIEW.md](./CODE_REVIEW.md). The
+last document also doubles as the recommended review discipline for
+downstream apps built on `@daloyjs/core`.
 
 ### Release notes
 
