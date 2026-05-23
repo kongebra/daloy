@@ -116,6 +116,9 @@ jobs:
       - name: Verify dev-dependency license posture (Aikido continuous-code-quality license gate)
         run: pnpm verify:dep-licenses
 
+      - name: Verify top-level dependency names against slopsquatting allowlist (Aikido AI package hallucination gate)
+        run: pnpm verify:known-dep-names
+
       - name: Verify GitHub Actions are SHA-pinned (Socket tj-actions/changed-files CVE-2025-30066 gate)
         run: pnpm verify:actions-pinned
 

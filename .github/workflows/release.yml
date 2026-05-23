@@ -128,6 +128,9 @@ jobs:
       - name: Verify routing-hardening audits
         run: pnpm verify:routing-hardening-audits
 
+      - name: Verify top-level dependency names against slopsquatting allowlist (Aikido AI package hallucination gate)
+        run: pnpm verify:known-dep-names
+
       - name: Typecheck
         run: pnpm typecheck
 

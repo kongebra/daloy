@@ -186,6 +186,7 @@
     "verify:no-registry-exfiltration": "node --import tsx scripts/verify-no-registry-exfiltration.ts",
     "verify:no-weak-random": "node --import tsx scripts/verify-no-weak-random.ts",
     "verify:dep-licenses": "node --import tsx scripts/verify-dep-licenses.ts",
+    "verify:known-dep-names": "node --import tsx scripts/verify-known-dep-names.ts",
     "verify:actions-pinned": "node --import tsx scripts/verify-actions-pinned.ts",
     "verify:parity-audits": "node --import tsx scripts/verify-parity-audits.ts",
     "verify:governance-audits": "node --import tsx scripts/verify-governance-audits.ts",

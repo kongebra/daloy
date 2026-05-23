@@ -1,0 +1,227 @@
+/**
+ * Slopsquatting / AI-package-hallucination dependency-name allowlist.
+ *
+ * Closes the residual gap documented in `SECURITY.md` §
+ * "Slopsquatting / AI package hallucination (Aikido 2025 pattern)": the
+ * window in which an AI coding assistant confidently emits
+ * `pnpm add <hallucinated-name>` and an attacker has pre-registered
+ * the hallucinated name on npm.
+ *
+ * The 24h `minimum-release-age=1440` cooldown in `.npmrc` already
+ * defends the *time* axis (Aikido / Lasso research shows
+ * hallucination-squat packages are typically detected and unpublished
+ * inside that window). This gate defends the *name* axis: every
+ * top-level dependency name across the workspace
+ * (`dependencies` / `devDependencies` / `peerDependencies` /
+ * `optionalDependencies`) must appear in {@link ALLOWED_DEP_NAMES}
+ * below. Adding a new dep requires a one-line edit to this file in
+ * the same PR — the resulting diff is the explicit "did you mean
+ * exactly this package name?" review checkpoint that defeats
+ * `pnpm add request-promise-native2` even when the cooldown has
+ * elapsed and even when the AI agent is otherwise trusted.
+ *
+ * The list is exact-match and **deliberately small**. Subdependencies
+ * resolved into `pnpm-lock.yaml` are NOT checked here — that is the
+ * job of `verify:lockfile` (refuses non-registry sources) and
+ * `verify:dep-licenses` (refuses non-permissive transitive licenses).
+ * The Aikido write-up specifically calls out *direct* installs as
+ * the slopsquatting attack vector — an LLM hallucinates a top-level
+ * name, the developer / agent runs `pnpm add` against it, and the
+ * malicious package becomes a direct dep. Pinning the top-level
+ * surface is therefore the proportionate control.
+ *
+ * Exit code:
+ *   0 — every dep name in every scanned `package.json` is on the
+ *       allowlist.
+ *   1 — at least one dep name is not on the allowlist; the offending
+ *       names + the package.json paths that declared them are printed
+ *       to stderr along with a slopsquatting-aware remediation hint.
+ *
+ * @since 0.34.4
+ */
+
+import { readFile } from "node:fs/promises";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+/**
+ * Explicit allowlist of every top-level dependency name declared
+ * anywhere in the Daloy workspace (root, `website`,
+ * `packages/create-daloy`, every scaffolded template).
+ *
+ * **To add a new dep:** add the exact name to this Set in the same PR
+ * that introduces the dep in any `package.json`. The PR diff on this
+ * file is the slopsquatting review checkpoint — reviewers should ask
+ * "is this the package I expected, or is it a hallucination /
+ * typosquat (`request-promise-native2`, `@types/fastify-helmet`,
+ * `huggingface-cli`, etc.)?" before approving.
+ *
+ * **To remove a dep:** drop the matching `package.json` entry first,
+ * then remove the name here.
+ */
+export const ALLOWED_DEP_NAMES: ReadonlySet<string> = new Set([
+  // ----- @daloyjs/core (root package.json) -----
+  // Validator peer (only runtime peer).
+  "zod",
+  // Build / test / generator / lint tooling (devDependencies).
+  "@hey-api/openapi-ts",
+  "@types/bun",
+  "@types/node",
+  "prettier",
+  "tsx",
+  "typescript",
+  // ----- packages/create-daloy -----
+  // (no runtime deps; CLI is zero-dep)
+  // ----- website (Next.js docs/marketing site) -----
+  "@base-ui/react",
+  "@next/third-parties",
+  "@phosphor-icons/react",
+  "@tailwindcss/postcss",
+  "@types/react",
+  "@types/react-dom",
+  "@vercel/analytics",
+  "@vercel/speed-insights",
+  "class-variance-authority",
+  "clsx",
+  "cmdk",
+  "eslint",
+  "@eslint/eslintrc",
+  "eslint-config-next",
+  "next",
+  "next-themes",
+  "postcss",
+  "prettier-plugin-tailwindcss",
+  "react",
+  "react-dom",
+  "shadcn",
+  "sharp",
+  "shiki",
+  "tailwind-merge",
+  "tailwindcss",
+  "tw-animate-css",
+  // ----- scaffolded templates (packages/create-daloy/templates/*) -----
+  "@daloyjs/core",
+  "@cloudflare/workers-types",
+  "vercel",
+  "wrangler",
+]);
+
+/**
+ * Package.json files scanned by the gate. Paths are relative to the
+ * repo root.
+ *
+ * `website/.next/**` and `temp_tarball/**` are intentionally excluded:
+ * they are build artifacts / extracted publish tarballs, not source.
+ */
+export const SCANNED_PACKAGE_JSONS: readonly string[] = [
+  "package.json",
+  "website/package.json",
+  "packages/create-daloy/package.json",
+  "packages/create-daloy/templates/bun-basic/package.json",
+  "packages/create-daloy/templates/cloudflare-worker/package.json",
+  "packages/create-daloy/templates/node-basic/package.json",
+  "packages/create-daloy/templates/vercel-edge/package.json",
+];
+
+interface PackageJsonLike {
+  readonly name?: unknown;
+  readonly dependencies?: Record<string, unknown>;
+  readonly devDependencies?: Record<string, unknown>;
+  readonly peerDependencies?: Record<string, unknown>;
+  readonly optionalDependencies?: Record<string, unknown>;
+}
+
+export interface UnknownDependency {
+  readonly source: string;
+  readonly block:
+    | "dependencies"
+    | "devDependencies"
+    | "peerDependencies"
+    | "optionalDependencies";
+  readonly name: string;
+}
+
+const DEP_BLOCKS = [
+  "dependencies",
+  "devDependencies",
+  "peerDependencies",
+  "optionalDependencies",
+] as const;
+
+/**
+ * Find every declared top-level dependency name in `pkg` that is not
+ * present in `allowlist`. Pure / no I/O — safe to call from tests.
+ */
+export function findUnknownDependencyNames(
+  source: string,
+  pkg: PackageJsonLike,
+  allowlist: ReadonlySet<string> = ALLOWED_DEP_NAMES,
+): readonly UnknownDependency[] {
+  const out: UnknownDependency[] = [];
+  for (const block of DEP_BLOCKS) {
+    const map = pkg[block];
+    if (!map || typeof map !== "object") continue;
+    for (const name of Object.keys(map)) {
+      if (!allowlist.has(name)) {
+        out.push({ source, block, name });
+      }
+    }
+  }
+  return out;
+}
+
+async function main(): Promise<void> {
+  const repoRoot = new URL("../", import.meta.url);
+  const offending: UnknownDependency[] = [];
+  for (const rel of SCANNED_PACKAGE_JSONS) {
+    const url = new URL(rel, repoRoot);
+    let text: string;
+    try {
+      text = await readFile(url, "utf8");
+    } catch (err) {
+      console.error(
+        `verify-known-dep-names: could not read ${rel} (${(err as Error).message})`,
+      );
+      process.exitCode = 1;
+      return;
+    }
+    let pkg: PackageJsonLike;
+    try {
+      pkg = JSON.parse(text) as PackageJsonLike;
+    } catch (err) {
+      console.error(
+        `verify-known-dep-names: ${rel} is not valid JSON (${(err as Error).message})`,
+      );
+      process.exitCode = 1;
+      return;
+    }
+    offending.push(...findUnknownDependencyNames(rel, pkg));
+  }
+  if (offending.length === 0) return;
+  console.error(
+    `verify-known-dep-names: ${offending.length} dependency name${
+      offending.length === 1 ? "" : "s"
+    } not on the slopsquatting allowlist:`,
+  );
+  for (const v of offending) {
+    console.error(`  - ${v.source} → ${v.block}["${v.name}"]`);
+  }
+  console.error(
+    "If this is a legitimate new dependency, double-check the package name " +
+      "against the upstream README / GitHub (slopsquat names like " +
+      "`request-promise-native2`, `@types/fastify-helmet`, or " +
+      "`huggingface-cli` often *sound* plausible) and then add the exact " +
+      "name to ALLOWED_DEP_NAMES in scripts/verify-known-dep-names.ts in " +
+      "the same PR. See SECURITY.md § Slopsquatting / AI package " +
+      "hallucination for the threat model.",
+  );
+  process.exitCode = 1;
+}
+
+const invokedDirectly =
+  process.argv[1] !== undefined &&
+  fileURLToPath(pathToFileURL(process.argv[1]).href) ===
+    fileURLToPath(import.meta.url);
+
+if (invokedDirectly) {
+  await main();
+}
