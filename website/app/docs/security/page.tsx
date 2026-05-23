@@ -326,6 +326,17 @@ app.use(basicAuth({
 }));`}
       />
 
+      <h2>SQL injection</h2>
+      <p>
+        Daloy doesn&apos;t ship a database driver, but the HTTP boundary it{" "}
+        <em>does</em> own (strict Zod schemas, hardened JSON parser, body-size
+        caps) shrinks the surface that reaches your repository layer. See{" "}
+        <a href="/docs/security/sql-injection">SQL injection</a> for the safe
+        vs. unsafe patterns per ORM (Prisma, Drizzle, Kysely, raw drivers), an
+        allowlisting recipe for dynamic <code>ORDER BY</code>, and the grep
+        rules the maintainers use to catch regressions.
+      </p>
+
       <h2>Admin panels</h2>
       <p>
         Building an admin or customer-success surface on top of DaloyJS? See{" "}
