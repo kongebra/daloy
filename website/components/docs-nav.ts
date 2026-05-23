@@ -127,6 +127,7 @@ export const docsNav: DocsNavSection[] = [
       { title: "secureDefaults enforcement", href: "/docs/security/secure-defaults-enforcement" as Route },
       { title: "CSRF protection", href: "/docs/security/csrf" },
       { title: "SQL injection", href: "/docs/security/sql-injection" as Route },
+      { title: "Command injection", href: "/docs/security/command-injection" as Route },
       { title: "SSRF guard (fetchGuard)", href: "/docs/security/fetch-guard" as Route },
       { title: "Secure admin panels", href: "/docs/security/admin-panels" as Route },
       { title: "Sessions", href: "/docs/security/session" },

@@ -337,6 +337,17 @@ app.use(basicAuth({
         rules the maintainers use to catch regressions.
       </p>
 
+      <h2>Command injection</h2>
+      <p>
+        DaloyJS&apos;s runtime is <code>child_process</code>-free by CI gate, so
+        the framework itself cannot shell out. See{" "}
+        <a href="/docs/security/command-injection">Command injection</a> for the
+        safe shape of a handler that does need to invoke an external program (
+        <code>execFile</code> + argv array, never{" "}
+        <code>exec(`cmd ${"${input}"}`)</code>), the Windows <em>BatBadBut</em>{" "}
+        footgun, and the grep rules to keep new bugs out at PR time.
+      </p>
+
       <h2>Admin panels</h2>
       <p>
         Building an admin or customer-success surface on top of DaloyJS? See{" "}
