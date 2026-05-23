@@ -36,7 +36,7 @@ const socialLinks = [
     icon: ButterflyIcon,
   },
   {
-    href: "https://github.com/daloyjs",
+    href: "https://github.com/daloyjs/daloy",
     label: "GitHub",
     icon: GithubLogoIcon,
   },
