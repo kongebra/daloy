@@ -1,0 +1,99 @@
+# End-of-life (EOL) runtime detection — the final pillar from Aikido's
+# "DIY guide: build vs buy your OSS code scanning and app security toolkit"
+# (https://www.aikido.dev/blog/diy-guide-build-vs-buy-your-oss-code-scanning-and-app-security-toolkit).
+#
+# Why this exists:
+#   `@daloyjs/core` pins `engines.node` and every CI/release job pins
+#   `node-version:` to a specific Node major. A Node major that has reached
+#   end-of-life still installs and runs, but stops receiving security
+#   patches — V8, OpenSSL, libuv, llhttp CVEs go unpatched. Users of
+#   `@daloyjs/core` can silently inherit those unpatched CVEs simply by
+#   pinning the same Node major Daloy supports.
+#
+#   The other nine pillars from the Aikido article are already covered:
+#     - SCA              — `osv-scan.yml`, `vuln-scan.yml`, `pnpm audit --prod`
+#     - Secrets          — `secret-scan.yml` (gitleaks)
+#     - SAST             — `codeql.yml` + `opengrep.yml`
+#     - DAST             — `dast.yml` (ZAP baseline)
+#     - License scanning — `verify-dep-licenses.ts` (in `ci.yml`)
+#     - Malware / supply — the verify-no-* gates + Scorecard + zizmor
+#     - CSPM / IaC / Container — N/A (Daloy ships no cloud infra, no IaC,
+#                                      no container image)
+#
+#   This workflow runs `pnpm verify:runtime-eol` on a daily schedule
+#   against `https://endoflife.date/api/nodejs.json` (the Aikido-recommended
+#   public feed; also used by Renovate, Snyk, and Scorecard). The job fails
+#   if any Node major Daloy endorses is already EOL, and surfaces a warning
+#   when an endorsed major is within 90 days of EOL.
+#
+# Hardening:
+#   * `permissions: {}` at the top level; the single job opts in to
+#     `contents: read` only.
+#   * Third-party actions are SHA-pinned to match the rest of the repo.
+#   * `step-security/harden-runner` is in audit mode (read-only scan, no
+#     secrets handled).
+#   * `actions/checkout` runs with `persist-credentials: false`.
+#   * `pnpm install --frozen-lockfile --ignore-scripts` plus
+#     `npm_config_ignore_scripts=true` so a malicious dev dep cannot run a
+#     postinstall during the scan itself.
+#   * No GitHub Actions cache (matches `ci.yml` rationale).
+
+name: EOL runtime scan
+
+on:
+  schedule:
+    # 08:21 UTC daily — offset from CodeQL (Mon 04:37), Scorecard (Tue 05:23),
+    # Vuln scan (daily 06:13), Zizmor (daily 07:00), and DAST (Wed 07:42).
+    - cron: "21 8 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: eol-scan-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  eol:
+    name: Daily EOL runtime scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2
+        with:
+          egress-policy: audit
+          disable-sudo: true
+          disable-file-monitoring: false
+
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+          show-progress: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@ac6db6d3c1f721f886538a378a2d73e85697340a # v6
+        with:
+          version: 11.1.3
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: 24
+
+      - name: Install dependencies (no scripts)
+        run: pnpm install --frozen-lockfile --ignore-scripts
+        env:
+          npm_config_ignore_scripts: "true"
+
+      - name: Verify endorsed Node majors are not EOL
+        # Reads `engines.node` from every workspace `package.json` and
+        # every `node-version:` pin in `.github/workflows/*.yml`, then
+        # cross-references endoflife.date/api/nodejs.json. Hard-fails on
+        # an already-EOL major; warns on majors within 90 days of EOL.
+        run: pnpm verify:runtime-eol
