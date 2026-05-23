@@ -101,6 +101,10 @@ export {
   assertStrongSecret,
   MIN_PROD_SECRET_BYTES,
   WEAK_SECRET_STRINGS,
+  sanitizeFilename,
+  assertSafeRelativePath,
+  hasMongoOperatorKeys,
+  assertNoMongoOperators,
 } from "./security.js";
 export type { WebhookHmacAlgorithm } from "./security.js";
 

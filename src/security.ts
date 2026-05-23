@@ -576,3 +576,189 @@ export async function signWebhookPayload(opts: {
   const computed = new Uint8Array(await c.subtle.sign("HMAC", key, payloadBytes as BufferSource));
   return bytesToHex(computed);
 }
+
+// ---------------------------------------------------------------------------
+// File-path traversal helpers (Zip Slip / OWASP A01 / Aikido "Directory
+// Traversal & File Exposure" class). Daloy's router already rejects `..`
+// and `//` in request URLs, but applications that persist user-uploaded
+// filenames or accept untrusted relative paths still need a sanitizer to
+// stop attackers from breaking out of an upload directory or overwriting
+// arbitrary files (`../../etc/passwd`, `..\\..\\windows\\system32`, NUL
+// truncation `evil.png\0../../etc/passwd`).
+// ---------------------------------------------------------------------------
+
+const CONTROL_CHAR_RE = /[\x00-\x1f\x7f]/g;
+const WINDOWS_RESERVED_CHARS_RE = /[<>:"|?*]/g;
+const WINDOWS_RESERVED_NAMES = new Set([
+  "con", "prn", "aux", "nul",
+  "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8", "com9",
+  "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
+]);
+
+/**
+ * Return a single-segment, storage-safe basename derived from a
+ * (potentially attacker-controlled) filename — for example, the `name`
+ * field on a multipart `UploadedFile` before passing it to `fs.writeFile`
+ * or any other filesystem sink.
+ *
+ * The transformation:
+ *
+ *   1. Takes the basename only — anything before the last `/` or `\` is
+ *      discarded (`../../etc/passwd` → `passwd`, `C:\\foo\\bar.txt` →
+ *      `bar.txt`).
+ *   2. Strips NUL bytes and other control characters (NUL truncation is
+ *      the classic `evil.png\0.exe` bypass).
+ *   3. Strips Windows-reserved characters (`<>:"|?*`) and replaces them
+ *      with `_`.
+ *   4. Strips leading dots so the result cannot be `.`, `..`, or a hidden
+ *      dotfile (`.htaccess` → `htaccess`).
+ *   5. Trims trailing dots and spaces (Windows silently strips these on
+ *      `CreateFile`, so `file.txt ` and `file.txt` collide).
+ *   6. Refuses Windows-reserved names (`CON`, `PRN`, `AUX`, `NUL`,
+ *      `COM1`–`COM9`, `LPT1`–`LPT9`) — case-insensitive, with or without
+ *      extension.
+ *   7. Throws {@link BadRequestError} if the result is empty.
+ *
+ * Returns a basename only — never includes a directory. Callers are
+ * expected to combine it with a trusted base directory via
+ * `path.join(baseDir, sanitized)`. Combined with a final
+ * `path.resolve(baseDir, sanitized).startsWith(path.resolve(baseDir))`
+ * check this fully closes the Zip-Slip and arbitrary-write class of bug.
+ *
+ * @param name - The candidate filename (typically from
+ *   `UploadedFile.name`, a `Content-Disposition` header, or any other
+ *   untrusted source).
+ * @returns A sanitized basename safe to combine with a trusted directory.
+ * @throws {BadRequestError} When the input reduces to an empty string or
+ *   matches a Windows-reserved device name.
+ * @since 0.35.0
+ */
+export function sanitizeFilename(name: string): string {
+  if (typeof name !== "string") {
+    throw new BadRequestError("Invalid filename");
+  }
+  // Step 1: basename — strip everything up to (and including) the last
+  // POSIX or Windows separator.
+  let base = name;
+  const lastSep = Math.max(base.lastIndexOf("/"), base.lastIndexOf("\\"));
+  if (lastSep !== -1) base = base.slice(lastSep + 1);
+  // Step 2/3: strip control + Windows-reserved characters.
+  base = base.replace(CONTROL_CHAR_RE, "").replace(WINDOWS_RESERVED_CHARS_RE, "_");
+  // Step 4: strip leading dots so `.htaccess` / `..` / `.` cannot escape.
+  base = base.replace(/^\.+/, "");
+  // Step 5: trim trailing dots and spaces (Windows silently drops them).
+  base = base.replace(/[\s.]+$/, "");
+  if (base.length === 0) {
+    throw new BadRequestError("Invalid filename");
+  }
+  // Step 6: refuse Windows-reserved device names, with or without ext.
+  const stem = base.split(".")[0]!.toLowerCase();
+  if (WINDOWS_RESERVED_NAMES.has(stem)) {
+    throw new BadRequestError(`Reserved filename: ${name}`);
+  }
+  return base;
+}
+
+/**
+ * Validate that a candidate relative path is safe to combine with a
+ * trusted base directory — i.e. it cannot escape via `..` segments,
+ * absolute roots, drive letters, NUL truncation, or mixed
+ * POSIX/Windows separators.
+ *
+ * Throws {@link BadRequestError} on any of:
+ *
+ *   - Empty input
+ *   - NUL bytes (`evil\0../../etc/passwd` truncation)
+ *   - Backslash characters (treated as Windows separators; rejecting
+ *     them prevents POSIX callers being bypassed by `..\\..\\etc`)
+ *   - POSIX absolute paths (`/etc/passwd`)
+ *   - Windows drive letters or UNC roots (`C:\\foo`, `\\\\server\\share`)
+ *   - Any segment equal to `..` after `/`-splitting
+ *
+ * Returns the normalized POSIX-style relative path on success. Designed
+ * for the Aikido / OWASP "Directory Traversal & File Exposure" class
+ * (`CVE-2023-26111` `node-static`, Zip Slip, `req.query.file` →
+ * `sendFile`).
+ *
+ * @param input - The candidate relative path.
+ * @returns The input unchanged when safe.
+ * @throws {BadRequestError} When the path could escape its base directory.
+ * @since 0.35.0
+ */
+export function assertSafeRelativePath(input: string): string {
+  if (typeof input !== "string" || input.length === 0) {
+    throw new BadRequestError("Invalid path");
+  }
+  if (input.indexOf("\0") !== -1) {
+    throw new BadRequestError("Invalid path");
+  }
+  if (input.indexOf("\\") !== -1) {
+    throw new BadRequestError("Invalid path");
+  }
+  if (input.startsWith("/")) {
+    throw new BadRequestError("Invalid path");
+  }
+  // Windows drive letter `C:` or `c:` at the head.
+  if (input.length >= 2 && input.charAt(1) === ":") {
+    throw new BadRequestError("Invalid path");
+  }
+  for (const seg of input.split("/")) {
+    if (seg === "..") {
+      throw new BadRequestError("Invalid path");
+    }
+  }
+  return input;
+}
+
+// ---------------------------------------------------------------------------
+// NoSQL operator-injection helpers (Aikido "NoSQL Injection" / OWASP A03).
+// MongoDB-class drivers accept query objects whose keys ($ne, $gt, $regex,
+// $where, …) change the query semantics. Apps that take a JSON request body
+// and pass it straight to `Users.findOne({ username, password })` are the
+// classic auth-bypass case (`password: { $ne: null }`). Daloy's
+// `safeJsonParse` already strips prototype-pollution keys; these helpers
+// add the operator-key check.
+// ---------------------------------------------------------------------------
+
+function walkForMongoOperators(value: unknown): boolean {
+  if (value === null || typeof value !== "object") return false;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      if (walkForMongoOperators(item)) return true;
+    }
+    return false;
+  }
+  for (const key of Object.keys(value as Record<string, unknown>)) {
+    if (key.length > 0 && key.charCodeAt(0) === 36 /* $ */) return true;
+    if (walkForMongoOperators((value as Record<string, unknown>)[key])) return true;
+  }
+  return false;
+}
+
+/**
+ * Recursively scan a parsed JSON value (object / array / scalar) for any
+ * property key that starts with `$` — the MongoDB / NoSQL operator
+ * namespace (`$ne`, `$gt`, `$regex`, `$where`, …).
+ *
+ * Returns `true` on the first hit. Use before passing untrusted data
+ * into a query object that may be interpreted as an operator expression.
+ *
+ * @since 0.35.0
+ */
+export function hasMongoOperatorKeys(value: unknown): boolean {
+  return walkForMongoOperators(value);
+}
+
+/**
+ * Throw {@link BadRequestError} when {@link hasMongoOperatorKeys}
+ * returns `true`. Safe to call on the parsed request body before
+ * threading it into a NoSQL driver — closes the
+ * `{"password": {"$ne": null}}` authentication-bypass class of bug.
+ *
+ * @since 0.35.0
+ */
+export function assertNoMongoOperators(value: unknown): void {
+  if (walkForMongoOperators(value)) {
+    throw new BadRequestError("Operator-prefixed key rejected");
+  }
+}
