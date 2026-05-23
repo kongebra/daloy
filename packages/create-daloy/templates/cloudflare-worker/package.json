@@ -10,12 +10,12 @@
     "test": "node --import tsx/esm --test tests/**/*.test.ts"
   },
   "dependencies": {
-    "@daloyjs/core": "^0.34.1",
+    "@daloyjs/core": "^0.34.2",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240909.0",
-    "tsx": "^4.22.0",
+    "tsx": "^4.22.3",
     "typescript": "^6.0.3",
     "wrangler": "^4.0.0"
   }
