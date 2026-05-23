@@ -1,0 +1,204 @@
+# Opengrep — second SAST engine, complementing CodeQL.
+#
+# Why this exists:
+#   Aikido's 2025-01-30 launch post
+#   (https://www.aikido.dev/blog/launching-opengrep-why-we-forked-semgrep)
+#   announced Opengrep, a community fork of Semgrep released under
+#   LGPL-2.1 after Semgrep moved critical static-analysis features
+#   behind a commercial licence. A 10+ vendor consortium (Aikido,
+#   Arnica, Amplify, Endor Labs, Jit, Kodem, Legit, Mobb, Orca,
+#   Phoenix) now backs an open, advanced SAST engine that ships
+#   Semgrep-compatible rules and SARIF output.
+#
+#   Daloy already ships CodeQL (`codeql.yml`) for JavaScript/TypeScript
+#   and GitHub Actions. Opengrep is added as a SECOND SAST lane —
+#   different rule corpus (Semgrep-registry community + security
+#   audit packs), different engine (pattern-based AST matching with
+#   intrafile taint), different release cadence. The two engines find
+#   different bug classes; running both is defense-in-depth, the same
+#   reason Daloy already pairs SAST (CodeQL + ~20 `verify:*` gates)
+#   with DAST (`dast.yml`, ZAP baseline + OpenAPI-guided).
+#
+# Hardening (matches the rest of the repo):
+#   * Top-level `permissions: {}`; the single job opts in to the two
+#     scopes it actually needs (`security-events: write` for the
+#     SARIF upload, `contents: read` for checkout).
+#   * Third-party actions are SHA-pinned. Opengrep itself is NOT
+#     installed via a third-party action — instead we download the
+#     specific GitHub-release binary (version pinned in
+#     `OPENGREP_VERSION` below) and verify its sigstore cosign
+#     signature against the Opengrep release identity. This is the
+#     same verification Opengrep's own `install.sh --verify-signatures`
+#     performs, but inlined so we do not have to add a new pinned
+#     action to the supply chain just for this scan.
+#   * `step-security/harden-runner` is in audit mode — the job needs
+#     egress to `github.com` (release artifact), `objects.githubusercontent.com`
+#     (release CDN), `semgrep.dev` (Semgrep-registry rule packs),
+#     `rekor.sigstore.dev` and `fulcio.sigstore.dev` (cosign keyless
+#     verification). Audit mode logs everything for post-hoc review.
+#   * `actions/checkout` runs with `persist-credentials: false`.
+#   * `set -euo pipefail` on every shell step; binaries are pinned
+#     by version + cosign signature; rule packs are pinned to a
+#     specific registry shortcut (`p/security-audit`, `p/javascript`,
+#     `p/typescript`, `p/owasp-top-ten`, `p/cwe-top-25`, `p/secrets`)
+#     so a registry-side rule update is the only mutable input.
+#
+# Path filter: skip per-PR/push runs when a change only touches the
+# marketing/docs site. The weekly schedule still covers the whole repo
+# to catch newly-published Semgrep / Opengrep rules.
+
+name: Opengrep
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "website/**"
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - "website/**"
+  schedule:
+    # 05:51 UTC weekly (Thu) — offset from CodeQL (Mon 04:37),
+    # Scorecard (Tue 05:23), Zizmor (daily 07:00), Vuln scan
+    # (daily 06:13), and DAST (Wed 07:42).
+    - cron: "51 5 * * 4"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: opengrep-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    name: Opengrep SAST
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      security-events: write
+      contents: read
+
+    env:
+      # Pin the Opengrep release we install. Bump this in lockstep with
+      # a fresh review of OPENGREP.md upstream so a malicious tag swap
+      # cannot silently change what we run. The signature verification
+      # step below provides a second line of defense: even if this URL
+      # is poisoned, the sigstore identity check will reject anything
+      # not signed by the official Opengrep release workflow.
+      OPENGREP_VERSION: "v1.22.0"
+      OPENGREP_ASSET: "opengrep_manylinux_x86"
+
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2
+        with:
+          egress-policy: audit
+          disable-sudo: true
+
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+          show-progress: false
+
+      - name: Download Opengrep release binary + signature
+        # We download the binary and its sigstore cert/sig directly from
+        # the pinned GitHub release. No `curl ... | sh` — this is the
+        # exact anti-pattern Daloy's `verify-no-remote-exec.ts` gate
+        # exists to prevent in runtime code, and we will not model it
+        # in CI either.
+        run: |
+          set -euo pipefail
+          mkdir -p .opengrep
+          base="https://github.com/opengrep/opengrep/releases/download/${OPENGREP_VERSION}/${OPENGREP_ASSET}"
+          echo "Fetching ${base}"
+          curl --proto '=https' --tlsv1.2 -fsSL --retry 3 --retry-delay 2 \
+            -o .opengrep/opengrep      "${base}"
+          curl --proto '=https' --tlsv1.2 -fsSL --retry 3 --retry-delay 2 \
+            -o .opengrep/opengrep.cert "${base}.cert"
+          curl --proto '=https' --tlsv1.2 -fsSL --retry 3 --retry-delay 2 \
+            -o .opengrep/opengrep.sig  "${base}.sig"
+          chmod +x .opengrep/opengrep
+
+      - name: Verify Opengrep signature (cosign / sigstore)
+        # `cosign` is preinstalled on GitHub-hosted `ubuntu-latest`
+        # runners. We require an identity issued by GitHub OIDC to the
+        # opengrep/opengrep release workflow; anything else is a hard
+        # fail (no `|| true`, no fallback). This is the same identity
+        # check Opengrep's own `install.sh --verify-signatures` runs.
+        run: |
+          set -euo pipefail
+          if ! command -v cosign >/dev/null 2>&1; then
+            echo "::error::cosign is required but not available on the runner."
+            exit 1
+          fi
+          cosign version
+          cosign verify-blob \
+            --cert ".opengrep/opengrep.cert" \
+            --signature ".opengrep/opengrep.sig" \
+            --certificate-identity-regexp "https://github.com/opengrep/opengrep.+" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            ".opengrep/opengrep"
+          echo "Opengrep ${OPENGREP_VERSION} signature verified."
+
+      - name: Print Opengrep version
+        run: |
+          set -euo pipefail
+          .opengrep/opengrep --version
+
+      - name: Run Opengrep scan (SARIF)
+        # Curated security-focused rule packs from the Semgrep registry,
+        # which Opengrep consumes unchanged (Semgrep rule compatibility
+        # is the headline guarantee of the fork). We deliberately pick
+        # packs that overlap the framework's threat model:
+        #   * p/security-audit  — generic SAST audit pack
+        #   * p/owasp-top-ten   — OWASP Top 10 application classes
+        #   * p/cwe-top-25      — CWE Top 25 dangerous weaknesses
+        #   * p/javascript / p/typescript — language-specific rules
+        #   * p/nodejs          — Node.js runtime-specific patterns
+        #   * p/secrets         — hardcoded credentials / API keys
+        #
+        # Scope: `src/`, `scripts/`, `examples/`, `bin/`, `tests/`,
+        # and `packages/`. The `website/` tree is its own Next.js app
+        # and is excluded via `--exclude` to match the per-PR path
+        # filter at the top of this file.
+        #
+        # `--error` is intentionally OFF: we upload SARIF to GitHub
+        # code scanning and let branch protection rules decide whether
+        # a new finding gates merges. That keeps this workflow's exit
+        # status reserved for *infrastructure* failures (download,
+        # signature, binary crash), not findings.
+        run: |
+          set -euo pipefail
+          .opengrep/opengrep scan \
+            --config p/security-audit \
+            --config p/owasp-top-ten \
+            --config p/cwe-top-25 \
+            --config p/javascript \
+            --config p/typescript \
+            --config p/nodejs \
+            --config p/secrets \
+            --sarif-output opengrep.sarif \
+            --metrics off \
+            --timeout 120 \
+            --max-target-bytes 1500000 \
+            --exclude website \
+            --exclude generated \
+            --exclude coverage \
+            --exclude dist-coverage \
+            --exclude temp_tarball \
+            --exclude .opengrep \
+            src scripts examples bin tests packages
+
+      - name: Upload SARIF to GitHub code scanning
+        # Same uploader CodeQL and Scorecard already use; SHA pinned to
+        # match `.github/workflows/scorecard.yml`. Categorized as
+        # `opengrep` so findings show up as a separate tool from CodeQL
+        # in the security tab.
+        if: always()
+        uses: github/codeql-action/upload-sarif@e46ed2cbd01164d986452f91f178727624ae40d7 # v4.35.3
+        with:
+          sarif_file: opengrep.sarif
+          category: opengrep

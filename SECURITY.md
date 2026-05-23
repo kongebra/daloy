@@ -323,6 +323,20 @@ chalk/debug/node-ipc phishing campaigns.
   (`.github/workflows/zizmor.yml`).
 - **CodeQL** runs JavaScript/TypeScript and `actions` queries
   (`.github/workflows/codeql.yml`).
+- **Opengrep** runs a second SAST engine (Aikido's LGPL-2.1 fork of
+  Semgrep) against `src/`, `scripts/`, `examples/`, `bin/`, `tests/`,
+  and `packages/` with the `p/security-audit`, `p/owasp-top-ten`,
+  `p/cwe-top-25`, `p/javascript`, `p/typescript`, `p/nodejs`, and
+  `p/secrets` rule packs (`.github/workflows/opengrep.yml`). The
+  Opengrep binary is downloaded from a pinned GitHub release and its
+  sigstore cosign signature is verified against the official
+  `opengrep/opengrep` release identity before execution, so the trust
+  surface is the cosign keyless identity rather than a third-party
+  Action. Running two SAST engines (CodeQL + Opengrep) catches
+  different bug classes — the same defense-in-depth rationale that
+  pairs SAST with DAST (`.github/workflows/dast.yml`). See Aikido's
+  ["Launching Opengrep: Why We Forked Semgrep"](https://www.aikido.dev/blog/launching-opengrep-why-we-forked-semgrep)
+  for the engine's provenance.
 - **OpenSSF Scorecard** publishes a continuous scorecard
   (`.github/workflows/scorecard.yml`).
 - **Daily SCA** runs `pnpm audit --prod` against the committed lockfile on a
