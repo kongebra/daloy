@@ -13,6 +13,16 @@ export const metadata = buildMetadata({
 
 const POSTS = [
   {
+    slug: "owasp-top-10-agentic-applications-mapped-to-daloyjs",
+    title:
+      "OWASP Top 10 for Agentic Applications (2026), Mapped to the DaloyJS Tool Surface",
+    description:
+      "Aikido's write-up of the OWASP Top 10 for Agentic Applications 2026 \u2014 ASI01 Agent Behavior Hijacking through ASI10 Over-reliance \u2014 is the new threat model for AI agents and the MCP-style HTTP tools they call. Here's the honest per-risk mapping of what a DaloyJS-exposed tool already blocks by default, what one opt-in line adds, and which risks live above the HTTP layer where no framework can save you.",
+    date: "2026-05-23",
+    readingTime: "12 min read",
+    author: "Devlin Duldulao",
+  },
+  {
     slug: "vibe-coding-security-what-daloyjs-already-blocks",
     title:
       "Vibe Coding Security: What DaloyJS Already Blocks Before Your AI Even Ships",
