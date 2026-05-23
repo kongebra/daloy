@@ -553,6 +553,12 @@ test("--with-ci scaffolds hardened GitHub security files for pnpm projects", asy
     // 2026 "Harden your containers without the headaches".
     assert.match(containerScan, /Pin check \(FROM @sha256 digest\)/);
     assert.match(containerScan, /is not pinned to a @sha256/);
+    // IaC misconfig coverage per Aikido's "IaC security scanning for
+    // Terraform & Kubernetes misconfigurations" article — Trivy's
+    // `misconfig` scanner runs on every PR alongside vuln + secret.
+    assert.match(containerScan, /scanners: vuln,secret,misconfig/);
+    assert.match(containerScan, /\*\*\/\*\.tf/);
+    assert.match(containerScan, /k8s\/\*\*/);
     assert.doesNotMatch(containerScan, /__[A-Z_]+__/);
 
     const dependabotConfig = await readFile(
@@ -1107,6 +1113,11 @@ test("--with-ci scaffolds runtime-native security files for deno-basic", async (
       /DENO_IMAGE=denoland\/deno:alpine@sha256:<digest>/,
     );
     assert.match(containerScan, /aquasecurity\/trivy-action@[0-9a-f]{40}\s+# v0/);
+    // IaC misconfig coverage per Aikido's "IaC security scanning for
+    // Terraform & Kubernetes misconfigurations" article.
+    assert.match(containerScan, /scanners: vuln,secret,misconfig/);
+    assert.match(containerScan, /\*\*\/\*\.tf/);
+    assert.match(containerScan, /k8s\/\*\*/);
 
     const deploy = await readFile(
       path.join(projectDir, ".github/workflows/deploy.yml"),
