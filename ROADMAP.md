@@ -200,6 +200,7 @@ delay `1.0.0` than freeze the wrong API.
 Items we want but don't yet have a concrete design for. Anything here is fair
 game to prototype, but nothing here blocks `1.0.0`.
 
+- [ ] **Portable `pnpm verify:supply-chain` umbrella** — a single script that any CI host (GitLab CI, Bitbucket Pipelines, Azure Pipelines, Jenkins, Drone, on-prem) can call to run the portable supply-chain checks that are not GitHub-Actions-specific: `pnpm verify:lockfile`, `pnpm audit --prod`, `pnpm verify:sbom` (when a generated SBOM is present), and the zero-runtime-dep gate. Goal is a one-line CI integration that gives non-GitHub users the same install-time hardening the `--with-ci` bundle ships, without requiring us to author a workflow file per CI provider. Marketing claim split today (portable hardening vs. GitHub-only bundle) is enforced by README + website language; this script would make the portable half *runnable*, not just documented.
 - [ ] HTTP/2 + HTTP/3 adapters (Node h2; explore Workers AutoHTTP/3).
 - [ ] Pluggable serialization (CBOR, MessagePack) gated by `Accept`.
 - [ ] First-class background-job interface (queue-agnostic).

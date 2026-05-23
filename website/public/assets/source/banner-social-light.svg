@@ -36,7 +36,7 @@
     The runtime-portable framework for a Zero-Trust supply chain
   </text>
   <text x="465" y="782" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif" font-size="34" font-weight="400" fill="#64748b" letter-spacing="-0.25">
-    Blocked install scripts &#183; SHA-pinned actions &#183; OIDC provenance &#183; Typed end-to-end
+    Secure-by-default runtime &#183; Blocked install scripts &#183; Source-verified lockfiles &#183; Typed end-to-end
   </text>
 
   <!-- URL pill bottom-right -->

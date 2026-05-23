@@ -6,7 +6,7 @@ import { buildMetadata } from "@/lib/seo";
 export const metadata = buildMetadata({
   title: "Blog",
   description:
-    "Notes, stories, and field reports from the people building DaloyJS — the runtime-portable framework for a Zero-Trust supply chain.",
+    "Notes, stories, and field reports from the people building DaloyJS — the runtime-portable TypeScript framework with secure-by-default supply-chain hardening.",
   path: "/blog",
   keywords: ["DaloyJS blog", "TypeScript framework blog", "Daloy updates"],
 });

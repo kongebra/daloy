@@ -11,10 +11,10 @@ export const SITE_URL = (
 export const SITE_NAME = "DaloyJS"
 
 export const CORE_PACKAGE_VERSION =
-  process.env.NEXT_PUBLIC_CORE_PACKAGE_VERSION ?? "0.34.2"
+  process.env.NEXT_PUBLIC_CORE_PACKAGE_VERSION ?? "0.34.3"
 
 export const SITE_TAGLINE =
-  "The runtime-portable framework for a Zero-Trust supply chain. Blocked install scripts. SHA-pinned actions. OIDC provenance. Typed end-to-end."
+  "The runtime-portable TypeScript framework with secure-by-default runtime guardrails, hardened pnpm installs, source-verified lockfiles, and typed end-to-end APIs. Optional hardened GitHub Actions bundle for teams on GitHub."
 
 export const DEFAULT_KEYWORDS = [
   "DaloyJS",

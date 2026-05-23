@@ -15,9 +15,9 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Analytics } from "@vercel/analytics/next";
 
 const DEFAULT_TITLE =
-  "DaloyJS — the runtime-portable framework for a Zero-Trust supply chain";
+  "DaloyJS — the runtime-portable TypeScript framework with secure-by-default supply-chain hardening";
 const DEFAULT_DESCRIPTION =
-  "DaloyJS is a contract-first TypeScript web framework with blocked install scripts, SHA-pinned CI actions, and OIDC provenance — runtime-portable across Node.js, Bun, Deno, Cloudflare Workers, and Vercel Edge. Typed end-to-end with Standard Schema validation, OpenAPI 3.1, and Hey API typed clients.";
+  "DaloyJS is a contract-first TypeScript web framework with secure-by-default runtime guardrails, hardened pnpm installs (ignore-scripts, 24h release-age cooldown), source-verified lockfiles, and a zero-runtime-dependency core published with SBOM and npm provenance — runtime-portable across Node.js, Bun, Deno, Cloudflare Workers, and Vercel Edge. Typed end-to-end with Standard Schema validation, OpenAPI 3.1, and Hey API typed clients. Ships an optional hardened GitHub Actions bundle for teams on GitHub.";
 const COPYRIGHT_YEAR = 2026;
 
 export const metadata: Metadata = {
@@ -188,7 +188,6 @@ export default function RootLayout({
         <Analytics />
       </body>
       <GoogleAnalytics gaId="G-DSBFBZT7RQ" />
-
     </html>
   );
 }

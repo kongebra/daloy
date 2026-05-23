@@ -25,16 +25,16 @@ import { buildMetadata, CORE_PACKAGE_VERSION, SITE_URL } from "@/lib/seo";
 
 export const metadata = buildMetadata({
   title:
-    "DaloyJS - The runtime-portable framework for a Zero-Trust supply chain",
+    "DaloyJS - The runtime-portable TypeScript framework with secure-by-default supply-chain hardening",
   description:
-    "DaloyJS is a secure-by-default TypeScript/JavaScript web framework for LLM-era supply-chain risk. It combines FastAPI-grade docs, Hono-style portability, Fastify-style ops, Elysia-level typing, and Hey API clients while create-daloy scaffolds projects with blocked install scripts, a 24h pnpm release-age cooldown, lockfile source verification, pinned CI, Dependabot, CODEOWNERS, and SECURITY.md.",
+    "DaloyJS is a secure-by-default TypeScript/JavaScript web framework with portable supply-chain hardening that works on any CI host. It combines FastAPI-grade docs, Hono-style portability, Fastify-style ops, Elysia-level typing, and Hey API clients, while create-daloy scaffolds projects with blocked install scripts, a 24h pnpm release-age cooldown, source-verified lockfiles, a zero-runtime-dependency core, and an optional hardened GitHub Actions bundle for teams on GitHub.",
   path: "/",
   keywords: [
     "DaloyJS",
     "secure by default",
     "secure-by-default framework",
     "secure JavaScript framework",
-    "zero-trust supply chain",
+    "portable supply-chain hardening",
     "supply-chain attack protection",
     "slopsquatting protection",
     "AI-era supply chain security",
@@ -45,8 +45,10 @@ export const metadata = buildMetadata({
     "edge framework",
     "OpenTelemetry tracing",
     "SSE NDJSON streaming",
-    "supply-chain hardened",
-    "OIDC provenance",
+    "blocked install scripts",
+    "source-verified lockfiles",
+    "zero runtime dependencies",
+    "hardened GitHub Actions bundle",
     "create-daloy",
   ],
 });
@@ -184,7 +186,7 @@ export default function HomePage() {
       applicationCategory: "DeveloperApplication",
       operatingSystem: "Cross-platform",
       description:
-        "The secure-by-default, runtime-portable TypeScript web framework for a Zero-Trust supply chain. DaloyJS combines FastAPI-grade docs, Hono-style portability, Fastify-style ops, Elysia-level typing, and Hey API clients while create-daloy scaffolds projects with blocked install scripts, a 24h pnpm release-age cooldown, lockfile source verification, pinned CI, Dependabot, CODEOWNERS, and SECURITY.md. Built for the LLM-era surge in supply-chain attacks, with contract-first routing, Standard Schema validation, OpenAPI 3.1 generation, typed clients, streaming, OpenTelemetry tracing, edge-friendly sessions, and core-enforced security guardrails.",
+        "The secure-by-default, runtime-portable TypeScript web framework with portable supply-chain hardening that works on any CI host. DaloyJS combines FastAPI-grade docs, Hono-style portability, Fastify-style ops, Elysia-level typing, and Hey API clients while create-daloy scaffolds projects with blocked install scripts, a 24h pnpm release-age cooldown, source-verified lockfiles, a zero-runtime-dependency core, and an optional hardened GitHub Actions bundle for teams on GitHub. Built for the LLM-era surge in supply-chain attacks, with contract-first routing, Standard Schema validation, OpenAPI 3.1 generation, typed clients, streaming, OpenTelemetry tracing, edge-friendly sessions, and core-enforced security guardrails.",
       url: SITE_URL,
       offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
       programmingLanguage: "TypeScript",
@@ -226,14 +228,16 @@ export default function HomePage() {
               className="float-up max-w-4xl text-4xl leading-tight font-bold tracking-tight sm:text-5xl lg:text-6xl"
               style={{ animationDelay: "80ms" }}
             >
-              The runtime-portable framework for a Zero-Trust supply chain
+              The runtime-portable TypeScript framework with secure-by-default
+              supply-chain hardening
             </h1>
             <p
               className="float-up max-w-3xl text-base font-medium text-foreground/80 sm:text-lg"
               style={{ animationDelay: "120ms" }}
             >
-              Blocked install scripts. SHA-pinned actions. OIDC provenance.
-              Typed end-to-end.
+              Secure-by-default runtime. Blocked install scripts.
+              Source-verified lockfiles. Typed end-to-end. Optional hardened
+              GitHub Actions bundle for teams on GitHub.
             </p>
             <ContractFlowVisual />
             <p
@@ -459,9 +463,9 @@ export default function HomePage() {
                     "pnpm gen → fully typed fetch SDK",
                   ],
                   [
-                    "Supply-chain-hardened installs and publishing",
-                    "pnpm + hardened CI/CD",
-                    "Blocked scripts, release-age cooldowns, lockfile source checks, pinned actions, and provenance-backed framework releases",
+                    "Portable supply-chain hardening for the apps you build",
+                    "pnpm defaults + zero-runtime-dep core",
+                    "Blocked install scripts, 24h release-age cooldown, source-verified lockfiles, zero runtime deps, SBOM + npm provenance you can verify on any CI — plus an optional hardened GitHub Actions bundle for teams on GitHub",
                   ],
                 ].map(([want, best, give]) => (
                   <tr key={want} className="border-t">
