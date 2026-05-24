@@ -1,5 +1,5 @@
 import type { Route } from "next";
-import { cache } from "react";
+import { cacheLife } from "next/cache";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { docsNav } from "@/components/docs-nav";
@@ -141,8 +141,9 @@ function getSectionForRoute(href: Route, navSectionLookup: Map<Route, string>) {
   return matchedSection;
 }
 
-export const getDocsSearchSections = cache(async (): Promise<DocsSearchSection[]> => {
+export async function getDocsSearchSections(): Promise<DocsSearchSection[]> {
   "use cache";
+  cacheLife("max");
 
   const pageFiles = await walkDocsPages(docsDir);
   const discoveredDocs = await Promise.all(
@@ -205,4 +206,4 @@ export const getDocsSearchSections = cache(async (): Promise<DocsSearchSection[]
       return { heading, items: sortedItems };
     })
     .filter((section): section is DocsSearchSection => section !== null);
-});
+}

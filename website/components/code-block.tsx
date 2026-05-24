@@ -3,6 +3,7 @@ import {
   codeToHtml,
   type BundledLanguage,
 } from "shiki/bundle/full";
+import { cacheLife } from "next/cache";
 
 import { cn } from "../lib/utils";
 import { CodeCopyButton } from "./code-copy-button";
@@ -52,6 +53,7 @@ export async function CodeBlock({
   showCopyButton = true,
 }: CodeBlockProps) {
   "use cache";
+  cacheLife("max");
 
   const highlightedCode = await codeToHtml(code, {
     lang: resolveLanguage(language),

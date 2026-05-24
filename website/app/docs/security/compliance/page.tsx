@@ -96,7 +96,7 @@ export default function Page() {
             <td>
               Zod/Valibot schemas on every body, query, and param; router
               rejects
-              <code>..</code> and <code>//</code>; <code>safeJsonParse</code>{" "}
+              <code>..</code> and <code>{`//`}</code>; <code>safeJsonParse</code>{" "}
               strips prototype-pollution keys; SQL/command-injection guards
               documented for ORMs and shells.
             </td>

@@ -25,6 +25,8 @@ const DEFAULT_TITLE = `${SITE_NAME} - ${HOME_TITLE}`;
 const DEFAULT_DESCRIPTION = HOME_DESCRIPTION;
 const COPYRIGHT_YEAR = 2026;
 
+export const unstable_instant = { prefetch: "static" };
+
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
