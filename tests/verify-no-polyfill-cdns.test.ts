@@ -105,8 +105,18 @@ test("verify-no-polyfill-cdns accepts the live repository tree", async () => {
   // anywhere under the scanned tree without the test itself having to
   // re-implement the file walker.
   const { spawn } = await import("node:child_process");
-  const { fileURLToPath } = await import("node:url");
-  const scriptUrl = new URL("../scripts/verify-no-polyfill-cdns.ts", import.meta.url);
+  const { fileURLToPath, pathToFileURL } = await import("node:url");
+  // Resolve against `process.cwd()` (the real repo root in both
+  // `pnpm test` and `pnpm coverage:branches`) instead of
+  // `import.meta.url`. The compiled coverage run lives under
+  // `dist-coverage/tests/`, so an `import.meta.url`-relative resolution
+  // would point at `dist-coverage/scripts/...` — and the spawned script
+  // would then walk the `dist-coverage` tree, where compiled `.js`
+  // copies of this very test contain the IOC strings and trip the gate.
+  const scriptUrl = new URL(
+    "scripts/verify-no-polyfill-cdns.ts",
+    pathToFileURL(`${process.cwd()}/`),
+  );
   const scriptPath = fileURLToPath(scriptUrl);
   const exitCode: number = await new Promise((resolve, reject) => {
     const child = spawn(

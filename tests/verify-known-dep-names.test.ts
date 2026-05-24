@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { pathToFileURL } from "node:url";
 import {
   ALLOWED_DEP_NAMES,
   SCANNED_PACKAGE_JSONS,
@@ -9,7 +10,13 @@ import {
   findUnknownDependencyNames,
 } from "../scripts/verify-known-dep-names.ts";
 
-const REPO_ROOT = new URL("../", import.meta.url);
+// Resolve from the current working directory (the repo root in both
+// `pnpm test` and `pnpm coverage:branches`) rather than from
+// `import.meta.url`. The compiled `coverage:branches` run lives in
+// `dist-coverage/tests/` whose parent is `dist-coverage/`, not the repo
+// root — so an `import.meta.url`-based resolution would miss the real
+// `package.json` and produce ENOENT.
+const REPO_ROOT = pathToFileURL(`${process.cwd()}/`);
 
 test("every scanned package.json has zero unknown top-level dep names", async () => {
   for (const rel of SCANNED_PACKAGE_JSONS) {
