@@ -1,6 +1,24 @@
 import type { Metadata } from "next"
 
 /**
+ * Serialize a JSON-LD payload for safe inline injection inside a
+ * `<script type="application/ld+json">` rendered via React's
+ * `dangerouslySetInnerHTML`. Defense-in-depth against future regressions if
+ * any field ever becomes dynamic: escape `<`, `>`, `&`, and the JS line
+ * separators U+2028 / U+2029 so an attacker-controlled value cannot break
+ * out of the script tag with `</script>` or terminate the JS context.
+ * See Snyk's "10 React security best practices", item #7.
+ */
+export function serializeJsonLd(value: unknown): string {
+  return JSON.stringify(value)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029")
+}
+
+/**
  * Canonical site URL. Used by `metadataBase`, OpenGraph URLs, sitemap, robots.
  * Override with `NEXT_PUBLIC_SITE_URL` for preview/staging environments.
  */

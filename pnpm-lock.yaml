@@ -29,6 +29,28 @@ importers:
 
   packages/create-daloy: {}
 
+  workshop:
+    dependencies:
+      '@daloyjs/core':
+        specifier: workspace:*
+        version: link:..
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+    devDependencies:
+      '@hey-api/openapi-ts':
+        specifier: ^0.97.1
+        version: 0.97.1(typescript@6.0.3)
+      '@types/node':
+        specifier: ^25.7.0
+        version: 25.7.0
+      tsx:
+        specifier: ^4.22.3
+        version: 4.22.3
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
 packages:
 
   '@esbuild/aix-ppc64@0.28.0':
