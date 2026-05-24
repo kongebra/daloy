@@ -190,7 +190,6 @@ jobs:
             --config p/nodejs \
             --config p/secrets \
             --sarif-output opengrep.sarif \
-            --metrics off \
             --timeout 120 \
             --max-target-bytes 1500000 \
             --exclude website \
