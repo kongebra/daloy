@@ -321,6 +321,13 @@ test("assertNoDuplicateSingletonHeaders rejects duplicate Content-Length", () =>
   assert.throws(() => assertNoDuplicateSingletonHeaders(h), BadRequestError);
 });
 
+test("assertNoDuplicateSingletonHeaders rejects duplicate Transfer-Encoding", () => {
+  const h = new Headers();
+  h.append("transfer-encoding", "chunked");
+  h.append("transfer-encoding", "gzip");
+  assert.throws(() => assertNoDuplicateSingletonHeaders(h), BadRequestError);
+});
+
 test("App rejects requests carrying duplicate Host header with 400", async () => {
   const app = new App({ logger: false });
   app.route({
@@ -362,9 +369,41 @@ test("duplicate Host is rejected before user onRequest hooks run", async () => {
   assert.equal(called, false);
 });
 
-test("SMUGGLING_SINGLETON_HEADERS exposes host and content-length", () => {
+test("duplicate Transfer-Encoding is rejected before user onRequest hooks run", async () => {
+  let called = false;
+  const app = new App({
+    logger: false,
+    hooks: {
+      onRequest: () => {
+        called = true;
+      },
+    },
+  });
+  app.route({
+    method: "POST",
+    path: "/ok",
+    operationId: "okPost",
+    responses: { 200: { description: "ok", body: z.object({ ok: z.boolean() }) as any } },
+    handler: async () => ({ status: 200 as const, body: { ok: true } }),
+  });
+  const headers = new Headers({ "content-type": "application/json" });
+  headers.append("transfer-encoding", "chunked");
+  headers.append("transfer-encoding", "gzip");
+  const res = await app.fetch(
+    new Request("http://localhost/ok", {
+      method: "POST",
+      headers,
+      body: "{}",
+    }),
+  );
+  assert.equal(res.status, 400);
+  assert.equal(called, false);
+});
+
+test("SMUGGLING_SINGLETON_HEADERS exposes HTTP request smuggling singleton headers", () => {
   assert.ok(SMUGGLING_SINGLETON_HEADERS.includes("host"));
   assert.ok(SMUGGLING_SINGLETON_HEADERS.includes("content-length"));
+  assert.ok(SMUGGLING_SINGLETON_HEADERS.includes("transfer-encoding"));
 });
 
 // ---------- Webhook HMAC ----------

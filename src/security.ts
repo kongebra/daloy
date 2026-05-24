@@ -202,8 +202,8 @@ export function randomId(): string {
 /**
  * Header names that MUST appear at most once on a request per RFC 7230.
  * Duplicate values for these headers are a classic HTTP-request-smuggling
- * vector — front-end and back-end proxies can disagree on which value
- * "wins", letting an attacker desync the connection.
+ * vector — front-end and back-end proxies can disagree on framing or
+ * routing, letting an attacker desync the connection.
  *
  * Exported for adapter authors that need the same set.
  *
@@ -212,6 +212,7 @@ export function randomId(): string {
 export const SMUGGLING_SINGLETON_HEADERS: readonly string[] = Object.freeze([
   "host",
   "content-length",
+  "transfer-encoding",
 ]);
 
 /**
