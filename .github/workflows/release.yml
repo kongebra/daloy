@@ -18,6 +18,10 @@
 #     MFA approval is required before the version becomes installable.
 #     `npm stage` requires npm CLI 11.15.0+, so the protected publish
 #     jobs pin that CLI before staging.
+#     Each npm package's Trusted Publisher must allow the `npm stage publish`
+#     action for repository `daloyjs/daloy`, workflow `release.yml`, and
+#     environment `npm-publish`; older Trusted Publisher configs default to
+#     `npm publish` only and fail with "OIDC permission denied for this action".
 #     No long-lived NPM_TOKEN is stored in repo secrets.
 #   * No GitHub Actions cache is read or written. Cold installs only.
 #   * `actions/checkout` uses `persist-credentials: false`.
