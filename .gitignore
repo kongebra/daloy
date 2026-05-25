@@ -35,3 +35,9 @@ honojs-large-fakerestapi
 daloyjs-large-fakerestapi
 coverage_output.txt
 .vercel
+
+# Bench runtime artifacts only — keep bench/*.ts and bench/cross-framework/ tracked.
+bench/**/node_modules/
+bench/**/results.json
+bench/cross-framework/pnpm-lock.yaml
+bench/cross-framework/package-lock.json
