@@ -12,6 +12,7 @@ import {
 import { Readable } from "node:stream";
 import type { Duplex } from "node:stream";
 import type { App } from "../app.js";
+import { DALOY_RAW_BODY } from "../app.js";
 import {
   FrameSink,
   encodeFrame,
@@ -59,26 +60,28 @@ export interface NodeServerHandle { server: Server; port: number; close(): Promi
 /** Start a Node.js HTTP (and optional WebSocket) server bound to the given {@link App}. */
 export function serve(app: App, opts: NodeServerOptions = {}): NodeServerHandle {
   const trustProxy = opts.trustProxy === true;
-  const server = createServer({ maxHeaderSize: opts.maxHeaderBytes ?? 16 * 1024 }, async (req, res) => {
-    try {
-      const request = await toWebRequest(req, trustProxy);
-      const response = await app.fetch(request);
-      await sendWebResponse(response, res);
-    } catch (e) {
-      if (!res.headersSent) {
-        res.statusCode = 500;
-        res.setHeader("content-type", "application/problem+json");
-        res.end(
-          JSON.stringify({
-            type: "https://daloyjs.dev/errors/internal",
-            title: "Internal Server Error",
-            status: 500,
-          })
-        );
-      } else {
-        res.destroy(e as Error);
-      }
+  const server = createServer({ maxHeaderSize: opts.maxHeaderBytes ?? 16 * 1024 }, (req, res) => {
+    // GET/HEAD: no body work, dispatch directly. Keep this first so the GET
+    // hot path doesn't pay for any of the buffering bookkeeping below.
+    const method = req.method;
+    if (method === "GET" || method === "HEAD" || method === undefined) {
+      dispatchToApp(app, req, res, trustProxy, undefined);
+      return;
     }
+    // POST/PUT/PATCH/DELETE with a small known content-length: pre-buffer
+    // bytes from the Node socket directly so the Request constructor gets a
+    // Uint8Array body instead of `Readable.toWeb(req)`. This skips the
+    // WHATWG-stream adapter that dominates POST throughput on Node.
+    const cl = req.headers["content-length"];
+    const n = cl ? Number(cl) : NaN;
+    if (Number.isFinite(n) && n >= 0 && n <= BUFFERED_BODY_MAX_BYTES) {
+      bufferRequestBody(req, n).then(
+        (bytes) => dispatchToApp(app, req, res, trustProxy, bytes),
+        (e) => writeAdapterError(res, e),
+      );
+      return;
+    }
+    dispatchToApp(app, req, res, trustProxy, undefined);
   });
 
   server.requestTimeout = opts.connectionTimeoutMs ?? 30_000;
@@ -118,34 +121,155 @@ export function serve(app: App, opts: NodeServerOptions = {}): NodeServerHandle 
     process.once("SIGINT", () => onSignal("SIGINT"));
   }
   return { server, port, close }; }
-async function toWebRequest(
+
+/**
+ * Maximum content-length (in bytes) that the Node adapter will pre-buffer
+ * before constructing the `Request`. Bodies above this fall back to the
+ * streaming `Readable.toWeb` path so unbounded uploads can't exhaust
+ * adapter memory. 1 MiB matches the default `App.bodyLimitBytes`.
+ */
+const BUFFERED_BODY_MAX_BYTES = 1024 * 1024;
+
+function dispatchToApp(
+  app: App,
+  req: IncomingMessage,
+  res: ServerResponse,
+  trustProxy: boolean,
+  bufferedBody: Uint8Array | undefined,
+): void {
+  let request: Request;
+  try {
+    request = toWebRequest(req, trustProxy, bufferedBody);
+  } catch (e) {
+    writeAdapterError(res, e);
+    return;
+  }
+  const responseOrPromise = app.fetch(request);
+  if (responseOrPromise instanceof Promise) {
+    responseOrPromise.then(
+      (response) => {
+        try {
+          const sent = sendWebResponse(response, res);
+          if (sent instanceof Promise) sent.catch((e) => writeAdapterError(res, e));
+        } catch (e) {
+          writeAdapterError(res, e);
+        }
+      },
+      (e) => writeAdapterError(res, e),
+    );
+  } else {
+    try {
+      const sent = sendWebResponse(responseOrPromise, res);
+      if (sent instanceof Promise) sent.catch((e) => writeAdapterError(res, e));
+    } catch (e) {
+      writeAdapterError(res, e);
+    }
+  }
+}
+
+function bufferRequestBody(req: IncomingMessage, expected: number): Promise<Uint8Array> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let received = 0;
+    let settled = false;
+    const onData = (chunk: Buffer) => {
+      if (settled) return;
+      received += chunk.length;
+      if (received > expected) {
+        settled = true;
+        cleanup();
+        req.destroy();
+        reject(new Error("Request body exceeded declared Content-Length"));
+        return;
+      }
+      chunks.push(chunk);
+    };
+    const onEnd = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (received === 0) {
+        resolve(new Uint8Array(0));
+        return;
+      }
+      const buf = chunks.length === 1 ? chunks[0]! : Buffer.concat(chunks, received);
+      resolve(new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength));
+    };
+    const onErr = (err: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(err);
+    };
+    const cleanup = () => {
+      req.off("data", onData);
+      req.off("end", onEnd);
+      req.off("error", onErr);
+      req.off("aborted", onErr);
+    };
+    req.on("data", onData);
+    req.on("end", onEnd);
+    req.on("error", onErr);
+    req.on("aborted", onErr as any);
+  });
+}
+
+function writeAdapterError(res: ServerResponse, e: unknown): void {
+  if (!res.headersSent) {
+    res.statusCode = 500;
+    res.setHeader("content-type", "application/problem+json");
+    res.end(
+      JSON.stringify({
+        type: "https://daloyjs.dev/errors/internal",
+        title: "Internal Server Error",
+        status: 500,
+      })
+    );
+  } else {
+    res.destroy(e as Error);
+  }
+}
+
+function toWebRequest(
   req: IncomingMessage,
   trustProxy: boolean,
-): Promise<Request> {
+  bufferedBody?: Uint8Array,
+): Request {
+  const reqHeaders = req.headers;
   const forwardedHost = trustProxy
-    ? firstHeader(req.headers["x-forwarded-host"])
+    ? firstHeader(reqHeaders["x-forwarded-host"])
     : undefined;
-  const host = forwardedHost ?? req.headers.host ?? "localhost";
+  const host = forwardedHost ?? reqHeaders.host ?? "localhost";
   const forwardedProto = trustProxy
-    ? firstHeader(req.headers["x-forwarded-proto"])
+    ? firstHeader(reqHeaders["x-forwarded-proto"])
     : undefined;
   const proto =
     forwardedProto ??
     ((req.socket as { encrypted?: boolean }).encrypted ? "https" : "http");
   const url = `${proto}://${host}${req.url ?? "/"}`;
   const headers = new Headers();
-  for (const [k, v] of Object.entries(req.headers)) {
+  for (const k in reqHeaders) {
+    const v = reqHeaders[k];
     if (v === undefined) continue;
-    if (Array.isArray(v)) headers.set(k, v.join(", "));
-    else headers.set(k, String(v));
+    headers.set(k, Array.isArray(v) ? v.join(", ") : v);
   }
   const method = req.method ?? "GET";
-  const init: RequestInit = { method, headers };
-  if (method !== "GET" && method !== "HEAD") {
-    (init as any).body = Readable.toWeb(req) as ReadableStream;
-    (init as any).duplex = "half";
+  if (method === "GET" || method === "HEAD") {
+    return new Request(url, { method, headers });
   }
-  return new Request(url, init);
+  if (bufferedBody !== undefined) {
+    return new Request(url, {
+      method,
+      headers,
+      body: bufferedBody as BodyInit,
+    });
+  }
+  return new Request(url, {
+    method,
+    headers,
+    body: Readable.toWeb(req) as ReadableStream,
+    duplex: "half",
+  } as RequestInit);
 }
 
 function firstHeader(v: string | string[] | undefined): string | undefined {
@@ -156,17 +280,47 @@ function firstHeader(v: string | string[] | undefined): string | undefined {
   return (comma === -1 ? raw : raw.slice(0, comma)).trim() || undefined;
 }
 
-async function sendWebResponse(
+function sendWebResponse(
   res: Response,
   out: ServerResponse,
-): Promise<void> {
+): void | Promise<void> {
   out.statusCode = res.status;
   res.headers.forEach((v, k) => out.setHeader(k, v));
+  // Fast-path: response was produced by serializeResult and carries the raw
+  // body bytes via the DALOY_RAW_BODY Symbol. Skip arrayBuffer() and the
+  // reader-loop microtask churn entirely for buffer-backed responses.
+  const raw = (res as any)[DALOY_RAW_BODY] as Uint8Array | null | undefined;
+  if (raw !== undefined) {
+    if (raw === null) {
+      out.end();
+    } else {
+      out.end(raw);
+    }
+    return;
+  }
   if (!res.body) {
     out.end();
     return;
   }
-  const reader = res.body.getReader();
+  const ct = out.getHeader("content-type");
+  const isStream = ct && typeof ct === "string" && ct.startsWith("text/event-stream");
+  const rawLength = out.getHeader("content-length");
+  const contentLength =
+    typeof rawLength === "number"
+      ? rawLength
+      : typeof rawLength === "string"
+        ? Number(rawLength)
+        : Number.NaN;
+  if (!isStream && Number.isFinite(contentLength) && contentLength <= 64 * 1024) {
+    return res.arrayBuffer().then((ab) => {
+      out.end(Buffer.from(ab));
+    });
+  }
+  return pumpBody(res.body, out);
+}
+
+async function pumpBody(body: ReadableStream<Uint8Array>, out: ServerResponse): Promise<void> {
+  const reader = body.getReader();
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;

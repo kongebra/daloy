@@ -621,8 +621,18 @@ export interface IntrospectedRoute {
 interface CompiledRoute {
   def: RouteDefinition<any, any, any, any>;
   hooks: Hooks;
+  /**
+   * Fully-merged hook chain (`options.hooks` ⊕ group hooks ⊕ route hooks).
+   * Precomputed at registration so the dispatch hot path doesn't allocate
+   * closures on every request. Set by {@link App.route}.
+   */
+  mergedHooks: Hooks;
+  /** True when response-finalizer hooks (`onSend` / `onResponse`) are present. */
+  hasFinalizeHook: boolean;
   /** CORS origin allowlist predicates captured from group and route-level hooks. */
   corsOriginAllows: CorsOriginAllow[];
+  /** CORS origin allowlist predicates from global hooks; precomputed for the dispatch cross-origin check. */
+  fullCorsOriginAllows: CorsOriginAllow[];
 }
 
 interface RouteSecurityMarkers {
@@ -642,6 +652,18 @@ const DEFAULTS = {
   requestTimeoutMs: 30_000,
   validateResponses: true,
 };
+
+const TEXT_ENCODER = new TextEncoder();
+
+/**
+ * Internal Symbol used to stash the raw Uint8Array (or null) body on a
+ * `Response` produced by {@link serializeResult}. Adapters that want to
+ * avoid the cost of `await response.arrayBuffer()` for buffer-backed
+ * responses can read this property and write the bytes directly. The
+ * Symbol is intentionally module-private (not exported) to keep this an
+ * implementation detail — userland code should never depend on it.
+ */
+export const DALOY_RAW_BODY = Symbol.for("daloyjs.response.rawBody");
 
 /**
  * Contract-first HTTP application.
@@ -758,6 +780,28 @@ export class App {
    * dashboards see the misconfiguration without flooding on every retry.
    */
   private trustProxyWarned = false;
+
+  /**
+  * Cached merge of `options.hooks` only. Used on the cold 404/405 path
+  * and as the baseline for cross-origin guard decisions when no route
+  * matches.
+   */
+  private _globalHooksCache: Hooks | undefined;
+  private _globalCorsAllowsCache: CorsOriginAllow[] | undefined;
+
+  private get globalHooks(): Hooks {
+    if (this._globalHooksCache === undefined) {
+      this._globalHooksCache = mergeHooks([this.options.hooks ?? {}]);
+    }
+    return this._globalHooksCache;
+  }
+
+  private get globalCorsAllows(): CorsOriginAllow[] {
+    if (this._globalCorsAllowsCache === undefined) {
+      this._globalCorsAllowsCache = corsOriginAllowsFromHooks([this.options.hooks ?? {}]);
+    }
+    return this._globalCorsAllowsCache;
+  }
 
   constructor(options: AppOptions = {}) {
     this.options = {
@@ -978,7 +1022,7 @@ export class App {
    */
   private assertCrossOriginAllowed(
     request: Request,
-    url: URL,
+    requestUrl: string | URL,
     method: HttpMethod,
     corsOriginAllows: CorsOriginAllow[],
   ): void {
@@ -1003,7 +1047,9 @@ export class App {
         "Cross-origin state-changing request rejected: malformed Origin header.",
       );
     }
-    if (originUrl.origin === url.origin) return;
+    const reqOrigin =
+      typeof requestUrl === "string" ? new URL(requestUrl).origin : requestUrl.origin;
+    if (originUrl.origin === reqOrigin) return;
     if (corsOriginAllows.some((allows) => allows(origin))) return;
     throw new ForbiddenError(
       `Cross-origin ${method} from "${originUrl.origin}" rejected: no registered cors() policy allows that origin. ` +
@@ -1358,14 +1404,22 @@ export class App {
     const sources: Hooks[] = [...this.groupHooks, def.hooks ?? {}];
     const hooks = mergeHooks(sources);
     const corsOriginAllows = corsOriginAllowsFromHooks(sources);
+    const globalHookLayer = this.options.hooks ?? {};
+    const mergedHooks = mergeHooks([globalHookLayer, ...sources]);
+    const hasFinalizeHook =
+      mergedHooks.onSend !== undefined || mergedHooks.onResponse !== undefined;
+    const fullCorsOriginAllows = [
+      ...corsOriginAllowsFromHooks([globalHookLayer]),
+      ...corsOriginAllows,
+    ];
     const securityMarkers = securityMarkersFromHooks([
-      this.options.hooks ?? {},
+      globalHookLayer,
       ...sources,
     ]);
     this.router.add(
       def.method,
       fullPath,
-      { def: merged, hooks, corsOriginAllows },
+      { def: merged, hooks, mergedHooks, hasFinalizeHook, corsOriginAllows, fullCorsOriginAllows },
       def.operationId,
     );
     this.routes.push(merged);
@@ -2190,7 +2244,7 @@ export class App {
     });
     const stripFingerprint = this.options.stripServerHeaders !== false;
     let ctx: BaseContext<any, any> | undefined;
-    const globalHooks = mergeHooks([this.options.hooks ?? {}]);
+    const globalHooks = this.globalHooks;
     let activeErrorHook = globalHooks.onError;
     let activeResponseHook = globalHooks.onResponse;
     let activeSendHook = globalHooks.onSend;
@@ -2200,14 +2254,20 @@ export class App {
       assertNoReservedInternalHeaders(request.headers);
       this.assertTrustProxyConfigured(request);
       this.assertBootGuards();
-      await globalHooks.onRequest?.(request);
+      if (globalHooks.onRequest !== undefined) {
+        const onRequestResult = globalHooks.onRequest(request);
+        if (isPromiseLike(onRequestResult)) await onRequestResult;
+      }
 
-      const url = new URL(request.url);
       const method = request.method as HttpMethod;
+      const requestUrl = request.url;
+      const pathname = getPathnameFast(requestUrl);
+      let url: URL | undefined;
+      const getUrl = (): URL => (url ??= new URL(requestUrl));
       const headFallback = method === "HEAD";
       const match =
-        this.router.find(method, url.pathname) ??
-        (headFallback ? this.router.find("GET", url.pathname) : undefined);
+        this.router.find(method, pathname) ??
+        (headFallback ? this.router.find("GET", pathname) : undefined);
 
       // Hide internal routes from the public adapter surface. The router
       // still finds them so app.inject() can dispatch normally, but
@@ -2215,24 +2275,31 @@ export class App {
       const internalHidden =
         match?.handler.def.internal === true && opts.allowInternal !== true;
 
-      this.assertCrossOriginAllowed(
-        request,
-        url,
-        method,
-        [
-          ...corsOriginAllowsFromHooks([this.options.hooks ?? {}]),
-          ...(match && !internalHidden ? match.handler.corsOriginAllows : this.corsOriginAllows),
-        ],
-      );
+      if (match && !internalHidden) {
+        this.assertCrossOriginAllowed(
+          request,
+          requestUrl,
+          method,
+          match.handler.fullCorsOriginAllows,
+        );
+      } else {
+        this.assertCrossOriginAllowed(
+          request,
+          requestUrl,
+          method,
+          [...this.globalCorsAllows, ...this.corsOriginAllows],
+        );
+      }
 
       if (!match || internalHidden) {
+        const url404 = getUrl();
         if (internalHidden) {
           // Don't leak existence via 405/Allow header. Always 404.
           throw new NotFoundError(
-            `No route for ${request.method} ${url.pathname}`,
+            `No route for ${request.method} ${url404.pathname}`,
           );
         }
-        const rawAllowed = this.router.allowedMethods(url.pathname);
+        const rawAllowed = this.router.allowedMethods(url404.pathname);
         // Filter out methods whose route definitions are marked
         // `internal: true` unless the caller explicitly opted in via
         // app.inject(). This prevents 405/Allow from leaking the
@@ -2240,13 +2307,13 @@ export class App {
         const allowed = opts.allowInternal
           ? rawAllowed
           : rawAllowed.filter((m) => {
-              const candidate = this.router.find(m, url.pathname);
+              const candidate = this.router.find(m, url404.pathname);
               return candidate?.handler.def.internal !== true;
             });
         ctx = {
           request,
           params: {},
-          query: Object.fromEntries(url.searchParams.entries()),
+          query: Object.fromEntries(url404.searchParams.entries()),
           headers: headersToObject(request.headers),
           body: undefined,
           state: { ...this.decorations, requestId, log },
@@ -2270,15 +2337,17 @@ export class App {
               this.options.hooks ?? {},
               ...this.groupHooks,
             ]);
-            const intercepted = await preflightHooks.beforeHandle?.(synthCtx);
+            const interceptedResult = preflightHooks.beforeHandle?.(synthCtx);
+            const intercepted = isPromiseLike(interceptedResult) ? await interceptedResult : interceptedResult;
             if (intercepted instanceof Response) {
               copyContextHeaders(synthCtx, intercepted);
-              return await finalizeResponse(
+              const fin = finalizeResponse(
                 intercepted,
                 synthCtx,
                 preflightHooks,
                 stripFingerprint,
               );
+              return isPromiseLike(fin) ? await fin : fin;
             }
             const res = new Response(null, {
               status: 204,
@@ -2286,46 +2355,69 @@ export class App {
             });
             copyContextHeaders(synthCtx, res);
             res.headers.set("x-request-id", requestId);
-            return await finalizeResponse(res, synthCtx, preflightHooks, stripFingerprint);
+            const fin2 = finalizeResponse(res, synthCtx, preflightHooks, stripFingerprint);
+            return isPromiseLike(fin2) ? await fin2 : fin2;
           }
           throw new MethodNotAllowedError(allowed);
         }
         throw new NotFoundError(
-          `No route for ${request.method} ${url.pathname}`,
+          `No route for ${request.method} ${url404.pathname}`,
         );
       }
 
-      const { def, hooks } = match.handler;
-      const allHooks = mergeHooks([globalHooks, hooks]);
+      const { def, hooks, mergedHooks: allHooks, hasFinalizeHook } = match.handler;
       activeErrorHook = allHooks.onError;
       activeResponseHook = allHooks.onResponse;
       activeSendHook = allHooks.onSend;
 
-      await hooks.onRequest?.(request);
-
-      ctx = await buildContext(request, url, match.params, def, this.options);
-      Object.assign(ctx.state, this.decorations, { requestId, log });
-      ctx.set.headers.set("x-request-id", requestId);
-
-      const before = await allHooks.beforeHandle?.(ctx);
-      if (before instanceof Response) {
-        copyContextHeaders(ctx, before);
-        return await finalizeResponse(before, ctx, allHooks, stripFingerprint);
+      if (hooks.onRequest !== undefined) {
+        const routeOnRequestResult = hooks.onRequest(request);
+        if (isPromiseLike(routeOnRequestResult)) await routeOnRequestResult;
       }
 
-      let result: any = this.options.mockMode
-        ? mockResponseFor(def)
-        : await runHandler(def, ctx, this.options.requestTimeoutMs);
-      const afterReturn = await allHooks.afterHandle?.(ctx, result);
-      if (afterReturn !== undefined) result = afterReturn;
+      ctx = await buildContext(request, getUrl, match.params, def, this.options);
+      Object.assign(ctx.state, this.decorations, { requestId, log });
 
-      let response = await serializeResult(
+      if (allHooks.beforeHandle !== undefined) {
+        const beforeResult = allHooks.beforeHandle(ctx);
+        const before = isPromiseLike(beforeResult) ? await beforeResult : beforeResult;
+        if (before instanceof Response) {
+          copyContextHeaders(ctx, before);
+          if (!before.headers.has("x-request-id")) before.headers.set("x-request-id", requestId);
+          if (hasFinalizeHook) {
+            const fin = finalizeResponse(before, ctx, allHooks, stripFingerprint);
+            return isPromiseLike(fin) ? await fin : fin;
+          }
+          return finalizeFast(before, stripFingerprint);
+        }
+      }
+
+      const runResult = this.options.mockMode
+        ? mockResponseFor(def)
+        : runHandler(def, ctx, this.options.requestTimeoutMs);
+      let result: any = isPromiseLike(runResult) ? await runResult : runResult;
+
+      if (allHooks.afterHandle !== undefined) {
+        const afterResult = allHooks.afterHandle(ctx, result);
+        const afterReturn = isPromiseLike(afterResult) ? await afterResult : afterResult;
+        if (afterReturn !== undefined) result = afterReturn;
+      }
+
+      const serializeResultRes = serializeResult(
         result,
         def,
         this.options.validateResponses ?? true,
       );
+      let response: Response = isPromiseLike(serializeResultRes) ? await serializeResultRes : serializeResultRes;
       copyContextHeaders(ctx, response);
-      const finalized = await finalizeResponse(response, ctx, allHooks, stripFingerprint);
+      if (!response.headers.has("x-request-id")) response.headers.set("x-request-id", requestId);
+      let finalized: Response;
+      if (hasFinalizeHook) {
+        const fin = finalizeResponse(response, ctx, allHooks, stripFingerprint);
+        finalized = isPromiseLike(fin) ? await fin : fin;
+      } else {
+        finalized = finalizeFast(response, stripFingerprint);
+      }
       if (method === "HEAD") {
         return new Response(null, {
           status: finalized.status,
@@ -2706,6 +2798,31 @@ function isStateChangingMethod(method: HttpMethod): boolean {
   );
 }
 
+/**
+ * Extract the pathname from a fully-qualified request URL without
+ * constructing a `URL` object. ~10x cheaper than `new URL(...).pathname`
+ * and used on the dispatch hot path; full `URL` parsing is deferred until
+ * something actually reads `searchParams`. Mirrors Hono's `getPath`
+ * approach.
+ *
+ * Handles the standard `http(s)://host[:port]/path[?query][#hash]` shape
+ * produced by the Node adapter and the Fetch standard. Falls back to a
+ * `URL` parse for inputs that don't match (e.g. opaque schemes), so
+ * correctness is preserved even when the fast path doesn't apply.
+ */
+function getPathnameFast(url: string): string {
+  const schemeEnd = url.indexOf("://");
+  if (schemeEnd === -1) return new URL(url).pathname;
+  const pathStart = url.indexOf("/", schemeEnd + 3);
+  if (pathStart === -1) return "/";
+  let end = url.length;
+  const q = url.indexOf("?", pathStart);
+  if (q !== -1) end = q;
+  const h = url.indexOf("#", pathStart);
+  if (h !== -1 && h < end) end = h;
+  return url.slice(pathStart, end);
+}
+
 function mergeHooks(layers: Hooks[]): Hooks {
   const pick = <K extends keyof Hooks>(key: K): NonNullable<Hooks[K]>[] =>
     layers
@@ -2751,6 +2868,10 @@ function mergeBeforeHandle(
   requiredScopes: readonly string[],
 ): NonNullable<Hooks["beforeHandle"]> | undefined {
   if (!beforeHandle && requiredScopes.length === 0) return undefined;
+  // No scope aggregation needed → return the inner fn as-is so the dispatch
+  // hot path can use the single-fn fast path and avoid an extra closure +
+  // microtask wrapper around a possibly-sync beforeHandle.
+  if (requiredScopes.length === 0) return beforeHandle;
   return async (ctx) => {
     if (requiredScopes.length > 0) {
       const state = ctx.state as Record<string, unknown>;
@@ -2769,6 +2890,7 @@ function responsePipeline(
   fns: NonNullable<Hooks["onSend"]>[],
 ): NonNullable<Hooks["onSend"]> | undefined {
   if (fns.length === 0) return undefined;
+  if (fns.length === 1) return fns[0];
   return async (res, ctx) => {
     let current = res;
     for (const fn of fns) {
@@ -2779,24 +2901,65 @@ function responsePipeline(
   };
 }
 
-async function finalizeResponse(
+function finalizeResponse(
   res: Response,
   ctx: BaseContext<any, any> | undefined,
   hooks: Pick<Hooks, "onSend" | "onResponse">,
   stripFingerprint: boolean = true,
-): Promise<Response> {
-  const sent = await hooks.onSend?.(res, ctx);
-  const final = sent instanceof Response ? sent : res;
-  if (stripFingerprint) {
-    final.headers.delete("server");
-    final.headers.delete("x-powered-by");
+): Response | PromiseLike<Response> {
+  let final = res;
+
+  const finish = (f: Response) => {
+    if (stripFingerprint) {
+      f.headers.delete("server");
+      f.headers.delete("x-powered-by");
+    }
+    if (hooks.onResponse !== undefined) {
+      const onResponseResult = hooks.onResponse(f);
+      if (isPromiseLike(onResponseResult)) {
+        return onResponseResult.then(() => f);
+      }
+    }
+    return f;
+  };
+
+  if (hooks.onSend !== undefined) {
+    const sentResult = hooks.onSend(res, ctx);
+    if (isPromiseLike(sentResult)) {
+      return sentResult.then((sent) => {
+        if (sent instanceof Response) final = sent;
+        return finish(final);
+      });
+    } else {
+      if (sentResult instanceof Response) final = sentResult;
+    }
   }
-  await hooks.onResponse?.(final);
-  return final;
+
+  return finish(final);
+}
+
+function isPromiseLike<T = unknown>(value: T | PromiseLike<T>): value is PromiseLike<T> {
+  return value !== null && typeof value === "object" && typeof (value as any).then === "function";
+}
+
+/**
+ * Allocation-free finalizer for the common case (no `onSend`/`onResponse`
+ * hooks). Avoids the two `await undefined` microtasks per request that
+ * dominate sub-millisecond dispatch overhead in the no-middleware
+ * benchmark. Behaviour parity with {@link finalizeResponse}: only the
+ * server-fingerprint headers are stripped.
+ */
+function finalizeFast(res: Response, stripFingerprint: boolean): Response {
+  if (stripFingerprint) {
+    res.headers.delete("server");
+    res.headers.delete("x-powered-by");
+  }
+  return res;
 }
 
 function chain<F extends (...args: any[]) => any>(fns: F[]): F | undefined {
   if (fns.length === 0) return undefined;
+  if (fns.length === 1) return fns[0];
   return (async (...args: any[]) => {
     for (const fn of fns) await fn(...args);
   }) as unknown as F;
@@ -2806,6 +2969,7 @@ function firstResponse<F extends (...args: any[]) => any>(
   fns: F[],
 ): F | undefined {
   if (fns.length === 0) return undefined;
+  if (fns.length === 1) return fns[0];
   return (async (...args: any[]) => {
     for (const fn of fns) {
       const r = await fn(...args);
@@ -2819,6 +2983,7 @@ function pipeline<F extends (ctx: any, value: any) => any>(
   fns: F[],
 ): F | undefined {
   if (fns.length === 0) return undefined;
+  if (fns.length === 1) return fns[0];
   return (async (ctx: any, value: any) => {
     let v = value;
     for (const fn of fns) {
@@ -2829,7 +2994,38 @@ function pipeline<F extends (ctx: any, value: any) => any>(
   }) as unknown as F;
 }
 
+/**
+ * Marker stamped on `ctx.set` once the `headers` getter has been
+ * materialised. {@link copyContextHeaders} consults this to skip the
+ * forEach loop entirely on requests where no middleware or handler ever
+ * touched `ctx.set.headers` — the default case for the no-middleware
+ * benchmark.
+ */
+const SET_HEADERS_TOUCHED: unique symbol = Symbol.for("daloyjs.app.setHeadersTouched");
+
+function makeLazySet(): { status?: number; headers: Headers } {
+  let h: Headers | undefined;
+  const set = {} as { status?: number; headers: Headers };
+  Object.defineProperty(set, "headers", {
+    get(): Headers {
+      if (h === undefined) {
+        h = new Headers();
+        (set as any)[SET_HEADERS_TOUCHED] = true;
+      }
+      return h;
+    },
+    set(v: Headers) {
+      h = v;
+      (set as any)[SET_HEADERS_TOUCHED] = true;
+    },
+    enumerable: true,
+    configurable: true,
+  });
+  return set;
+}
+
 function copyContextHeaders(ctx: BaseContext<any, any>, res: Response): void {
+  if (!(ctx.set as any)[SET_HEADERS_TOUCHED]) return;
   ctx.set.headers.forEach((v, k) => {
     if (!res.headers.has(k)) res.headers.set(k, v);
   });
@@ -2842,9 +3038,9 @@ function hasRequestSchema(
   return !!request && !!request[key];
 }
 
-async function buildContext(
+function buildContext(
   request: Request,
-  url: URL,
+  getUrl: () => URL,
   rawParams: Record<string, string>,
   def: RouteDefinition<any, any, any, any>,
   opts: {
@@ -2852,28 +3048,62 @@ async function buildContext(
     allowedContentTypes?: string[];
     multipart?: AppOptions["multipart"];
   },
-): Promise<BaseContext<any, any>> {
-  const set = { headers: new Headers() };
-  const headersObj = headersToObject(request.headers);
-  const queryObj = queryToObject(url.searchParams);
+): BaseContext<any, any> | Promise<BaseContext<any, any>> {
+  const set = makeLazySet();
+  const hasHeadersSchema = !!def.request?.headers;
+  const hasQuerySchema = !!def.request?.query;
+  let headersObj: Record<string, string> | undefined;
+  let queryObj: Record<string, string | string[]> | undefined;
+  const buildHeaders = (): Record<string, string> =>
+    (headersObj ??= headersToObject(request.headers));
+  const buildQuery = (): Record<string, string | string[]> =>
+    (queryObj ??= queryToObject(getUrl().searchParams));
 
   let params: any = rawParams;
-  let query: any = queryObj;
-  let headers: any = headersObj;
+  let query: any;
+  let headers: any;
   let body: any = undefined;
 
-  if (def.request?.params) {
-    const r = await validate(def.request.params, rawParams);
+  const hasSchema = def.request?.params || def.request?.query || def.request?.headers || def.request?.body;
+
+  const finishContext = () => {
+    const ctx = {
+      request,
+      params,
+      body,
+      state: {},
+      set,
+    } as unknown as BaseContext<any, any>;
+    if (hasQuerySchema) {
+      (ctx as any).query = query;
+    } else {
+      defineLazyContextProperty(ctx, "query", buildQuery);
+    }
+    if (hasHeadersSchema) {
+      (ctx as any).headers = headers;
+    } else {
+      defineLazyContextProperty(ctx, "headers", buildHeaders);
+    }
+    return ctx;
+  };
+
+  if (!hasSchema) {
+    return finishContext();
+  }
+
+  return (async () => {
+    if (def.request?.params) {
+      const r = await validate(def.request.params, rawParams);
     if (r.issues) throw new ValidationError("params", toIssues(r.issues));
     params = r.value;
   }
-  if (def.request?.query) {
-    const r = await validate(def.request.query, queryObj);
+  if (hasQuerySchema) {
+    const r = await validate(def.request!.query, buildQuery());
     if (r.issues) throw new ValidationError("query", toIssues(r.issues));
     query = r.value;
   }
-  if (def.request?.headers) {
-    const r = await validate(def.request.headers, headersObj);
+  if (hasHeadersSchema) {
+    const r = await validate(def.request!.headers, buildHeaders());
     if (r.issues) throw new ValidationError("headers", toIssues(r.issues));
     headers = r.value;
   }
@@ -2898,7 +3128,32 @@ async function buildContext(
     body = r.value;
   }
 
-  return { request, params, query, headers, body, state: {}, set };
+  return finishContext();
+  })();
+}
+
+function defineLazyContextProperty(
+  ctx: BaseContext<any, any>,
+  key: "query" | "headers",
+  build: () => unknown,
+): void {
+  let initialized = false;
+  let value: unknown;
+  Object.defineProperty(ctx, key, {
+    get() {
+      if (!initialized) {
+        value = build();
+        initialized = true;
+      }
+      return value;
+    },
+    set(next: unknown) {
+      value = next;
+      initialized = true;
+    },
+    enumerable: true,
+    configurable: true,
+  });
 }
 
 function headersToObject(h: Headers): Record<string, string> {
@@ -3008,48 +3263,91 @@ async function readBody(
   return new TextDecoder().decode(bytes);
 }
 
-async function serializeResult(
+function serializeResult(
   result: { status: number; body: unknown; headers?: Record<string, string> },
   def: RouteDefinition<any, any, any, any>,
   validateResponses: boolean,
-): Promise<Response> {
+): Response | PromiseLike<Response> {
   const spec = def.responses[result.status];
   if (!spec) {
     throw new InternalError(
       `Handler returned status ${result.status} which is not declared in responses for ${def.method} ${def.path}`,
     );
   }
+
+  const finish = () => {
+    const headers = new Headers(result.headers);
+    const explicitCt = headers.get("content-type");
+    const treatAsJson = !explicitCt || explicitCt.includes("application/json");
+    if (!explicitCt) headers.set("content-type", "application/json");
+
+    let body: BodyInit | null;
+    let rawBody: Uint8Array | null = null;
+    let isStream = false;
+    if (result.body === undefined || result.body === null) {
+      body = null;
+    } else if (!treatAsJson && typeof result.body === "string") {
+      const bytes = TEXT_ENCODER.encode(result.body);
+      setContentLength(headers, bytes.byteLength);
+      body = bytes;
+      rawBody = bytes;
+    } else if (!treatAsJson && result.body instanceof Uint8Array) {
+      setContentLength(headers, result.body.byteLength);
+      body = result.body as BodyInit;
+      rawBody = result.body;
+    } else if (!treatAsJson && result.body instanceof ArrayBuffer) {
+      setContentLength(headers, result.body.byteLength);
+      body = result.body as BodyInit;
+      rawBody = new Uint8Array(result.body);
+    } else if (!treatAsJson && (result.body as any) instanceof ReadableStream) {
+      body = result.body as BodyInit;
+      isStream = true;
+    } else {
+      const bytes = TEXT_ENCODER.encode(JSON.stringify(result.body));
+      setContentLength(headers, bytes.byteLength);
+      body = bytes;
+      rawBody = bytes;
+    }
+    const response = new Response(body, { status: result.status, headers });
+    if (!isStream) {
+      (response as any)[DALOY_RAW_BODY] = rawBody;
+    }
+    return response;
+  };
+
   if (validateResponses && spec.body) {
-    const r = await validate(spec.body, result.body);
-    if (r.issues) {
-      throw new InternalError(
-        `Response body for ${def.method} ${def.path} failed schema validation: ${r.issues
-          .map((i) => i.message)
-          .join("; ")}`,
-      );
+    // Call the Standard Schema validator directly so a sync validator
+    // stays on the sync fast path. The public `validate()` helper always
+    // returns a Promise (stable API surface), but here we own the schema
+    // and can branch on whether validation actually needed to suspend.
+    const r = spec.body["~standard"].validate(result.body);
+    if (isPromiseLike(r)) {
+      return r.then((resolved) => {
+        if (resolved.issues) {
+          throw new InternalError(
+            `Response body for ${def.method} ${def.path} failed schema validation: ${resolved.issues
+              .map((i: { message: string }) => i.message)
+              .join("; ")}`,
+          );
+        }
+        return finish();
+      });
+    } else {
+      if ((r as any).issues) {
+        throw new InternalError(
+          `Response body for ${def.method} ${def.path} failed schema validation: ${(r as any).issues
+            .map((i: any) => i.message)
+            .join("; ")}`,
+        );
+      }
     }
   }
-  const headers = new Headers(result.headers);
-  const explicitCt = headers.get("content-type");
-  const treatAsJson = !explicitCt || explicitCt.includes("application/json");
-  if (!explicitCt) headers.set("content-type", "application/json");
 
-  let body: BodyInit | null;
-  if (result.body === undefined || result.body === null) {
-    body = null;
-  } else if (
-    !treatAsJson &&
-    (typeof result.body === "string" ||
-      result.body instanceof Uint8Array ||
-      result.body instanceof ArrayBuffer)
-  ) {
-    body = result.body as BodyInit;
-  } else if (!treatAsJson && (result.body as any) instanceof ReadableStream) {
-    body = result.body as BodyInit;
-  } else {
-    body = JSON.stringify(result.body);
-  }
-  return new Response(body, { status: result.status, headers });
+  return finish();
+}
+
+function setContentLength(headers: Headers, byteLength: number): void {
+  if (!headers.has("content-length")) headers.set("content-length", String(byteLength));
 }
 
 function mockResponseFor(def: RouteDefinition<any, any, any, any>) {
@@ -3069,14 +3367,15 @@ function runHandler(
   def: RouteDefinition<any, any, any, any>,
   ctx: BaseContext<any, any>,
   requestTimeoutMs: number,
-): Promise<unknown> {
-  const handlerPromise = Promise.resolve(def.handler(ctx));
-  return requestTimeoutMs > 0
-    ? withTimeout(handlerPromise, requestTimeoutMs)
-    : handlerPromise;
+): unknown {
+  const result = def.handler(ctx);
+  if (requestTimeoutMs === 0 || !isPromiseLike(result)) {
+    return result;
+  }
+  return withTimeout(result, requestTimeoutMs);
 }
 
-function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+function withTimeout<T>(p: PromiseLike<T>, ms: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const t = setTimeout(() => reject(new RequestTimeoutError(ms)), ms);
     p.then(
