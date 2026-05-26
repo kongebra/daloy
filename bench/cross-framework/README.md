@@ -90,6 +90,83 @@ To change durations:
 DURATION=20 CONNECTIONS=200 node run.mjs
 ```
 
+## Beyond the default throughput run
+
+The default `run.mjs` measures requests/sec and latency for three small
+endpoints. Real frameworks differ on many other axes that affect the
+production experience. Each of the scripts below is a sibling of `run.mjs`
+and can be run independently. They all share `lib/common.mjs` for server
+spawning, machine-info capture, and statistics helpers, and write their own
+`results.<scenario>.json`.
+
+| Script                  | Measures                                                                                   |
+| ----------------------- | ------------------------------------------------------------------------------------------ |
+| `run.mjs`               | Throughput + p50/p75/p90/p99/p99.9 latency. Supports `--sweep=connections` and `--sweep=pipelining`. Correctness preflight before measuring. |
+| `cold-start.mjs`        | Wall-clock from process `spawn()` to first `200 OK`, averaged over N iterations.            |
+| `install-size.mjs`      | `node_modules` footprint per framework: own size + transitive size + dep counts.            |
+| `bundle-size.mjs`       | esbuild ESM bundle of a minimal "hello world" app, raw and gzipped.                         |
+| `body-size-sweep.mjs`   | POST throughput across body sizes {100 B, 1 KiB, 16 KiB, 256 KiB, 1 MiB, 4 MiB}.            |
+| `memory-load.mjs`       | RSS at idle, during sustained load, and after settle. Detects leaks.                        |
+| `route-scale.mjs`       | Throughput when the router holds N routes {10, 100, 500, 2000}, hitting the worst-case slot.|
+| `error-path.mjs`        | Throughput of the 400 / 404 paths (malformed JSON, schema failure, route miss).             |
+| `streaming.mjs`         | Large `ReadableStream` response throughput in MiB/s and req/s.                              |
+| `middleware-stack.mjs`  | Same scenarios as `run.mjs` but with the production middleware stack on (CORS, secure headers, request-id, rate-limit, JWT verify). |
+
+Run any one:
+
+```bash
+node cold-start.mjs --only=daloy
+node body-size-sweep.mjs
+node middleware-stack.mjs
+```
+
+Run the full set sequentially:
+
+```bash
+pnpm bench:all   # ~25–40 min wall time depending on the matrix
+```
+
+### Methodology notes (apply to all scripts)
+
+- **Long warmup, then measure.** `run.mjs` defaults to a 15s warmup so V8
+  has time to tier up to TurboFan. Override with `WARMUP=30`.
+- **Multiple iterations, median + stddev.** Mean alone hides outliers.
+  Defaults: 3 iterations of 10s each. Override with `ITERATIONS=5
+  DURATION=20`.
+- **Correctness preflight.** `run.mjs` fetches each endpoint once before
+  benchmarking and aborts the run for that framework if the response body
+  doesn't match the expected shape — so "fastest" can't mean "returned the
+  wrong thing the fastest".
+- **Forced GC between iterations.** Run with `--expose-gc` (`node
+  --expose-gc run.mjs`) to discard heap pressure carried over from the
+  previous iteration.
+- **Per-iteration samples kept.** `results.*.json` carries every raw
+  sample, so you can re-render tables or compute percentiles without
+  re-running.
+- **Machine fingerprint captured.** Every results file records Node
+  version, OS, CPU model, core count, and total RAM. Compare apples to
+  apples.
+
+### What's still not measured
+
+- **Multi-runtime parity.** This folder only spawns Node servers. For
+  Daloy specifically, you can re-run any of these scripts against Bun
+  (`bun --bun run …`), Deno (`deno run -A …`), or the Cloudflare/Vercel
+  adapters by swapping the server file — the bench scripts only assume
+  the server emits a `READY <port>` line on stdout.
+- **TLS termination cost.**
+- **Real network latency.** Loopback only.
+- **WebSocket throughput.** Daloy has a `WebSocket` implementation; add a
+  bench script if you need numbers for it.
+- **Production logging.** The bench servers log nothing. Adding a real
+  logger will move every number.
+
+To change durations on the original throughput script:
+
+```bash
+DURATION=20 CONNECTIONS=200 node run.mjs
+```
+
 ## Output
 
 `run.mjs` writes a `results.json` and prints a markdown table:

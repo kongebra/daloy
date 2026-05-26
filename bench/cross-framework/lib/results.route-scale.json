@@ -1,0 +1,50 @@
+{
+  "ranAt": "2026-05-26T15:08:41.069Z",
+  "machine": {
+    "node": "v26.1.0",
+    "platform": "win32",
+    "arch": "x64",
+    "cpuModel": "Intel(R) Core(TM) Ultra 7 265H",
+    "cpuCount": 16,
+    "totalMemGiB": 31.46,
+    "loadAvg": [
+      0,
+      0,
+      0
+    ]
+  },
+  "config": {
+    "duration": 2,
+    "warmup": 2,
+    "iterations": 1,
+    "connections": 10,
+    "routeCounts": [
+      10
+    ]
+  },
+  "rows": [
+    {
+      "framework": "daloy",
+      "series": [
+        {
+          "routeCount": 10,
+          "reqPerSec": {
+            "n": 1,
+            "min": 23048,
+            "max": 23048,
+            "mean": 23048,
+            "median": 23048,
+            "stddev": 0
+          },
+          "p99": 1,
+          "samples": [
+            {
+              "reqPerSec": 23048,
+              "p99": 1
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

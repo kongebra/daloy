@@ -1,0 +1,144 @@
+#!/usr/bin/env node
+// Error-path benchmark: how fast does the framework reject a bad request?
+// We send POST /echo with malformed JSON and measure 400-response throughput.
+//
+// Why: many frameworks are 5-10x slower on errors because they synthesize
+// stack traces, allocate problem documents, or run extra middleware.
+//
+// Usage:
+//   node error-path.mjs
+//   node error-path.mjs --only=daloy
+
+import { writeFileSync } from "node:fs";
+import path from "node:path";
+import autocannon from "autocannon";
+import {
+  __dirname, machineInfo, parseArgs,
+  startServer, killServer, waitForHealthy, stats, fmt,
+} from "./lib/common.mjs";
+
+const FRAMEWORKS = [
+  { name: "daloy", file: "servers/daloy.ts" },
+];
+
+const args = parseArgs(process.argv);
+const ONLY = args.only ? new Set(args.only.split(",")) : null;
+const DURATION = Number(process.env.DURATION ?? 10);
+const WARMUP = Number(process.env.WARMUP ?? 10);
+const ITERATIONS = Number(process.env.ITERATIONS ?? 3);
+const CONNECTIONS = Number(process.env.CONNECTIONS ?? 100);
+const PORT = 3570;
+
+const SCENARIOS = [
+  {
+    id: "malformed-json",
+    title: "POST /echo malformed JSON",
+    body: "{not json",
+    expectStatus: 400,
+  },
+  {
+    id: "schema-fail",
+    title: "POST /echo schema fail (wrong type)",
+    body: JSON.stringify({ name: 42 }),
+    expectStatus: 400,
+  },
+  {
+    id: "not-found",
+    title: "GET /does-not-exist",
+    method: "GET",
+    urlPath: "/does-not-exist",
+    expectStatus: 404,
+  },
+];
+
+function runAutocannon(sc, duration) {
+  return new Promise((resolve, reject) => {
+    const instance = autocannon({
+      url: `http://127.0.0.1:${PORT}${sc.urlPath ?? "/echo"}`,
+      method: sc.method ?? "POST",
+      headers: sc.method === "GET" ? undefined : { "content-type": "application/json" },
+      body: sc.body,
+      connections: CONNECTIONS,
+      pipelining: 1,
+      duration,
+      // autocannon counts any non-2xx as "non2xx" by default.
+      // We're EXPECTING non-2xx here, so we treat them as success.
+      expectBody: undefined,
+    }, (err, result) => err ? reject(err) : resolve(result));
+    autocannon.track(instance, { renderProgressBar: false, renderResultsTable: false, renderLatencyTable: false });
+  });
+}
+
+async function benchOne(fw) {
+  console.error(`\n=== ${fw.name} ===`);
+  const child = await startServer(fw.file, { port: PORT });
+  await waitForHealthy(PORT);
+  try {
+    const out = {};
+    for (const sc of SCENARIOS) {
+      await runAutocannon(sc, WARMUP);
+      const samples = [];
+      for (let i = 0; i < ITERATIONS; i++) {
+        const r = await runAutocannon(sc, DURATION);
+        samples.push({
+          reqPerSec: r.requests.average,
+          p99: r.latency.p99,
+          status2xx: r["2xx"] ?? 0,
+          nonExpected: r.non2xx ?? 0,
+        });
+      }
+      const rps = stats(samples.map((s) => s.reqPerSec));
+      const p99 = samples.reduce((a, s) => a + s.p99, 0) / samples.length;
+      out[sc.id] = { reqPerSec: rps, p99, samples };
+      console.error(`  ${sc.title.padEnd(40)} ${fmt(rps.median).padStart(8)} req/s  p99 ${p99.toFixed(2)}ms`);
+    }
+    return out;
+  } finally {
+    await killServer(child);
+  }
+}
+
+async function main() {
+  const targets = FRAMEWORKS.filter((f) => !ONLY || ONLY.has(f.name));
+  const rows = [];
+  for (const fw of targets) {
+    try {
+      const results = await benchOne(fw);
+      rows.push({ framework: fw.name, results });
+    } catch (err) {
+      console.error(`  ✗ ${fw.name} failed: ${err.message}`);
+      rows.push({ framework: fw.name, error: err.message });
+    }
+  }
+
+  const lines = [
+    "| Framework  | scenario                              | req/s (median) | p99 (ms) |",
+    "| ---------- | :------------------------------------ | -------------: | -------: |",
+  ];
+  for (const r of rows) {
+    if (!r.results) continue;
+    for (const sc of SCENARIOS) {
+      const s = r.results[sc.id];
+      if (!s) continue;
+      lines.push(
+        `| ${r.framework.padEnd(10)} `
+        + `| ${sc.title.padEnd(37)} `
+        + `| ${fmt(s.reqPerSec.median).padStart(14)} `
+        + `| ${s.p99.toFixed(2).padStart(8)} |`,
+      );
+    }
+  }
+  console.log("\n" + lines.join("\n") + "\n");
+
+  writeFileSync(
+    path.join(__dirname, "results.error-path.json"),
+    JSON.stringify({
+      ranAt: new Date().toISOString(),
+      machine: machineInfo(),
+      config: { duration: DURATION, warmup: WARMUP, iterations: ITERATIONS, connections: CONNECTIONS },
+      rows,
+    }, null, 2),
+  );
+}
+
+main().catch((err) => { console.error(err); process.exit(1); });

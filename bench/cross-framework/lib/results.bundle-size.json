@@ -1,0 +1,23 @@
+{
+  "ranAt": "2026-05-26T15:07:40.460Z",
+  "machine": {
+    "node": "v26.1.0",
+    "platform": "win32",
+    "arch": "x64",
+    "cpuModel": "Intel(R) Core(TM) Ultra 7 265H",
+    "cpuCount": 16,
+    "totalMemGiB": 31.46,
+    "loadAvg": [
+      0,
+      0,
+      0
+    ]
+  },
+  "rows": [
+    {
+      "framework": "daloy",
+      "raw": 77942,
+      "gzipped": 26511
+    }
+  ]
+}

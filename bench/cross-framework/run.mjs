@@ -1,20 +1,37 @@
 #!/usr/bin/env node
 // Cross-framework HTTP benchmark runner.
-// See ./README.md for methodology.
+//
+// What this measures (per scenario per framework):
+//   - throughput (req/s): mean, median, stddev, min, max across iterations
+//   - latency (ms): p50, p75, p90, p99, p99.9 averaged across iterations
+//   - error rate: non-2xx, socket errors, timeouts, resets
+//
+// Methodology hardening vs. the prior runner:
+//   - longer warmup (default 15s) so V8 has tiered up before measurement
+//   - correctness preflight: every endpoint must return the expected body
+//     before benchmarking starts. Mismatches abort that framework.
+//   - optional connection-count sweep: --sweep=connections runs every scenario
+//     at {10, 100, 500, 1000} connections so you can see saturation curves.
+//   - optional pipelining sweep: --sweep=pipelining runs at {1, 4, 10}.
+//   - per-iteration samples kept; results.json carries the full histogram.
+//   - machine info captured (CPU model, core count, RAM, Node version).
 //
 // Usage:
 //   node run.mjs
-//   node run.mjs --only=daloy,fastify,hono
-//   DURATION=20 CONNECTIONS=200 node run.mjs
+//   node run.mjs --only=daloy
+//   node run.mjs --sweep=connections
+//   node run.mjs --sweep=pipelining
+//   DURATION=20 WARMUP=30 ITERATIONS=5 node run.mjs
 
-import { spawn } from "node:child_process";
-import { setTimeout as wait } from "node:timers/promises";
 import { writeFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import path from "node:path";
 import autocannon from "autocannon";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+import {
+  __dirname, machineInfo, parseArgs,
+  startServer, killServer,
+  waitForHealthy, httpRequest,
+  stats, fmt,
+} from "./lib/common.mjs";
 
 const FRAMEWORKS = [
   { name: "daloy",    file: "servers/daloy.ts" },
@@ -27,130 +44,149 @@ const FRAMEWORKS = [
   // { name: "feathers", file: "servers/feathers.ts" },
 ];
 
-const args = Object.fromEntries(
-  process.argv.slice(2)
-    .filter((a) => a.startsWith("--"))
-    .map((a) => {
-      const [k, v] = a.replace(/^--/, "").split("=");
-      return [k, v ?? "true"];
-    }),
-);
-
+const args = parseArgs(process.argv);
 const ONLY = args.only ? new Set(args.only.split(",")) : null;
 const DURATION = Number(process.env.DURATION ?? 10);
-const CONNECTIONS = Number(process.env.CONNECTIONS ?? 100);
-const PIPELINING = Number(process.env.PIPELINING ?? 1);
-const WARMUP_SECONDS = 5;
-const ITERATIONS = 3;
+const WARMUP_SECONDS = Number(process.env.WARMUP ?? 15);
+const ITERATIONS = Number(process.env.ITERATIONS ?? 3);
 const PORT = 3456;
 
+const SWEEP = args.sweep ?? null;
+const CONNECTION_POINTS = SWEEP === "connections" ? [10, 100, 500, 1000] : [Number(process.env.CONNECTIONS ?? 100)];
+const PIPELINING_POINTS = SWEEP === "pipelining" ? [1, 4, 10] : [Number(process.env.PIPELINING ?? 1)];
+
 const SCENARIOS = [
-  { id: "static",   title: "GET /static",     method: "GET",  path: "/static" },
-  { id: "dynamic",  title: "GET /users/:id",  method: "GET",  path: "/users/42" },
-  { id: "echo",     title: "POST /echo",      method: "POST", path: "/echo",
+  {
+    id: "static",
+    title: "GET /static",
+    method: "GET",
+    path: "/static",
+    expect: (body) => JSON.parse(body).ok === true,
+  },
+  {
+    id: "dynamic",
+    title: "GET /users/:id",
+    method: "GET",
+    path: "/users/42",
+    expect: (body) => JSON.parse(body).id === "42",
+  },
+  {
+    id: "echo",
+    title: "POST /echo",
+    method: "POST",
+    path: "/echo",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ name: "alice" }) },
+    body: JSON.stringify({ name: "alice" }),
+    expect: (body) => JSON.parse(body).name === "alice",
+  },
 ];
 
-function startServer(file) {
-  const child = spawn(
-    process.execPath,
-    ["--import", "tsx", path.join(__dirname, file)],
-    {
-      cwd: __dirname,
-      env: { ...process.env, PORT: String(PORT), NODE_ENV: "production" },
-      stdio: ["ignore", "pipe", "pipe"],
-    },
-  );
-
-  return new Promise((resolve, reject) => {
-    let resolved = false;
-    const onData = (buf) => {
-      if (resolved) return;
-      if (buf.toString().includes(`READY ${PORT}`)) {
-        resolved = true;
-        resolve(child);
-      }
-    };
-    child.stdout.on("data", onData);
-    // Suppress framework log spam but surface real crashes.
-    let stderrBuf = "";
-    child.stderr.on("data", (buf) => {
-      stderrBuf += buf.toString();
-    });
-    child.once("exit", (code) => {
-      if (!resolved) {
-        reject(new Error(`Server exited with code ${code} before READY.\nstderr: ${stderrBuf}`));
-      }
-    });
-    setTimeout(() => {
-      if (!resolved) {
-        try { child.kill("SIGKILL"); } catch {}
-        reject(new Error(`Server did not emit READY within 15s.\nstderr: ${stderrBuf}`));
-      }
-    }, 15_000);
-  });
-}
-
-async function killServer(child) {
-  if (child.exitCode != null) return;
-  child.kill("SIGTERM");
-  const exited = await Promise.race([
-    new Promise((r) => child.once("exit", () => r(true))),
-    wait(3_000, false),
-  ]);
-  if (!exited) child.kill("SIGKILL");
-  // Give the kernel a moment to release the port.
-  await wait(250);
-}
-
-function runAutocannon(scenario, duration) {
+function runAutocannon(scenario, { duration, connections, pipelining }) {
   return new Promise((resolve, reject) => {
     const instance = autocannon({
       url: `http://127.0.0.1:${PORT}${scenario.path}`,
       method: scenario.method,
       headers: scenario.headers,
       body: scenario.body,
-      connections: CONNECTIONS,
-      pipelining: PIPELINING,
+      connections,
+      pipelining,
       duration,
-    }, (err, result) => {
-      if (err) reject(err);
-      else resolve(result);
-    });
-    // No live progress bar — we want clean output.
+    }, (err, result) => err ? reject(err) : resolve(result));
     autocannon.track(instance, { renderProgressBar: false, renderResultsTable: false, renderLatencyTable: false });
   });
 }
 
+async function preflight(scenario) {
+  const url = `http://127.0.0.1:${PORT}${scenario.path}`;
+  const r = await httpRequest(url, {
+    method: scenario.method,
+    headers: scenario.headers,
+    body: scenario.body,
+  });
+  if (r.status !== 200) {
+    throw new Error(`preflight ${scenario.id}: status ${r.status} (expected 200)`);
+  }
+  let ok = false;
+  try { ok = scenario.expect(r.body); } catch { /* ok stays false */ }
+  if (!ok) {
+    throw new Error(`preflight ${scenario.id}: body did not match. Got: ${r.body.slice(0, 200)}`);
+  }
+}
+
+function summarize(samples) {
+  const rps = stats(samples.map((s) => s.reqPerSec));
+  const meanOf = (k) => samples.reduce((a, s) => a + s[k], 0) / samples.length;
+  return {
+    reqPerSec: rps,
+    latency: {
+      p50:  meanOf("p50"),
+      p75:  meanOf("p75"),
+      p90:  meanOf("p90"),
+      p99:  meanOf("p99"),
+      p999: meanOf("p999"),
+    },
+    errors: {
+      non2xx:   samples.reduce((a, s) => a + s.non2xx, 0),
+      errors:   samples.reduce((a, s) => a + s.errors, 0),
+      timeouts: samples.reduce((a, s) => a + s.timeouts, 0),
+      resets:   samples.reduce((a, s) => a + s.resets, 0),
+    },
+    samples,
+  };
+}
+
 async function benchOne(fw) {
   console.error(`\n=== ${fw.name} ===`);
-  const child = await startServer(fw.file);
+  const child = await startServer(fw.file, { port: PORT });
+  await waitForHealthy(PORT);
   try {
+    for (const sc of SCENARIOS) await preflight(sc);
+
     const results = {};
-    for (const sc of SCENARIOS) {
-      // Warmup (discarded).
-      await runAutocannon(sc, WARMUP_SECONDS);
-      const samples = [];
-      for (let i = 0; i < ITERATIONS; i++) {
-        const r = await runAutocannon(sc, DURATION);
-        samples.push({
-          reqPerSec: r.requests.average,
-          p99: r.latency.p99,
-          nonExpectedStatusCodes: r.non2xx,
-        });
+    for (const connections of CONNECTION_POINTS) {
+      for (const pipelining of PIPELINING_POINTS) {
+        const pointKey = `c${connections}_p${pipelining}`;
+        results[pointKey] = {};
+        for (const sc of SCENARIOS) {
+          await runAutocannon(sc, { duration: WARMUP_SECONDS, connections, pipelining });
+          if (global.gc) global.gc();
+
+          const samples = [];
+          for (let i = 0; i < ITERATIONS; i++) {
+            const r = await runAutocannon(sc, { duration: DURATION, connections, pipelining });
+            samples.push({
+              reqPerSec: r.requests.average,
+              p50:  r.latency.p50,
+              p75:  r.latency.p75,
+              p90:  r.latency.p90,
+              p99:  r.latency.p99,
+              p999: r.latency.p99_9 ?? r.latency.p99,
+              non2xx:   r.non2xx ?? 0,
+              errors:   r.errors ?? 0,
+              timeouts: r.timeouts ?? 0,
+              resets:   r.resets ?? 0,
+            });
+            if (global.gc) global.gc();
+          }
+          const summary = summarize(samples);
+          results[pointKey][sc.id] = summary;
+          const totalErr = summary.errors.non2xx + summary.errors.errors + summary.errors.timeouts;
+          const errBadge = totalErr > 0
+            ? `  ⚠ non2xx=${summary.errors.non2xx} err=${summary.errors.errors} to=${summary.errors.timeouts}`
+            : "";
+          const suffix = (CONNECTION_POINTS.length > 1 || PIPELINING_POINTS.length > 1)
+            ? ` [c=${connections} p=${pipelining}]` : "";
+          console.error(
+            `  ${sc.title.padEnd(18)}${suffix.padEnd(14)} `
+            + `${fmt(summary.reqPerSec.median).padStart(8)} req/s `
+            + `(±${fmt(summary.reqPerSec.stddev).padStart(5)})  `
+            + `p50 ${summary.latency.p50.toFixed(2)}ms  `
+            + `p99 ${summary.latency.p99.toFixed(2)}ms  `
+            + `p99.9 ${summary.latency.p999.toFixed(2)}ms`
+            + errBadge,
+          );
+        }
       }
-      const mean = (xs) => xs.reduce((a, b) => a + b, 0) / xs.length;
-      results[sc.id] = {
-        reqPerSec: mean(samples.map((s) => s.reqPerSec)),
-        p99: mean(samples.map((s) => s.p99)),
-        non2xx: samples.reduce((a, b) => a + b.nonExpectedStatusCodes, 0),
-        samples,
-      };
-      console.error(
-        `  ${sc.title.padEnd(20)} ${results[sc.id].reqPerSec.toFixed(0).padStart(10)} req/s   p99 ${results[sc.id].p99.toFixed(2)}ms`
-        + (results[sc.id].non2xx ? `  ⚠ ${results[sc.id].non2xx} non-2xx` : ""),
-      );
     }
     return results;
   } finally {
@@ -159,18 +195,22 @@ async function benchOne(fw) {
 }
 
 function renderTable(rows) {
-  const fmt = (n) => Math.round(n).toLocaleString("en-US");
+  const pointKey = `c${CONNECTION_POINTS[0]}_p${PIPELINING_POINTS[0]}`;
   const lines = [
-    "| Framework  | GET /static (req/s) | GET /users/:id (req/s) | POST /echo (req/s) | p99 /static (ms) |",
-    "| ---------- | ------------------: | ---------------------: | -----------------: | ---------------: |",
+    "| Framework  | GET /static (req/s) | GET /users/:id (req/s) | POST /echo (req/s) | p50 (ms) | p99 (ms) | p99.9 (ms) |",
+    "| ---------- | ------------------: | ---------------------: | -----------------: | -------: | -------: | ---------: |",
   ];
   for (const r of rows) {
+    const p = r.results?.[pointKey];
+    if (!p) continue;
     lines.push(
       `| ${r.framework.padEnd(10)} `
-      + `| ${fmt(r.results.static.reqPerSec).padStart(19)} `
-      + `| ${fmt(r.results.dynamic.reqPerSec).padStart(22)} `
-      + `| ${fmt(r.results.echo.reqPerSec).padStart(18)} `
-      + `| ${r.results.static.p99.toFixed(2).padStart(16)} |`,
+      + `| ${fmt(p.static.reqPerSec.median).padStart(19)} `
+      + `| ${fmt(p.dynamic.reqPerSec.median).padStart(22)} `
+      + `| ${fmt(p.echo.reqPerSec.median).padStart(18)} `
+      + `| ${p.static.latency.p50.toFixed(2).padStart(8)} `
+      + `| ${p.static.latency.p99.toFixed(2).padStart(8)} `
+      + `| ${p.static.latency.p999.toFixed(2).padStart(10)} |`,
     );
   }
   return lines.join("\n");
@@ -190,18 +230,21 @@ async function main() {
   }
 
   const ok = rows.filter((r) => r.results);
-  const table = renderTable(ok);
-  console.log("\n" + table + "\n");
+  console.log("\n" + renderTable(ok) + "\n");
 
   writeFileSync(
     path.join(__dirname, "results.json"),
     JSON.stringify({
       ranAt: new Date().toISOString(),
-      node: process.version,
-      duration: DURATION,
-      connections: CONNECTIONS,
-      pipelining: PIPELINING,
-      iterations: ITERATIONS,
+      machine: machineInfo(),
+      config: {
+        duration: DURATION,
+        warmup: WARMUP_SECONDS,
+        iterations: ITERATIONS,
+        connectionPoints: CONNECTION_POINTS,
+        pipeliningPoints: PIPELINING_POINTS,
+        sweep: SWEEP,
+      },
       rows,
     }, null, 2),
   );

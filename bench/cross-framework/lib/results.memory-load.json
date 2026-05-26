@@ -1,0 +1,93 @@
+{
+  "ranAt": "2026-05-26T15:08:33.215Z",
+  "machine": {
+    "node": "v26.1.0",
+    "platform": "win32",
+    "arch": "x64",
+    "cpuModel": "Intel(R) Core(TM) Ultra 7 265H",
+    "cpuCount": 16,
+    "totalMemGiB": 31.46,
+    "loadAvg": [
+      0,
+      0,
+      0
+    ]
+  },
+  "config": {
+    "duration": 4,
+    "connections": 200,
+    "sampleIntervalMs": 1000
+  },
+  "rows": [
+    {
+      "framework": "daloy",
+      "idleRss": 959283.2,
+      "loadAvgRss": 303104,
+      "peakRss": 675840,
+      "settleRss": 708608,
+      "growth": -250675.19999999995,
+      "idleSamples": [
+        {
+          "t": 216,
+          "rss": 946176
+        },
+        {
+          "t": 1391,
+          "rss": 962560
+        },
+        {
+          "t": 2646,
+          "rss": 962560
+        },
+        {
+          "t": 3825,
+          "rss": 962560
+        },
+        {
+          "t": 5026,
+          "rss": 962560
+        }
+      ],
+      "loadSamples": [
+        {
+          "t": 228,
+          "rss": 675840
+        },
+        {
+          "t": 1443,
+          "rss": 233472
+        },
+        {
+          "t": 2623,
+          "rss": 28672
+        },
+        {
+          "t": 3804,
+          "rss": 274432
+        }
+      ],
+      "settleSamples": [
+        {
+          "t": 193,
+          "rss": 708608
+        },
+        {
+          "t": 1382,
+          "rss": 708608
+        },
+        {
+          "t": 2577,
+          "rss": 708608
+        },
+        {
+          "t": 3722,
+          "rss": 708608
+        },
+        {
+          "t": 4888,
+          "rss": 708608
+        }
+      ]
+    }
+  ]
+}
