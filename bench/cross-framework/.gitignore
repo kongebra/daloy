@@ -1,4 +1,5 @@
 node_modules/
 results.json
+lib/results.*.json
 pnpm-lock.yaml
 package-lock.json
