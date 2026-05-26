@@ -168,3 +168,97 @@ For the common case — a JSON request body well under 1 MiB whose `Content-Leng
 - `src/middleware.ts` — `secureHeaders` defaults trimmed to `onResponse` only, precomputed `headerEntries`.
 
 No public API surface changed. `pnpm typecheck` is clean. The focused test suites pass. Security verify scripts are unaffected.
+
+---
+
+## Round 10 — install size: stop shipping `.map` files
+
+**Problem.** `pnpm bench:install-size` showed `@daloyjs/core` at **1,369 KiB across 187 files**, narrowly beating Hono on bytes but only because Hono ships a *lot* of small files. Inspecting the installed tarball revealed the bulk wasn't code — it was source maps:
+
+| Category | Files | Size |
+| --- | ---: | ---: |
+| `.js` (code) | 46 | 542.5 KiB |
+| `.d.ts` (types) | 46 | ~201.6 KiB |
+| **`.js.map`** | **46** | **389.2 KiB** |
+| **`.d.ts.map`** | **46** | **91.8 KiB** |
+
+The root `tsconfig.json` had `sourceMap: true` and `declarationMap: true` — perfect for local development, but those flags were also driving the publish build. Consumers were paying ~480 KiB of `.map` files that no production server ever opens.
+
+**What changed.**
+
+- New `tsconfig.build.json` extends the root config and overrides `sourceMap: false`, `declarationMap: false`. Local `pnpm dev` keeps maps for editor DX; only the publish path strips them.
+- `package.json` `build` script switched from `tsc -p tsconfig.json` to `tsc -p tsconfig.build.json`.
+- `files` allowlist (`["dist", "bin", "README.md"]`) stayed untouched — already correct.
+
+**Why this is safe.** No source file changed. No security guardrail, runtime behavior, type signature, or public export is affected. Stack traces in consumer apps now point at compiled JS line numbers instead of original TS, which is exactly what every other server framework in the benchmark already does (Hono, Fastify, Express, Koa, h3 — none ship `.js.map`).
+
+**Posture choice.** This is **Posture A** — "no maps, no src" — the dominant pattern for server frameworks. Posture B (ship `.d.ts.map` + `src/` for clickable "Go to Definition" into original TS) was tried and reverted: the `src/` folder is 687 KiB of heavily commented TypeScript, which would have pushed daloy *above* Hono (1,662 vs 1,383 KiB). For type-API libraries (tRPC, Zod, TypeScript itself) Posture B is correct; for a server framework competing on install footprint, Posture A wins.
+
+**Measured effect.** Install size dropped from **1,369 KiB / 187 files → 881 KiB / 94 files** — **−36% bytes, −50% files**, while still shipping every adapter, JWT/JWK, hashing, `fetchGuard`, `secureHeaders`, rate limiting, WebSocket, multipart, compression, sessions, cookies, ETag, OpenAPI generation, and the CLI tool.
+
+---
+
+## Round 11 — fix the cross-framework install-size benchmark
+
+**Problem.** Once daloy was the smallest zero-dep framework in our bench, the table started looking suspicious in the other direction. The original `install-size.mjs` reported:
+
+| Framework | own KiB | total KiB | direct deps | transitive deps |
+| --- | ---: | ---: | ---: | ---: |
+| express | 74 | **74** | 28 | **0** |
+| koa | 64 | **64** | 18 | **0** |
+| fastify | 2,721 | **2,721** | 15 | **0** |
+| nest | 541 | 5,597 | 12 | 3 |
+| elysia | 1,088 | 1,088 | 9 | 0 |
+
+Express showing **74 KiB total with 28 direct deps and zero transitives** is obviously wrong — a real `du -sh node_modules/express` lands around 2 MiB. The number was indefensible: any reviewer would spot it in five seconds.
+
+**Two bugs in `bench/cross-framework/install-size.mjs`.**
+
+1. **pnpm-blind dep resolution.** `findPackageRoot(name)` only checked `node_modules/<name>` at top level. With pnpm's strict layout, transitive deps live under `node_modules/.pnpm/<pkg>@<ver>/node_modules/<name>` and are *not* hoisted. So for every package whose deps weren't also direct workspace deps, `collectDeps` looked them up, got `null`, and silently counted nothing.
+2. **Optional peer deps inflating the count.** Once the resolver was fixed, elysia jumped to **25,006 KiB total** — driven entirely by `typescript` (~24 MiB), which is an *optional* peer dep that npm/pnpm don't install automatically. Counting it overstates what real consumers actually pay.
+
+**What changed.**
+
+- Replaced `findPackageRoot(name)` with `resolveDepFrom(parentPkgRoot, depName)` — uses `createRequire(parent).resolve('<dep>/package.json')` so Node's resolver walks the symlink graph from each package's own location. Works for pnpm strict, pnpm hoisted, and flat npm layouts identically.
+- Changed `allDeps` from `Set` to `Map<name, resolvedPath>` so the walk phase uses the path that resolution actually found, not a fresh top-level lookup.
+- Switched `seen` from a per-package `new Set()` to a single shared `Set` across all walks, so packages hardlinked by pnpm's content-addressable store aren't double-counted across deps.
+- `collectDeps` now reads `peerDependenciesMeta` and skips peers marked `optional: true`. Required peers still count.
+
+**Why this is safe.** The benchmark file isn't shipped, has no security implications, and the changes are purely accuracy fixes. No framework's own code was touched.
+
+**Measured effect.** The table is now defensible:
+
+| Framework | own KiB | total KiB | direct deps | transitive deps |
+| --- | ---: | ---: | ---: | ---: |
+| daloy | 881 | **881** | 0 | **0** |
+| feathers | 158 | 297 | 3 | 2 |
+| koa | 64 | 586 | 18 | 29 |
+| hono | 1,383 | 1,383 | 0 | 0 |
+| elysia | 1,088 | 1,222 | 9 | 4 |
+| express | 74 | **1,976** | 28 | **61** |
+| nest | 541 | 6,319 | 12 | 20 |
+| fastify | 2,721 | 6,979 | 15 | 42 |
+
+Headline findings the broken bench was hiding:
+- Express has **89 packages** in its installed footprint (28 direct + 61 transitive). The "tiny core" framing is misleading once you measure what actually lands in `node_modules`.
+- Fastify's true installed size is **~7 MiB across 1,932 files**, not 2.7 MiB.
+- Nest is the file-count champion at **3,267 files**.
+- Daloy is the **smallest zero-dep "batteries-included" framework** — beaten only by feathers (158 KiB) and koa (64 KiB), both of which are minimal cores that require additional packages and dep-graph trust to reach feature parity.
+
+---
+
+## Lessons (additions)
+
+7. **Build configs are publishing decisions.** A single `tsconfig.json` that's good for `tsc -w` is rarely the right config for `tsc` on publish. Splitting into `tsconfig.json` (dev: maps on) + `tsconfig.build.json` (publish: maps off) is a one-time setup that pays back every release.
+8. **"Best practice" depends on what you're publishing.** Posture A (no maps, no src) is right for server frameworks; Posture B (declarationMap + src) is right for type-API libraries. Anchor on what your *closest competitors* ship, not on the most-cited TS guide.
+9. **Benchmarks you publish have to survive a hostile reviewer.** A number that looks too good (express at 74 KiB total) is a bigger reputation risk than a number that looks bad. Audit your own bench before someone else does.
+10. **pnpm changes how every dep-tree tool needs to work.** Tooling that only checks top-level `node_modules` is wrong on every modern pnpm-based project. `createRequire(parent).resolve('<dep>/package.json')` is the portable answer — works on pnpm strict, pnpm hoisted, and npm flat layouts.
+11. **Optional peers aren't real deps.** Counting `peerDependenciesMeta[name].optional === true` entries as installed cost overstates the footprint by huge margins (24 MiB for elysia's optional `typescript` peer). Real consumers only pay for required peers and ordinary deps.
+
+---
+
+## Files touched (Round 10–11)
+
+- `tsconfig.build.json` *(new)* — extends root config, disables `sourceMap` and `declarationMap` for publish.
+- `package.json` — `build` script now uses `tsc -p tsconfig.build.json`; `files` allowlist unchanged.
+- `bench/cross-framework/install-size.mjs` — pnpm-aware `resolveDepFrom` via `createRequire`, shared `seen` across walks, skip optional peer deps via `peerDependenciesMeta`.

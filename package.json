@@ -159,7 +159,7 @@
     "zod": "^4.4.3"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.build.json",
     "dev": "tsc -w -p tsconfig.json",
     "example": "node --import tsx examples/basic.ts",
     "bench": "node --import tsx bench/router.bench.ts",
