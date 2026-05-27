@@ -20,7 +20,14 @@ import {
 } from "./lib/common.mjs";
 
 const FRAMEWORKS = [
-  { name: "daloy", file: "servers/daloy-stream.ts" },
+  { name: "daloy",    file: "servers/daloy-stream.ts" },
+  // { name: "hono",     file: "servers/hono-stream.ts" },
+  // { name: "fastify",  file: "servers/fastify-stream.ts" },
+  // { name: "express",  file: "servers/express-stream.ts" },
+  // { name: "koa",      file: "servers/koa-stream.ts" },
+  // { name: "nest",     file: "servers/nest-stream.ts" },
+  // { name: "elysia",   file: "servers/elysia-stream.ts" },
+  // { name: "feathers", file: "servers/feathers-stream.ts" },
 ];
 
 const args = parseArgs(process.argv);
@@ -47,8 +54,8 @@ function runAutocannon(duration) {
 async function benchOne(fw) {
   console.error(`\n=== ${fw.name} ===`);
   const child = await startServer(fw.file, { port: PORT });
-  await waitForHealthy(PORT, "/health");
   try {
+    await waitForHealthy(PORT, "/health");
     await runAutocannon(WARMUP);
     const samples = [];
     for (let i = 0; i < ITERATIONS; i++) {

@@ -666,6 +666,16 @@ const TEXT_ENCODER = new TextEncoder();
 export const DALOY_RAW_BODY = Symbol.for("daloyjs.response.rawBody");
 
 /**
+ * Internal Symbol used by {@link serializeResult} to stash the raw
+ * `ReadableStream` returned by a handler on the resulting `Response`.
+ * Adapters can pipe this stream directly to the underlying transport,
+ * skipping the wrapper stream that `new Response(stream, ...)` exposes
+ * via `response.body`. Module-public so first-party adapters can opt in;
+ * not part of the userland API surface.
+ */
+export const DALOY_RAW_STREAM = Symbol.for("daloyjs.response.rawStream");
+
+/**
  * Internal Symbol used by adapters to stash a pre-buffered request body on
  * the `Request` instance. When set, {@link readBodyLimited} skips the
  * `ReadableStream` reader loop and returns the cached bytes directly after
@@ -3320,6 +3330,16 @@ function serializeResult(
     } else if (!treatAsJson && (result.body as any) instanceof ReadableStream) {
       body = result.body as BodyInit;
       isStream = true;
+    } else if (
+      !treatAsJson &&
+      result.body !== null &&
+      typeof (result.body as { pipe?: unknown }).pipe === "function"
+    ) {
+      // Node `Readable` (or any duck-typed pipeable). Pass through to the
+      // Node adapter as a raw stream; the standard `Response` can't carry a
+      // Node Readable, so body stays null and the adapter pipes directly.
+      body = null;
+      isStream = true;
     } else {
       const bytes = TEXT_ENCODER.encode(JSON.stringify(result.body));
       setContentLength(headers, bytes.byteLength);
@@ -3327,7 +3347,9 @@ function serializeResult(
       rawBody = bytes;
     }
     const response = new Response(body, { status: result.status, headers });
-    if (!isStream) {
+    if (isStream) {
+      (response as any)[DALOY_RAW_STREAM] = result.body;
+    } else {
       (response as any)[DALOY_RAW_BODY] = rawBody;
     }
     return response;

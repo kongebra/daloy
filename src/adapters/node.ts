@@ -12,7 +12,7 @@ import {
 import { Readable } from "node:stream";
 import type { Duplex } from "node:stream";
 import type { App } from "../app.js";
-import { DALOY_RAW_BODY, DALOY_REQUEST_RAW_BODY } from "../app.js";
+import { DALOY_RAW_BODY, DALOY_RAW_STREAM, DALOY_REQUEST_RAW_BODY } from "../app.js";
 import {
   FrameSink,
   encodeFrame,
@@ -333,6 +333,33 @@ function sendWebResponse(
     }
     return;
   }
+  // Fast-path: handler returned a raw stream. Check before `!res.body` —
+  // a Node Readable is stashed alongside a null Response body, and the
+  // `new Response(null)` constructor also auto-sets `content-length: 0`
+  // which we must strip so Node falls back to chunked transfer-encoding.
+  const rawStream = (res as any)[DALOY_RAW_STREAM] as
+    | ReadableStream<Uint8Array>
+    | Readable
+    | undefined;
+  if (rawStream !== undefined) {
+    if (typeof (rawStream as Readable).pipe === "function" && !(rawStream instanceof ReadableStream)) {
+      // Node `Readable` from the handler: skip the Web-stream bridge entirely
+      // and `.pipe(out)` like Fastify/Koa/Express do.
+      out.removeHeader("content-length");
+      return new Promise<void>((resolve, reject) => {
+        const r = rawStream as Readable;
+        const onError = (err: Error) => {
+          r.destroy();
+          reject(err);
+        };
+        r.once("error", onError);
+        out.once("error", onError);
+        out.once("finish", () => resolve());
+        r.pipe(out);
+      });
+    }
+    return pumpBody(rawStream as ReadableStream<Uint8Array>, out);
+  }
   if (!res.body) {
     out.end();
     return;
@@ -354,14 +381,20 @@ function sendWebResponse(
   return pumpBody(res.body, out);
 }
 
-async function pumpBody(body: ReadableStream<Uint8Array>, out: ServerResponse): Promise<void> {
-  const reader = body.getReader();
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    if (value) out.write(value);
-  }
-  out.end();
+function pumpBody(body: ReadableStream<Uint8Array>, out: ServerResponse): Promise<void> {
+  // Delegate to Node's native pipe: it honors backpressure and avoids the
+  // per-chunk microtask overhead of an explicit `await reader.read()` loop.
+  return new Promise((resolve, reject) => {
+    const readable = Readable.fromWeb(body as never);
+    const onError = (err: Error) => {
+      readable.destroy();
+      reject(err);
+    };
+    readable.once("error", onError);
+    out.once("error", onError);
+    out.once("finish", () => resolve());
+    readable.pipe(out);
+  });
 }
 
 // ---------- WebSocket upgrade ----------
