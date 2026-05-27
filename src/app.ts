@@ -766,6 +766,13 @@ export class App {
   private routeSecurityMarkers: RouteSecurityMarkers[] = [];
   /** Decorator bag merged into ctx.state on every request. */
   private decorations: Record<string, unknown> = {};
+  /**
+   * Count of own keys on {@link decorations}. Tracked alongside the bag so the
+   * dispatch hot path can take a `count === 0` fast path and skip the
+   * `Object.assign` spread on the common case (no `app.decorate()` calls).
+   * Updated only when {@link decorate} mutates the bag.
+   */
+  private decorationsCount: number = 0;
   private installedPlugins = new Set<string>();
   private closeHooks: Array<() => void | Promise<void>> = [];
   private closeHooksRun = false;
@@ -1997,7 +2004,9 @@ export class App {
         `decorate("${key}") replaced an existing decoration.`,
       );
     }
+    const hadKey = Object.prototype.hasOwnProperty.call(this.decorations, key);
     this.decorations[key] = value;
+    if (!hadKey) this.decorationsCount++;
     return this;
   }
 
@@ -2445,7 +2454,13 @@ export class App {
       }
 
       ctx = await buildContext(request, getUrl, match.params, def, this.options);
-      Object.assign(ctx.state, this.decorations, { requestId, log });
+      // Stable two-field write keeps `ctx.state`'s hidden class consistent across
+      // requests for the common no-decorator case. The decorations spread only
+      // fires when `app.decorate()` was actually called.
+      const state = ctx.state as Record<string, unknown>;
+      state.requestId = requestId;
+      state.log = log;
+      if (this.decorationsCount !== 0) Object.assign(state, this.decorations);
 
       if (allHooks.beforeHandle !== undefined) {
         const beforeResult = allHooks.beforeHandle(ctx);
@@ -3074,38 +3089,38 @@ function pipeline<F extends (ctx: any, value: any) => any>(
 }
 
 /**
- * Marker stamped on `ctx.set` once the `headers` getter has been
- * materialised. {@link copyContextHeaders} consults this to skip the
- * forEach loop entirely on requests where no middleware or handler ever
- * touched `ctx.set.headers` — the default case for the no-middleware
- * benchmark.
+ * Per-request response-side `set` object. Implemented as a class so every
+ * instance shares one V8 hidden class — the previous {@link Object.defineProperty}
+ * based factory installed fresh accessor descriptors on every request, which
+ * forced V8 to treat each `ctx.set` as a unique shape and tanked inline-cache
+ * sharing in `copyContextHeaders` and downstream hooks.
+ *
+ * `_h` is a public-but-underscored slot rather than a `#`-private field so
+ * the compiled output stays target-agnostic; consumer code that reads
+ * `ctx.set.headers` flows through the prototype getter and never sees it.
+ * `touched` replaces the prior `SET_HEADERS_TOUCHED` symbol — same intent,
+ * stable field offset.
  */
-const SET_HEADERS_TOUCHED: unique symbol = Symbol.for("daloyjs.app.setHeadersTouched");
-
-function makeLazySet(): { status?: number; headers: Headers } {
-  let h: Headers | undefined;
-  const set = {} as { status?: number; headers: Headers };
-  Object.defineProperty(set, "headers", {
-    get(): Headers {
-      if (h === undefined) {
-        h = new Headers();
-        (set as any)[SET_HEADERS_TOUCHED] = true;
-      }
-      return h;
-    },
-    set(v: Headers) {
-      h = v;
-      (set as any)[SET_HEADERS_TOUCHED] = true;
-    },
-    enumerable: true,
-    configurable: true,
-  });
-  return set;
+class LazyResponseSet {
+  status: number | undefined = undefined;
+  _h: Headers | undefined = undefined;
+  touched: boolean = false;
+  get headers(): Headers {
+    const h = this._h;
+    if (h !== undefined) return h;
+    this.touched = true;
+    return (this._h = new Headers());
+  }
+  set headers(v: Headers) {
+    this._h = v;
+    this.touched = true;
+  }
 }
 
 function copyContextHeaders(ctx: BaseContext<any, any>, res: Response): void {
-  if (!(ctx.set as any)[SET_HEADERS_TOUCHED]) return;
-  ctx.set.headers.forEach((v, k) => {
+  const set = ctx.set as LazyResponseSet;
+  if (set.touched !== true) return;
+  set._h!.forEach((v, k) => {
     if (!res.headers.has(k)) res.headers.set(k, v);
   });
 }
@@ -3115,6 +3130,64 @@ function hasRequestSchema(
   key: keyof RequestSchemas,
 ): boolean {
   return !!request && !!request[key];
+}
+
+/**
+ * Stable-shape per-request context. All fields are initialised in fixed
+ * order in the constructor so every dispatched request produces an instance
+ * with the same V8 hidden class — replacing the prior object-literal +
+ * {@link Object.defineProperty} pattern, which gave each request a unique
+ * shape and forced inline-cache misses through every downstream hook.
+ *
+ * `query` / `headers` are prototype getters that either return the value
+ * already stored on `_q` / `_h` (set eagerly by schema validation) or
+ * materialise it lazily from the captured builder closure on first read.
+ * The `_qSet` / `_hSet` flags distinguish "validated, value cached" from
+ * "not yet read" so setters from user hooks remain observable.
+ */
+class RequestContext {
+  request: Request;
+  params: any;
+  body: any = undefined;
+  state: any;
+  set: LazyResponseSet;
+  _q: any = undefined;
+  _qBuilder: (() => any) | undefined = undefined;
+  _qSet: boolean = false;
+  _h: any = undefined;
+  _hBuilder: (() => any) | undefined = undefined;
+  _hSet: boolean = false;
+  constructor(
+    request: Request,
+    params: any,
+    state: any,
+    set: LazyResponseSet,
+  ) {
+    this.request = request;
+    this.params = params;
+    this.state = state;
+    this.set = set;
+  }
+  get query(): any {
+    if (this._qSet) return this._q;
+    const b = this._qBuilder;
+    this._qSet = true;
+    return (this._q = b !== undefined ? b() : undefined);
+  }
+  set query(v: any) {
+    this._q = v;
+    this._qSet = true;
+  }
+  get headers(): any {
+    if (this._hSet) return this._h;
+    const b = this._hBuilder;
+    this._hSet = true;
+    return (this._h = b !== undefined ? b() : undefined);
+  }
+  set headers(v: any) {
+    this._h = v;
+    this._hSet = true;
+  }
 }
 
 function buildContext(
@@ -3128,7 +3201,7 @@ function buildContext(
     multipart?: AppOptions["multipart"];
   },
 ): BaseContext<any, any> | Promise<BaseContext<any, any>> {
-  const set = makeLazySet();
+  const set = new LazyResponseSet();
   const hasHeadersSchema = !!def.request?.headers;
   const hasQuerySchema = !!def.request?.query;
   let headersObj: Record<string, string> | undefined;
@@ -3145,25 +3218,22 @@ function buildContext(
 
   const hasSchema = def.request?.params || def.request?.query || def.request?.headers || def.request?.body;
 
-  const finishContext = () => {
-    const ctx = {
-      request,
-      params,
-      body,
-      state: {},
-      set,
-    } as unknown as BaseContext<any, any>;
+  const finishContext = (): BaseContext<any, any> => {
+    const ctx = new RequestContext(request, params, {}, set);
+    ctx.body = body;
     if (hasQuerySchema) {
-      (ctx as any).query = query;
+      ctx._q = query;
+      ctx._qSet = true;
     } else {
-      defineLazyContextProperty(ctx, "query", buildQuery);
+      ctx._qBuilder = buildQuery;
     }
     if (hasHeadersSchema) {
-      (ctx as any).headers = headers;
+      ctx._h = headers;
+      ctx._hSet = true;
     } else {
-      defineLazyContextProperty(ctx, "headers", buildHeaders);
+      ctx._hBuilder = buildHeaders;
     }
-    return ctx;
+    return ctx as unknown as BaseContext<any, any>;
   };
 
   if (!hasSchema) {
@@ -3209,30 +3279,6 @@ function buildContext(
 
   return finishContext();
   })();
-}
-
-function defineLazyContextProperty(
-  ctx: BaseContext<any, any>,
-  key: "query" | "headers",
-  build: () => unknown,
-): void {
-  let initialized = false;
-  let value: unknown;
-  Object.defineProperty(ctx, key, {
-    get() {
-      if (!initialized) {
-        value = build();
-        initialized = true;
-      }
-      return value;
-    },
-    set(next: unknown) {
-      value = next;
-      initialized = true;
-    },
-    enumerable: true,
-    configurable: true,
-  });
 }
 
 function headersToObject(h: Headers): Record<string, string> {

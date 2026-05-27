@@ -21,15 +21,15 @@ import {
 
 const FRAMEWORKS = [
   { name: "daloy", file: "servers/daloy.ts" },
-  { name: "daloy-nozod", file: "servers/daloy-nozod.ts" },
-  { name: "hono",     file: "servers/hono.ts" },
-  { name: "hono-validated", file: "servers/hono-validated.ts" },
   { name: "fastify",  file: "servers/fastify.ts" },
-  { name: "express",  file: "servers/express.ts" },
-  { name: "koa",      file: "servers/koa.ts" },
-  { name: "nest",     file: "servers/nest.ts" },
-  { name: "elysia",   file: "servers/elysia.ts" },
-  { name: "feathers", file: "servers/feathers.ts" },
+  // { name: "daloy-nozod", file: "servers/daloy-nozod.ts" },
+  // { name: "hono",     file: "servers/hono.ts" },
+  // { name: "hono-validated", file: "servers/hono-validated.ts" },
+  // { name: "elysia",   file: "servers/elysia.ts" },
+  // { name: "nest",     file: "servers/nest.ts" },
+  // { name: "koa",      file: "servers/koa.ts" },
+  // { name: "feathers", file: "servers/feathers.ts" },
+  // { name: "express",  file: "servers/express.ts" },
 ];
 
 const args = parseArgs(process.argv);

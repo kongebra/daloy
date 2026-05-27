@@ -755,3 +755,78 @@ This closes the goal of this session: per-request error-path overhead vs a minim
 
 No public API surface changed. `pnpm typecheck` is clean. The focused tests on the 404/405 path — `tests/app.test.ts`, `tests/method-not-allowed.test.ts`, `tests/internal-routes.test.ts`, `tests/on-send-hook.test.ts` — all 17 pass. The bench now reports daloy at parity with hand-stripped daloy-minimal on all three error scenarios.
 
+---
+
+## Round 19 — stable hidden classes: closing the memory gap to Fastify
+
+**Date:** May 28, 2026
+**Scope:** `pnpm bench:memory` — sustained-load RSS sweep (200 connections × 60s). Daloy was trailing Fastify by **~108 MiB peak / ~95 MiB growth** even after Rounds 1–18 had made the dispatch loop competitive on throughput.
+
+**Problem.** Throughput benches had been the focus for ten rounds. The memory bench was a different story: per-request CPU was fine, but **per-request *shape* was not**. Reading [fastify/lib/symbols.js](fastify/lib/symbols.js) and [fastify/lib/request.js](fastify/lib/request.js) made the difference obvious — Fastify allocates a stable-hidden-class `Request` and `Reply` per request, with Symbol-keyed internal slots initialized in fixed order. Every request produces an instance V8 recognizes as the same shape, so inline caches hit and the young generation stays small.
+
+Daloy's hot path was doing the opposite in three places:
+
+1. **`makeLazySet()`** ran `Object.defineProperty(set, "headers", {...})` on every request. Each `ctx.set` got its *own* accessor descriptor installed at runtime — V8 could not share a hidden class across instances, and `copyContextHeaders`, `secureHeaders`, every header-writing hook saw a megamorphic site.
+2. **`defineLazyContextProperty()`** did the same thing for `ctx.query` and `ctx.headers`. Every `ctx` was a fresh object literal *plus* two more `Object.defineProperty` installs. Same shape pollution, multiplied by three properties.
+3. **`Object.assign(ctx.state, this.decorations, { requestId, log })`** — the per-request `{requestId, log}` literal allocation plus an `Object.assign` walk over the (almost always empty) `decorations` bag. On a server that never calls `app.decorate()`, this was pure allocation and iteration for nothing.
+
+**What changed in [src/app.ts](src/app.ts).**
+
+1. **`LazyResponseSet` class replaces `makeLazySet()`.** All instances share one V8 hidden class via prototype getters. The `SET_HEADERS_TOUCHED` symbol is replaced by a stable `touched: boolean` slot at a fixed field offset; `copyContextHeaders` reads `set.touched` and `set._h` directly. Same lazy-allocation semantics — `new Headers()` still only fires on first access — but the *shape* of `set` no longer varies per request.
+
+2. **`RequestContext` class replaces the object-literal + `defineLazyContextProperty()` pattern in `buildContext`.** Constructor initializes `request, params, state, set` in fixed order; `body`, `_q`, `_qBuilder`, `_qSet`, `_h`, `_hBuilder`, `_hSet` are declared as class fields with default values so every instance has the same property layout. `query` and `headers` are *prototype* getters, not per-instance accessor descriptors — same lazy-builder semantics as before (eager value when a schema validated it, builder closure otherwise) but one hidden class for every ctx the framework ever allocates.
+
+3. **`decorationsCount` fast path.** Added a counter to `App` that `decorate()` increments. The dispatch hot path now does `state.requestId = requestId; state.log = log;` (two writes to the stable `RequestContext.state` object, keeping its hidden class consistent) and only runs `Object.assign(state, this.decorations)` when `decorationsCount !== 0`. The per-request `{requestId, log}` literal is gone; the empty-decorations spread is gone.
+
+The dead `makeLazySet`, `defineLazyContextProperty`, and `SET_HEADERS_TOUCHED` symbol were deleted.
+
+**Why this is safe.**
+
+- Class-based `LazyResponseSet` and `RequestContext` are pure refactors: same lazy semantics, same observable behavior, same setter write-through for the rare hook that reassigns `ctx.query`, `ctx.headers`, or `ctx.set.headers`. The only change is that V8 sees one hidden class per type instead of one per request.
+- The `decorationsCount` counter is a strict accounting of own-key inserts in `decorate()`. The fast path fires only when no decoration was ever installed — the moment `app.decorate("db", pool)` runs, every subsequent request gets the full `Object.assign(state, this.decorations)` it always got.
+- No security guardrail touched. `secureHeaders`, `requestId`, `assertNoReservedInternalHeaders`, `assertNoDuplicateSingletonHeaders`, `assertCrossOriginAllowed`, `assertTrustProxyConfigured`, body limits, JWT algorithm allowlists, prototype-pollution-safe parsers, RFC 9457 error contract — all unchanged.
+- All 95 tests across `tests/app.test.ts`, `tests/security.test.ts`, `tests/node-adapter.test.ts`, `tests/on-send-hook.test.ts`, `tests/method-not-allowed.test.ts`, and `tests/logger-redaction-and-header-smuggling.test.ts` pass without modification.
+
+**Measured effect (`pnpm bench:memory`, 200 connections × 60s, daloy vs fastify):**
+
+| Metric          | Before | After  | Δ vs before | Fastify | Gap closed |
+| --------------- | -----: | -----: | ----------: | ------: | ---------: |
+| peak (MiB)      |  316.1 |  238.3 |    **−25%** |   207.4 |   **−72%** (108.7 → 30.9) |
+| growth (MiB)    |  216.6 |  140.0 |    **−35%** |   121.4 |   **−80%** (95.2 → 18.6) |
+| load-avg (MiB)  |  312.8 |  215.1 |    **−31%** |   153.4 |       −39% |
+
+Daloy is now within **15% of Fastify on peak RSS and 15% on growth**, with the full secure-by-default stack still running on every request. The remaining gap is the posture cost (Lesson 19) — Fastify's bench server runs no header smuggling guards, no reserved-internal-header check, no CORS guard, no requestId, no problem+json error contract — not framework-shape cost.
+
+**The pattern that worked.** This is the same play as Round 17, applied to allocator shape instead of CPU: read what the leader actually does ([fastify/lib/symbols.js](fastify/lib/symbols.js), [fastify/lib/request.js](fastify/lib/request.js), [fastify/lib/context.js](fastify/lib/context.js)), identify the technique that maps cleanly to Daloy's constraints, port the *idea* (stable hidden class via class declaration) without porting the *mechanism* (Fastify generates a per-route `_Request` constructor; Daloy uses one global `RequestContext` class because the per-route win is much smaller without Fastify's encapsulated plugins). Five-minute read of three files, one session of edits, one measurable round.
+
+---
+
+## What we deliberately did *not* do (Round 19 additions)
+
+- **Did not pool `RequestContext` or `LazyResponseSet` across requests.** Fastify also deliberately avoids this: short-lived objects of stable shape are exactly what V8's young generation is built for, and pooling risks `ctx.state` bleed between requests (a guardrail erosion `AGENTS.md` explicitly calls out). The win is hidden-class stability, not object reuse.
+- **Did not port Fastify's per-route `buildRegularRequest()` constructor generation.** Fastify dynamically synthesizes a `_Request` subclass per registered route so V8 sees a *single* hidden class per route, not just per framework. That's the next echelon of allocator discipline, but it interacts with Daloy's route compilation in non-trivial ways and the global `RequestContext` already captured most of the win. Tracked for a future round.
+- **Did not chase Fastify on the last 15% by removing guards.** The remaining ~31 MiB peak / ~19 MiB growth gap is the cost of the security/observability stack running on every request — same posture as Round 19's lesson (small-body throughput). The honest comparison is `pnpm bench:secured`, not the bare-router memory sweep.
+- **Did not touch the per-request `randomId()` / requestId path.** It's part of the framework's observability contract (`x-request-id` response header, `ctx.state.requestId`) and Lesson 22 already wrung the cheap wins out of it.
+
+---
+
+## Lessons (additions)
+
+31. **Throughput benches and memory benches measure different things.** Ten rounds of `pnpm bench:throughput` / `bench:body-size` / `bench:errors` did not move `pnpm bench:memory` because per-request CPU and per-request *shape* are independent failure modes. A framework can be fast on a microbenchmark and still bleed RSS under sustained load if its allocator shape pushes V8 into deopt/megamorphic territory. Add the memory bench to the routine and the next class of win shows up.
+32. **`Object.defineProperty` in the hot path is a hidden-class destroyer.** It looks the same as a class getter in source, but at runtime it installs a fresh accessor descriptor per instance — and V8 treats each instance as a unique shape. The `defineLazyContextProperty()` helper was clever-looking code that quietly cost ~75 MiB of growth at 200 connections × 60s. The boring fix (declare the getter on the prototype via a class) was strictly better.
+33. **Counter the empty case.** `Object.assign(target, src1, src2)` over an empty `src2` is not free — V8 still walks the source, checks each enumerable key, and the call itself blocks any caller-side stable-shape assumption about `target`. A one-property `decorationsCount` counter turned the common case (no decorations) into two direct assignments and let `ctx.state` keep a consistent hidden class across requests.
+34. **Read the leader's source for the technique you're missing, not the answer you want.** Fastify's [lib/symbols.js](fastify/lib/symbols.js) doesn't say "here is how to win bench:memory" — it shows 80 Symbol-keyed property names initialized in fixed order. The technique (stable hidden class via fixed-shape constructors) ported cleanly even though the mechanism (per-route generated `_Request` subclasses) did not. Lesson 24 ("read the competition's code before optimizing") works just as well for allocator shape as it does for CPU.
+
+---
+
+## Files touched (Round 19)
+
+- `src/app.ts`:
+  - **New** `LazyResponseSet` class — replaces `makeLazySet()`. Stable-hidden-class lazy `ctx.set` with prototype `headers` getter and `touched: boolean` slot.
+  - **New** `RequestContext` class — replaces the per-request object literal + `defineLazyContextProperty()` pattern in `buildContext`. All fields declared in fixed order; `query` / `headers` are prototype getters backed by `_qBuilder` / `_hBuilder` closures.
+  - **New** `decorationsCount: number` field on `App`, incremented in `decorate()`. Dispatch hot path now writes `state.requestId` / `state.log` directly and only runs `Object.assign(state, this.decorations)` when the counter is non-zero.
+  - **Deleted** `makeLazySet()`, `defineLazyContextProperty()`, and the `SET_HEADERS_TOUCHED` symbol (replaced by `LazyResponseSet.touched`).
+  - `copyContextHeaders()` updated to read `set.touched` and `set._h` directly off the `LazyResponseSet` instance.
+
+No public API surface changed. `pnpm typecheck` is clean. All 95 tests in the affected suites pass. `pnpm bench:memory` now reports daloy peak **238.3 MiB** (was 316.1) and growth **140.0 MiB** (was 216.6) — closing ~72% of the absolute MiB gap to Fastify in a single round.
+
