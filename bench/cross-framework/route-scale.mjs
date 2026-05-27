@@ -14,8 +14,19 @@ import {
   startServer, killServer, waitForHealthy, stats, fmt,
 } from "./lib/common.mjs";
 
+// Only servers that honor the ROUTE_COUNT env var and expose /r/:i routes
+// belong here. The plain `daloy` / `hono` servers expose only /static,
+// /users/:id, /echo, so route-scale (which probes /r/<lastIdx>) would fail
+// the readiness check for them.
+// Four-way comparison:
+//   *-scale            = router + framework defaults (Daloy validates response body; Hono does not)
+//   daloy-scale-nozod  = Daloy without response-body schema (router + middleware only)
+//   hono-scale-validated = Hono with zod response validation (matches daloy-scale's work)
 const FRAMEWORKS = [
-  { name: "daloy", file: "servers/daloy-scale.ts" },
+  { name: "daloy-scale",          file: "servers/daloy-scale.ts" },
+  { name: "daloy-scale-nozod",    file: "servers/daloy-scale-nozod.ts" },
+  { name: "hono-scale",           file: "servers/hono-scale.ts" },
+  { name: "hono-scale-validated", file: "servers/hono-scale-validated.ts" },
 ];
 
 const args = parseArgs(process.argv);

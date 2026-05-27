@@ -1,6 +1,6 @@
-// DaloyJS — N dynamic routes registered, all hitting the same shape.
-// ROUTE_COUNT env var controls how many. Used by route-scale.mjs.
-import { z } from "zod";
+// DaloyJS — N dynamic routes, NO response-body schema (raw 200).
+// Mirrors hono-scale.ts so the comparison isolates framework/middleware cost
+// from the response-validation cost paid by daloy-scale.ts.
 import { App } from "@daloyjs/core";
 import { serve } from "@daloyjs/core/node";
 
@@ -13,7 +13,7 @@ for (let i = 0; i < COUNT; i++) {
     method: "GET",
     path: `/r/${i}`,
     operationId: `r${i}`,
-    responses: { 200: { description: "ok", body: z.object({ i: z.number() }) } },
+    responses: { 200: { description: "ok" } },
     handler: async () => ({ status: 200, body: { i } }),
   });
 }

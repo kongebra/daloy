@@ -447,3 +447,117 @@ The 1 MiB cliff is gone. Daloy still beats hono at 4 MiB (streaming path is heal
 - `bench/cross-framework/servers/daloy-echo-bytes.ts` — handler switched from `request.arrayBuffer()` to `readBodyLimited(request, BODY_LIMIT)` so the bench actually exercises the new cache fast path. Representative pattern for any user handler that wants the same boost.
 
 No public API surface changed. `pnpm typecheck` is clean. All 115 tests across `node-adapter`, `coverage`, `multipart`, `app`, and `contract` suites pass — including the five `readBodyLimited` unhappy-path tests that prove the limit/Content-Length guards still reject what they should.
+
+---
+
+## Round 16 — route-scale bench: exonerate zod, then chip away at per-request dispatch
+
+**Date:** May 27, 2026
+**Scope:** `pnpm bench:routes` — register N routes (10 / 100 / 500 / 2000), hit the last one, compare against Hono.
+
+**Problem.** `pnpm bench:routes` initially looked broken: only `daloy-scale` produced numbers; the `daloy` and `hono` entries failed with `Server not healthy within 10000ms` (and cascading `EADDRINUSE` on port 3560 because the OS hadn't released the socket between failed attempts). The runner was probing `/r/<lastIdx>` against `servers/daloy.ts` and `servers/hono.ts`, which only expose `/static`, `/users/:id`, `/echo`.
+
+**Fix.** Added [bench/cross-framework/servers/hono-scale.ts](bench/cross-framework/servers/hono-scale.ts) — Hono server that honors `ROUTE_COUNT` and registers `/r/0..N-1`, matching `daloy-scale`'s shape. Pruned the runner's `FRAMEWORKS` list to just the `*-scale` servers. Bench ran clean after that.
+
+**Result (first clean run).** Daloy lost by ~1.85×:
+
+| variant     | 10     | 100    | 500    | 2000   |
+| ----------- | -----: | -----: | -----: | -----: |
+| daloy-scale | 18,884 | 20,088 | 21,058 | 18,070 |
+| hono-scale  | 35,940 | 35,118 | 30,894 | 30,259 |
+
+Two things were notable in that initial table:
+1. Daloy's throughput was **flat from 100 → 2000 routes**. The router scales fine; the cost is per-request, not per-route-lookup. That rules out the router itself as the bottleneck.
+2. The 1.85× gap was suspiciously large for "just" the security middleware tax, and the existing `daloy-scale.ts` server used `new App()` (default logger on) while `hono-scale.ts` ran with no logger at all. Apples-to-oranges from the start.
+
+---
+
+**Diagnostic step — isolate where the cost actually lives.** Added two variants for an apples-to-apples comparison, both servers also fixed to use `{ logger: false }`:
+
+- [servers/daloy-scale-nozod.ts](bench/cross-framework/servers/daloy-scale-nozod.ts) — same routes as `daloy-scale` but with `responses: { 200: { description: "ok" } }` (no response-body schema). Isolates framework/middleware cost from zod response-validation cost.
+- [servers/hono-scale-validated.ts](bench/cross-framework/servers/hono-scale-validated.ts) — same routes as `hono-scale` plus `schema.parse({ i })` in every handler. Isolates the cost of zod from the cost of Hono.
+
+The four-way comparison (post `logger: false` parity, pre dispatch-loop patches):
+
+| variant              | 10     | 100    | 500    | 2000   |
+| -------------------- | -----: | -----: | -----: | -----: |
+| daloy-scale          | 23,961 | 13,292 | 17,794 | 21,130 |
+| daloy-scale-nozod    | 18,139 | 18,073 | 18,420 | 18,084 |
+| hono-scale           | 33,991 | 35,608 | 33,999 | 28,045 |
+| hono-scale-validated | 30,437 | 32,435 | 34,343 | 33,228 |
+
+The headlines from that diagnostic:
+1. **Zod response validation is free.** `daloy-scale` ≈ `daloy-scale-nozod`. `hono-scale` ≈ `hono-scale-validated`. Zod 4 + a single-key object schema costs nothing measurable. So the gap is **not** schema work.
+2. **The full ~1.85× gap is in Daloy's per-request dispatch pipeline.** Not the router, not zod, not the logger (`logger: false` only nudged things). It's the work `App.dispatch` does on every request: `randomId()`, `log.child({...})`, `assertNoDuplicateSingletonHeaders`, `assertNoReservedInternalHeaders`, `assertTrustProxyConfigured`, `assertBootGuards`, `headersToObject`, plus the adapter's own `new Headers()` copy.
+
+---
+
+**What changed in core.** Three small patches (B + C + D from the diagnostic plan), all preserving every guard:
+
+1. **D — cache `crypto.randomUUID` at module load** ([src/security.ts](src/security.ts)). The previous `randomId()` did `(globalThis as any).crypto` + `c?.randomUUID` optional-chain lookups on **every** request. Now resolved once at module load to `_randomUUID = crypto.randomUUID.bind(crypto)`, and the per-call cost is one function invocation. The legacy fallback chain (getRandomValues → `Date.now() + Math.random()`) stays in place for the unreachable case where Web Crypto disappears mid-process.
+2. **C — drop redundant `name.toLowerCase()` in `assertNoReservedInternalHeaders`** ([src/security.ts](src/security.ts)). WHATWG `Headers.forEach()` already yields lowercased names. The per-header `.toLowerCase()` call was dead work — one extra allocation per header per request, for nothing. The guard still iterates every header and still rejects any `x-daloy-internal-*` / `x-daloyjs-internal-*` prefix (CVE-2025-29927 class).
+3. **B — skip `log.child({...})` allocation when logger is no-op** ([src/app.ts](src/app.ts)). `noopLogger.child()` returns itself, so the `log.child({ requestId, method, url })` call on every request was building a bindings object that was immediately discarded. Now: `const log = baseLog === noopLogger ? noopLogger : baseLog.child({...})`. **The `requestId` is still generated for every request** (it has user-visible side effects — `x-request-id` response header, `ctx.state.requestId`, etc.); only the logger binding is skipped.
+
+Plus one diagnostic-only fix that didn't change perf but mattered for the next time someone runs this bench:
+
+4. **Forced `{ logger: false }` parity** ([servers/daloy-scale.ts](bench/cross-framework/servers/daloy-scale.ts), [servers/daloy-scale-nozod.ts](bench/cross-framework/servers/daloy-scale-nozod.ts)). Hono has no built-in logger; Daloy's default logger is pino. Comparing the two without matching the logger flag was the same apples-to-oranges mistake Round 14 hit, just in a different bench.
+
+---
+
+**Why this is safe.**
+
+- `randomId()` keeps the same fallback chain — caching `crypto.randomUUID.bind(crypto)` at module load just removes the per-call property lookup, no semantic change.
+- `assertNoReservedInternalHeaders` still walks every header and still throws `BadRequestError` on any reserved prefix. The header name passed to `forEach` is already lowercase per WHATWG, so dropping the redundant `.toLowerCase()` doesn't widen the matching surface.
+- The logger-skip is a strict equality check against the exported `noopLogger` singleton. Any user who passes their own no-op-like logger still goes through the normal `child({...})` path — the optimization only fires when the user explicitly opted into `{ logger: false }`.
+- All three changes are inside files that have full test coverage. The 24 tests in `tests/security.test.ts` + `tests/app.test.ts` that exercise these paths (including `requestId surfaces on every response`) pass without modification.
+
+---
+
+**The stale-`dist/` trap, again.** First "after" run looked promising (+17–25%) — and was meaningless. `dist/` was last built at 10:54; src/ was modified at 17:11. The bench reads `@daloyjs/core` via `file:../..` → `exports` → `./dist/`, so the "after" numbers were still measuring the pre-patch build. Round 15 ended on this exact lesson and it bit again the very next session. The whole point of Lesson 15 was supposed to be "first step of every perf-bench session: prove `dist/` reflects your in-progress change." Skipping that step cost us another iteration.
+
+After `pnpm build` (dist/security.js now contains `_randomUUID`, confirmed via grep), the real numbers:
+
+**Measured effect (post-rebuild, 3-iteration medians, cleanest apples-to-apples pair):**
+
+| variant (validation parity) | routes | before | after  | Δ        |
+| --------------------------- | -----: | -----: | -----: | -------: |
+| daloy-scale-nozod           |     10 | 18,139 | 23,218 | **+28%** |
+| daloy-scale-nozod           |    100 | 18,073 | 21,452 | **+19%** |
+| daloy-scale-nozod           |    500 | 18,420 | 21,538 | **+17%** |
+| daloy-scale-nozod           |   2000 | 18,084 | 23,432 | **+30%** |
+
+Median ~+23%. The `daloy-scale` row (full zod response validation) shifted in the same direction but is noisier — one of its iterations had a low-warmup outlier at 10 routes.
+
+Gap to Hono, on the cleanest pair (both with zod, both no extra middleware), closed from **~1.85× → ~1.73×**. Not a knockout, but a real, defensible, no-security-tradeoff bump from three small patches.
+
+---
+
+## What we deliberately did *not* do (Round 16 additions)
+
+- **Did not implement the dispatch sync fast-path.** The biggest remaining win on the diagnostic list was "A: when no hooks + sync handler + no body schema, return Response synchronously from `dispatch` / `fetch`." Estimated 20–40%, but it changes the control flow of every request and needs full coverage + verify-gate runs. User explicitly scoped this round to B + C + D and deferred A. Future round.
+- **Did not skip `randomId()` for the no-op logger case.** It would have shaved another microsecond per request but the request id is part of the framework's observability contract (`x-request-id` response header, `ctx.state.requestId`, error correlation). Skipping it would silently break apps that depend on it.
+- **Did not fold the three header-iterating security checks into a single pass.** Tempting (~3–5% estimated win), but `assertNoDuplicateSingletonHeaders` is a hot indexed lookup, `assertNoReservedInternalHeaders` is a full forEach, and `assertTrustProxyConfigured` is a 5-name `has()` chain. The shapes don't fuse cleanly without a custom iterator, and the per-iteration cost is already low. Not worth the complexity at this point.
+- **Did not chase Hono further on this bench.** The remaining gap is mostly the secure-by-default middleware tax (Round 19's lesson — "some gaps aren't gaps, they're a posture") plus the dispatch sync fast-path the user opted out of. The honest comparison readers should see for production posture is still `pnpm bench:secured`, not the bare-router sweep.
+
+---
+
+## Lessons (additions)
+
+20. **Diagnostic variants before optimization.** Before touching any source code, two new bench variants (`daloy-scale-nozod` and `hono-scale-validated`) reframed the problem entirely: the suspected culprit (zod) turned out to be free, and the real cost (per-request dispatch) became impossible to misattribute. Adding paired variants takes ten minutes and saves hours of optimizing the wrong thing.
+21. **Lesson 15 is a discipline, not a one-time fix.** "Always check what the bench is actually loading" tripped us again the very next session. The fix isn't writing the lesson down once — it's making the dist-freshness check a literal first step of every perf-bench session. Considering a `tools/check-bench-fresh.ps1` that compares `src/*.ts` mtimes against `dist/*.js` and refuses to start the bench if stale.
+22. **Small patches add up.** Three single-line-ish changes (cache a property, drop a `.toLowerCase`, add an equality check) totaled ~+23% on this bench. The high-impact rewrites from rounds 1–9 were necessary to make the framework competitive at all; rounds like this one are how it stays competitive as the codebase grows new guards.
+23. **Be honest about what was measured against what.** First "+17–25%" delta in this session was operator error (stale dist). Reporting it as "we shipped a perf win" would have been the Round 7 mistake again — building a victory narrative on numbers that didn't reflect the code. Re-running against a verified-fresh dist before writing this section was the only way to make any number in this round defensible.
+
+---
+
+## Files touched (Round 16)
+
+- `src/security.ts` — cached `crypto.randomUUID.bind(crypto)` at module load in `randomId()`; dropped redundant per-header `.toLowerCase()` in `assertNoReservedInternalHeaders` (WHATWG `Headers.forEach()` already yields lowercased names).
+- `src/app.ts` — `dispatch()` now skips the `log.child({...})` allocation when `this.log === noopLogger`. Request id generation is unchanged.
+- `bench/cross-framework/route-scale.mjs` — `FRAMEWORKS` list pruned to `*-scale` servers (the bare `daloy` / `hono` servers don't expose `/r/:i` and were causing readiness timeouts + cascading `EADDRINUSE`); added `daloy-scale-nozod` and `hono-scale-validated` for the diagnostic comparison.
+- `bench/cross-framework/servers/hono-scale.ts` *(new)* — Hono mirror of `daloy-scale.ts`. Honors `ROUTE_COUNT`, registers `/r/0..N-1`, no validation.
+- `bench/cross-framework/servers/daloy-scale-nozod.ts` *(new)* — Daloy with `responses: { 200: { description: "ok" } }` (no response-body zod schema). Isolates framework cost from validation cost.
+- `bench/cross-framework/servers/hono-scale-validated.ts` *(new)* — Hono with `schema.parse({ i })` in the handler. Isolates zod cost from framework cost.
+- `bench/cross-framework/servers/daloy-scale.ts` — explicit `{ logger: false }` to match Hono's no-logger baseline. Diagnostic-only fix; same logger as `servers/daloy.ts`.
+
+No public API surface changed. `pnpm typecheck` is clean. All 24 tests in `tests/security.test.ts` + `tests/app.test.ts` pass (including the `requestId surfaces on every response` test that directly exercises the modified dispatch path).

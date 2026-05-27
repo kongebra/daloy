@@ -2249,11 +2249,17 @@ export class App {
     }
     this.inflight++;
     const requestId = randomId();
-    const log = this.log.child({
-      requestId,
-      method: request.method,
-      url: request.url,
-    });
+    // Skip the per-request child-logger allocation when the app was
+    // constructed with `{ logger: false }`. noopLogger.child() returns
+    // itself, so the binding is wasted work on every request.
+    const baseLog = this.log;
+    const log = baseLog === noopLogger
+      ? noopLogger
+      : baseLog.child({
+          requestId,
+          method: request.method,
+          url: request.url,
+        });
     const stripFingerprint = this.options.stripServerHeaders !== false;
     let ctx: BaseContext<any, any> | undefined;
     const globalHooks = this.globalHooks;

@@ -203,7 +203,17 @@ export function timingSafeEqual(a: string, b: string): boolean {
  * @returns A random URL-safe id string.
  * @since 0.1.0
  */
+// Cache the Web Crypto entry points at module load so randomId() doesn't pay
+// for a `globalThis.crypto` + optional-chain property lookup per request.
+// Falls back to the legacy lookup path if Web Crypto is somehow patched in
+// after module load (test harnesses).
+const _webCrypto: Crypto | undefined = (globalThis as any).crypto;
+const _randomUUID: (() => string) | undefined =
+  _webCrypto && typeof _webCrypto.randomUUID === "function"
+    ? _webCrypto.randomUUID.bind(_webCrypto)
+    : undefined;
 export function randomId(): string {
+  if (_randomUUID !== undefined) return _randomUUID();
   const c: Crypto | undefined = (globalThis as any).crypto;
   if (c?.randomUUID) return c.randomUUID();
   if (c?.getRandomValues) {
@@ -292,11 +302,13 @@ export const RESERVED_INBOUND_HEADER_PREFIXES: readonly string[] = Object.freeze
  * @since 0.36.0
  */
 export function assertNoReservedInternalHeaders(headers: Headers): void {
+  // WHATWG Headers.forEach() yields lowercased names, so the per-header
+  // .toLowerCase() call this function used to do was dead work on every
+  // request. Skip it.
   headers.forEach((_value, name) => {
-    const lower = name.toLowerCase();
     for (const prefix of RESERVED_INBOUND_HEADER_PREFIXES) {
-      if (lower.startsWith(prefix)) {
-        throw new BadRequestError(`Reserved internal header rejected: ${lower}`);
+      if (name.startsWith(prefix)) {
+        throw new BadRequestError(`Reserved internal header rejected: ${name}`);
       }
     }
   });
