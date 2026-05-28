@@ -1,13 +1,14 @@
 // DaloyJS — large streaming response. GET /stream returns a ~10 MiB body
-// chunked through a ReadableStream so we can measure the streaming pipeline.
+// chunked through a Node Readable (Fastify/Koa/Express-style fast path on Node).
+import { Readable } from "node:stream";
 import { z } from "zod";
 import { App } from "@daloyjs/core";
 import { serve } from "@daloyjs/core/node";
 
 const app = new App();
 
-const CHUNK = new Uint8Array(64 * 1024).fill(0x61); // 64 KiB of 'a'
-const TOTAL_CHUNKS = 160; // ~10 MiB total
+const CHUNK = Buffer.alloc(64 * 1024, 0x61);
+const TOTAL_CHUNKS = 160;
 
 app.route({
   method: "GET",
@@ -24,26 +25,25 @@ app.route({
   responses: {
     200: {
       description: "ok",
-      // body declared as undefined since we're emitting a raw stream.
       body: undefined as never,
     },
   },
   handler: async () => {
     let sent = 0;
-    const body = new ReadableStream<Uint8Array>({
-      pull(controller) {
+    const body = new Readable({
+      read() {
         if (sent >= TOTAL_CHUNKS) {
-          controller.close();
+          this.push(null);
           return;
         }
-        controller.enqueue(CHUNK);
+        this.push(CHUNK);
         sent++;
       },
     });
     return {
       status: 200,
       headers: { "content-type": "application/octet-stream" },
-      body,
+      body: body as unknown as ReadableStream<Uint8Array>,
     };
   },
 });
