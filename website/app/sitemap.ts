@@ -202,6 +202,7 @@ const STATIC_PATHS: Array<{
   { path: "/docs/security/websocket-login-throttle", changeFrequency: "monthly", priority: 0.7 },
   { path: "/docs/security/compression", changeFrequency: "monthly", priority: 0.7 },
   { path: "/docs/security/secure-defaults-enforcement", changeFrequency: "monthly", priority: 0.7 },
+  { path: "/docs/security/internal-service-preset", changeFrequency: "monthly", priority: 0.7 },
   { path: "/docs/security/session", changeFrequency: "monthly", priority: 0.7 },
   { path: "/docs/security/compliance", changeFrequency: "monthly", priority: 0.7 },
   { path: "/docs/security/scanning-tools", changeFrequency: "monthly", priority: 0.7 },

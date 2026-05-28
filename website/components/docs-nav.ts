@@ -126,6 +126,7 @@ export const docsNav: DocsNavSection[] = [
       { title: "WebSocket + login throttle", href: "/docs/security/websocket-login-throttle" },
       { title: "Compression", href: "/docs/security/compression" as Route },
       { title: "secureDefaults enforcement", href: "/docs/security/secure-defaults-enforcement" as Route },
+      { title: "Internal services & meshes", href: "/docs/security/internal-service-preset" as Route },
       { title: "CSRF protection", href: "/docs/security/csrf" },
       { title: "SQL injection", href: "/docs/security/sql-injection" as Route },
       { title: "Command injection", href: "/docs/security/command-injection" as Route },

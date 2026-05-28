@@ -98,6 +98,66 @@ export function _resetInsecureDefaultsLogForTests(): void {
 }
 
 /**
+ * Named security posture preset. Currently only one value is supported:
+ *
+ * - `"internal-service"` — relaxes the *topology-dependent* defaults that
+ *   only make sense when an HTTP boundary faces a browser or the public
+ *   internet (auto `secureHeaders`, cross-origin write guard, the
+ *   session+state-changing-route CSRF boot guard, and the unconfigured
+ *   `X-Forwarded-*` guard). Everything that protects the service from
+ *   malformed input, confused dependencies, or compromised callers —
+ *   body limits, request timeouts, JWT algorithm allowlists, weak-secret
+ *   refuse-to-boot, `cors({ origin: '*' })` refuse-to-boot, anonymous
+ *   stateful plugin refuse-to-boot, `crashOnUnhandledRejection`, schema
+ *   strictness, prototype-pollution-safe parsers, SSRF-safe `fetchGuard`
+ *   defaults, RFC 9457 problem+json redaction — stays on. Per-knob
+ *   options still win (`secureHeaders: { ... }` re-enables it on top of
+ *   the preset). The preset choice is logged once at boot under the
+ *   `security.preset.applied` event so operators can audit the posture
+ *   without reading code.
+ *
+ * Topology presets are intentionally a small, curated set — they are NOT
+ * a master "disable everything" knob. If you really need to disable the
+ * entire secure-by-default surface, use the explicit
+ * {@link AppOptions.secureDefaults} `false` escape hatch.
+ *
+ * @since 0.34.0
+ */
+export type SecurityPreset = "internal-service";
+
+/**
+ * The exact set of fields the `"internal-service"` preset flips off when
+ * the caller has not set them explicitly. Surfaced through the boot
+ * audit log entry so operators can see which guards the preset turned
+ * off without re-reading the framework source.
+ */
+const INTERNAL_SERVICE_PRESET_DISABLED: readonly string[] = Object.freeze([
+  "secureHeaders auto-install",
+  "corsCrossOriginGuard (state-changing cross-origin write rejection)",
+  "csrf boot guard (session() + state-changing route)",
+  "unconfigured X-Forwarded-* / trustProxy guard",
+]);
+
+/**
+ * Defaults that the `"internal-service"` preset keeps on. Logged at boot
+ * alongside the disabled list so the audit entry shows the full posture.
+ */
+const INTERNAL_SERVICE_PRESET_KEPT: readonly string[] = Object.freeze([
+  "bodyLimitBytes (1 MiB default)",
+  "requestTimeoutMs (30 s default)",
+  "crashOnUnhandledRejection (production)",
+  "weak session secret refuse-to-boot",
+  "cors({ origin: '*' }) refuse-to-boot",
+  "anonymous stateful plugin refuse-to-boot",
+  "stripServerHeaders",
+  "RFC 9457 problem+json prod redaction",
+  "JWT algorithm allowlist + timingSafeEqual credential comparison",
+  "prototype-pollution-safe parsers + isForbiddenObjectKey",
+  "fetchGuard() SSRF defaults",
+  "schema .strict() + response validation when enabled",
+]);
+
+/**
  * List of secure-by-default surfaces disabled when `secureDefaults: false`
  * is set. Surfaced through the once-per-process `error` log so the operator
  * sees exactly which guards are off.
@@ -144,6 +204,24 @@ export interface AppOptions {
   title?: string;
   version?: string;
   description?: string;
+
+  /**
+   * Topology-aware security posture preset. See {@link SecurityPreset}.
+   *
+   * - `"internal-service"` — for service-to-service deployments behind a
+   *   service mesh, sidecar, or private network. Turns off the
+   *   browser-/edge-only guards (auto `secureHeaders`, cross-origin write
+   *   guard, session+state-changing CSRF boot guard, unconfigured
+   *   `X-Forwarded-*` guard) while keeping every input-, parser-,
+   *   credential-, and SSRF-level guard on. The choice is logged once at
+   *   boot under the `security.preset.applied` event. Per-knob options
+   *   you pass alongside the preset still win.
+   *
+   * Omit (default) for browser-facing / public APIs.
+   *
+   * @since 0.34.0
+   */
+  preset?: SecurityPreset;
 
   /** Validate handler responses against declared response schemas. Default: true. */
   validateResponses?: boolean;
@@ -647,6 +725,43 @@ interface BootGuardCache {
   error?: Error;
 }
 
+/**
+ * Apply a topology-aware security preset on top of caller-supplied
+ * options. Returns a new options object where preset defaults fill in
+ * any field the caller left `undefined`; explicit caller values always
+ * win. Pure / no side effects — the boot audit log is emitted
+ * separately by {@link App.logSecurityPresetIfApplied} so this helper is
+ * safe to call from `new App({ preset: ... })` in test setups.
+ *
+ * The `"internal-service"` preset turns off:
+ *  - `secureHeaders` auto-install (browser-only headers)
+ *  - `corsCrossOriginGuard` (no browser Origin to guard against)
+ *  - `csrf` (set to `"off"` — service-to-service callers aren't browsers)
+ *  - `trustProxy` (set to `false` — explicitly ignore `X-Forwarded-*`
+ *    and silence the unconfigured-proxy 500 guard; the immediate peer
+ *    inside the mesh *is* the caller)
+ *
+ * Everything else (body limits, request timeouts, JWT allowlist,
+ * `crashOnUnhandledRejection`, weak-secret refuse-to-boot, cors-wildcard
+ * refuse-to-boot, anonymous stateful plugin refuse-to-boot,
+ * `stripServerHeaders`, RFC 9457 prod redaction, schema strictness,
+ * `fetchGuard`, parser safety) stays at its standard secure-by-default
+ * value.
+ *
+ * @internal
+ */
+function applySecurityPreset(options: AppOptions): AppOptions {
+  if (options.preset !== "internal-service") return options;
+  const out: AppOptions = { ...options };
+  if (out.secureHeaders === undefined) out.secureHeaders = false;
+  if (out.corsCrossOriginGuard === undefined) out.corsCrossOriginGuard = false;
+  if (out.csrf === undefined) out.csrf = "off";
+  if (out.trustProxy === undefined && out.behindProxy === undefined) {
+    out.trustProxy = false;
+  }
+  return out;
+}
+
 const DEFAULTS = {
   bodyLimitBytes: 1024 * 1024,
   requestTimeoutMs: 30_000,
@@ -840,12 +955,13 @@ export class App {
   }
 
   constructor(options: AppOptions = {}) {
+    const resolved = applySecurityPreset(options);
     this.options = {
       validateResponses:
-        options.validateResponses ?? DEFAULTS.validateResponses,
-      bodyLimitBytes: options.bodyLimitBytes ?? DEFAULTS.bodyLimitBytes,
-      requestTimeoutMs: options.requestTimeoutMs ?? DEFAULTS.requestTimeoutMs,
-      ...options,
+        resolved.validateResponses ?? DEFAULTS.validateResponses,
+      bodyLimitBytes: resolved.bodyLimitBytes ?? DEFAULTS.bodyLimitBytes,
+      requestTimeoutMs: resolved.requestTimeoutMs ?? DEFAULTS.requestTimeoutMs,
+      ...resolved,
     };
     this.log =
       options.logger === false
@@ -860,6 +976,7 @@ export class App {
     assertBehindProxy(this.options.behindProxy);
     if (this.options.hooks) this.assertSecureHookConfig(this.options.hooks);
     this.assertInsecureDefaultsAcknowledged();
+    this.logSecurityPresetIfApplied(options);
     this.installSecureDefaults();
     this.maybeInstallCrashHandlers();
     this.maybeMountDocs();
@@ -920,6 +1037,83 @@ export class App {
         `app({ secureDefaults: false }) disables: ${DISABLED_BY_INSECURE_DEFAULTS.join(", ")}.`,
       );
     }
+  }
+
+  /**
+   * Emit the one-time boot audit entry for an applied security preset.
+   * Called from the constructor with the *original* (pre-preset) options
+   * so the log captures which fields the preset filled in vs. which the
+   * caller set explicitly. Logged at `info` so the line shows up in
+   * standard production log shipping without being noisy.
+   *
+   * Operators can audit the live posture at any time through
+   * {@link App.getSecurityPosture}.
+   *
+   * @since 0.34.0
+   */
+  private logSecurityPresetIfApplied(originalOptions: AppOptions): void {
+    if (originalOptions.preset !== "internal-service") return;
+    const userOverrode: string[] = [];
+    if (originalOptions.secureHeaders !== undefined) userOverrode.push("secureHeaders");
+    if (originalOptions.corsCrossOriginGuard !== undefined) {
+      userOverrode.push("corsCrossOriginGuard");
+    }
+    if (originalOptions.csrf !== undefined) userOverrode.push("csrf");
+    if (originalOptions.trustProxy !== undefined) userOverrode.push("trustProxy");
+    if (originalOptions.behindProxy !== undefined) userOverrode.push("behindProxy");
+    this.log.info(
+      {
+        event: "security.preset.applied",
+        preset: "internal-service",
+        disabled: INTERNAL_SERVICE_PRESET_DISABLED,
+        kept: INTERNAL_SERVICE_PRESET_KEPT,
+        userOverrode,
+      },
+      `Applied security preset "internal-service": disabled ${INTERNAL_SERVICE_PRESET_DISABLED.length} topology-dependent guards; kept ${INTERNAL_SERVICE_PRESET_KEPT.length} input/credential/SSRF guards on. See app.getSecurityPosture() for the live snapshot.`,
+    );
+  }
+
+  /**
+   * Structured snapshot of the live security posture. Returns the same
+   * data the constructor logs under the `security.preset.applied` audit
+   * event plus the resolved values of every secure-by-default knob, so
+   * operators can build a `/__security` introspection route or a CI
+   * audit without parsing the framework source.
+   *
+   * @since 0.34.0
+   */
+  getSecurityPosture(): {
+    preset: SecurityPreset | undefined;
+    secureDefaults: boolean;
+    secureHeaders: boolean;
+    corsCrossOriginGuard: boolean;
+    csrf: "off" | "on";
+    crashOnUnhandledRejection: boolean | "default";
+    trustProxy: true | false | "unconfigured";
+    bodyLimitBytes: number;
+    requestTimeoutMs: number;
+    stripServerHeaders: boolean;
+    production: boolean;
+  } {
+    const o = this.options;
+    return Object.freeze({
+      preset: o.preset,
+      secureDefaults: o.secureDefaults !== false,
+      secureHeaders: o.secureDefaults !== false && o.secureHeaders !== false,
+      corsCrossOriginGuard:
+        o.secureDefaults !== false && o.corsCrossOriginGuard !== false,
+      csrf: o.csrf === "off" ? "off" : "on",
+      crashOnUnhandledRejection:
+        o.crashOnUnhandledRejection === undefined
+          ? "default"
+          : o.crashOnUnhandledRejection,
+      trustProxy:
+        o.trustProxy === undefined ? "unconfigured" : o.trustProxy,
+      bodyLimitBytes: this.options.bodyLimitBytes,
+      requestTimeoutMs: this.options.requestTimeoutMs,
+      stripServerHeaders: o.stripServerHeaders !== false,
+      production: this.isProduction(),
+    });
   }
 
   /**

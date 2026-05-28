@@ -466,6 +466,7 @@ The framework refuses to start (or to construct) when configuration is unsafe:
 
 - Weak session secrets, `cors({ origin: "*" })` with credentials, `session()` + state-changing route without `csrf()`, and unconfigured `X-Forwarded-*` in production.
 - `secureDefaults: false` in production unless `acknowledgeInsecureDefaults: true` is set, plus a once-per-process `error` log naming every disabled default.
+- `preset: "internal-service"` topology preset for service-to-service deployments behind a mesh / sidecar / private network: turns OFF the browser-only guards (auto `secureHeaders`, `corsCrossOriginGuard`, `csrf` boot guard, unconfigured `X-Forwarded-*` guard) while keeping every input, parser, credential, SSRF, weak-secret, and refuse-to-boot guard ON. Per-knob options still win, the choice is logged at boot under `event: "security.preset.applied"`, and the live posture is auditable via `app.getSecurityPosture()`.
 - `createJwtSigner()` / `createJwtVerifier()` refuse `alg: "none"`, accept only an explicit allowlist, refuse HS + JWK combinations, refuse to sign without `exp`, and refuse HS-shaped secrets under 32 bytes (RFC 7518 §3.2).
 - `secureHeaders()` refuses to construct with `frameOptions: false` AND no CSP `frame-ancestors` directive (no clickjacking defense).
 - `cors()` refuses `methods: ['*']` at construction; default `allowMethods` narrowed to `[GET, HEAD, POST]` so `PUT` / `PATCH` / `DELETE` become explicit opt-ins.
