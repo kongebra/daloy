@@ -2472,7 +2472,7 @@ export class App {
       );
     }
     this.inflight++;
-    const requestId = randomId();
+    let requestId = randomId();
     // Skip the per-request child-logger allocation when the app was
     // constructed with `{ logger: false }`. noopLogger.child() returns
     // itself, so the binding is wasted work on every request.
@@ -2659,6 +2659,13 @@ export class App {
       if (allHooks.beforeHandle !== undefined) {
         const beforeResult = allHooks.beforeHandle(ctx);
         const before = isPromiseLike(beforeResult) ? await beforeResult : beforeResult;
+        // Honor any request id override applied by middleware (e.g. the
+        // `requestId()` Hooks bundle replaces the framework-generated value
+        // with a trusted incoming header or a user-supplied generator).
+        const overriddenId = state.requestId;
+        if (typeof overriddenId === "string" && overriddenId.length > 0) {
+          requestId = overriddenId;
+        }
         if (before instanceof Response) {
           copyContextHeaders(ctx, before);
           if (!before.headers.has("x-request-id")) before.headers.set("x-request-id", requestId);

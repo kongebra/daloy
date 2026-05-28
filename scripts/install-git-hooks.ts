@@ -33,7 +33,7 @@
  *   1 — not a git checkout, or existing non-Daloy hook present without
  *       `--force`.
  *
- * @since 0.35.2
+ * @since 0.36.0
  */
 
 import {

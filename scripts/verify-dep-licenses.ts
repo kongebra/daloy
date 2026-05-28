@@ -45,7 +45,7 @@
  *   1 — at least one offending package was found; offending entries are
  *       printed to stderr.
  *
- * @since 0.35.2
+ * @since 0.36.0
  */
 
 import { readdir, readFile } from "node:fs/promises";
