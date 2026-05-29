@@ -21,6 +21,19 @@ For each framework, a minimal HTTP server exposing the same three endpoints:
 | `GET /users/:id` | One-segment dynamic param. Echoes the id back as JSON.       |
 | `POST /echo`     | JSON body parsing + schema validation of `{ name: string }`. |
 
+> **Read the table as orange-to-apple, not apple-to-apple.** DaloyJS is the
+> only server here that runs its full contract on every route: it Zod-parses
+> the request params, Zod-parses the request body, **and** validates the
+> *response* body against its schema before sending. Every other server does
+> little to no schema work — Hono/Fastify do a single `typeof` check on
+> `/echo` and nothing on the GET routes, and none of them validate responses
+> at all. So the throughput gap is mostly "daloy doing the most work" vs.
+> "everyone doing the least," not a router/dispatch deficiency (the router
+> micro-bench in [`../router.bench.ts`](../router.bench.ts) clocks daloy's
+> core at tens of millions of lookups/sec). For closer-to-fair tiers, see the
+> `*-nozod` and `*-validated` server variants under
+> [`servers/throughput/`](servers/throughput/).
+
 Each server is hit by [autocannon](https://github.com/mcollina/autocannon) on
 `localhost`:
 
@@ -233,8 +246,14 @@ machine with `--max-old-space-size` left at default.
 
 - Microbenchmarks are **not production performance**. They flatter routers
   and punish any framework that does useful work (validation, OpenAPI,
-  refuse-to-boot checks). DaloyJS's validation path adds cost that
-  Express/Koa skip entirely on `POST /echo` because they don't validate.
+  refuse-to-boot checks). This is an **orange-to-apple** comparison by
+  construction: on all three endpoints DaloyJS validates the request *and*
+  the response against Zod schemas, while Express/Koa/Hono/Fastify validate
+  nothing on the GET routes and at most do a one-line `typeof` check on
+  `POST /echo`. None of the others validate response bodies at all. Read the
+  default table as "daloy with its safety rails on vs. everyone else with
+  theirs off," and use the `daloy-nozod` / `hono-validated` variants if you
+  want a like-for-like tier.
 - The numbers can shift ±10% between runs depending on CPU thermal state.
   Run twice if a number looks off.
 - Elysia on `@elysiajs/node` is **not** representative of Elysia on Bun.

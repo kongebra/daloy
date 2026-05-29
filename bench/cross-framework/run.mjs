@@ -232,6 +232,11 @@ async function main() {
 
   const ok = rows.filter((r) => r.results);
   console.log("\n" + renderTable(ok) + "\n");
+  console.log(
+    "Note: orange-to-apple. daloy validates request + response against Zod\n" +
+    "schemas on every route; the others validate little to nothing. See\n" +
+    "README.md \u2192 \"Honest caveats\" and the *-nozod / *-validated variants.\n",
+  );
 
   writeFileSync(
     path.join(__dirname, "results.json"),
