@@ -37,6 +37,61 @@ export default function Page() {
         can&apos;t ride up tomorrow on a stale 401 (
         <code>Cache-Control: no-store</code>).
       </blockquote>
+
+      <h2>DaloyJS is a Relying Party, not an auth server</h2>
+      <p>
+        DaloyJS validates tokens; it does not mint user sessions through an
+        authorization-code flow, host a consent screen, or store user/client
+        credentials. Pair these middleware with a dedicated identity provider:
+      </p>
+      <ul>
+        <li>
+          <strong>Hosted IdPs</strong> — Auth0, Okta, Azure AD / Entra ID, AWS
+          Cognito, Google Identity, Clerk, WorkOS, Supabase Auth, Logto, Stytch,
+          Kinde. Anything that publishes a standard{" "}
+          <code>/.well-known/jwks.json</code> works with <code>jwk()</code> out
+          of the box.
+        </li>
+        <li>
+          <strong>Self-hosted IdPs</strong> — Keycloak, Ory Hydra, ZITADEL,
+          Authentik, Dex. Same JWKS contract, same one-line <code>jwk()</code>{" "}
+          setup.
+        </li>
+        <li>
+          <strong>Your own sibling auth service</strong> — a separate DaloyJS
+          app using <code>createJwtSigner()</code> to mint tokens and exposing a
+          JWKS endpoint. The API service then validates those tokens with{" "}
+          <code>jwk()</code> exactly as it would for an external IdP.
+        </li>
+      </ul>
+      <p>Rough mapping of which middleware to reach for:</p>
+      <ul>
+        <li>
+          <strong>Browser app + external IdP (OIDC)</strong> —{" "}
+          <code>jwk()</code> on the API, <code>requireScopes()</code> per route,{" "}
+          <code>session()</code> only if you also need server-side session state
+          alongside the access token.
+        </li>
+        <li>
+          <strong>Service-to-service inside one tenant</strong> —{" "}
+          <code>bearerAuth({"{ validate }"})</code> with an opaque token, or{" "}
+          <code>jwk()</code> if both sides already speak JWT. The{" "}
+          <a href="/docs/security/internal-service-preset">
+            internal-service preset
+          </a>{" "}
+          relaxes browser-only headers for these endpoints.
+        </li>
+        <li>
+          <strong>Webhook receivers</strong> — neither <code>bearerAuth()</code>{" "}
+          nor <code>jwk()</code>; use the dedicated HMAC verifier (see the{" "}
+          <a href="/docs/security">security overview</a>).
+        </li>
+        <li>
+          <strong>Admin tools / scripts</strong> — <code>basicAuth()</code>{" "}
+          behind <code>ipRestriction()</code>, or short-lived JWTs from your
+          IdP.
+        </li>
+      </ul>
       <p>
         Daloy closes the auth-cohesive subset of the leftover items from the
         secure-by-default initiative. Each one is additive and opt-in:

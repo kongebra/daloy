@@ -98,16 +98,57 @@ app.use(compression());
       <h2>Cache and ETag behavior</h2>
       <p>
         Every response that reaches <code>compression()</code> gets{" "}
-        <code>Vary: Accept-Encoding</code>, even when Daloy decides not to
+        <code>Vary: Accept-Encoding</code> appended (de-duplicated against any
+        existing <code>Vary</code> value), even when Daloy decides not to
         compress that specific response. That keeps downstream caches keyed by
-        the negotiation surface from the first response onward.
+        the negotiation surface from the first response onward, so a cache
+        can&apos;t serve a gzipped body to a client that only advertised{" "}
+        <code>identity</code>.
       </p>
       <p>
         If a compressed response already has a strong ETag such as{" "}
         <code>&quot;abc&quot;</code>, Daloy downgrades it to{" "}
         <code>W/&quot;abc&quot;</code>. The ETag was computed over the upstream
         body, not the compressed wire bytes, so a weak validator is the honest
-        one.
+        one — RFC 9110 §8.8.1 requires strong validators to be byte-equal to the
+        representation on the wire, and the wire bytes change per encoding.
+      </p>
+
+      <h2>
+        Interaction with <code>etag()</code>
+      </h2>
+      <p>
+        <code>compression()</code> and <code>etag()</code> are safe to combine
+        in either order. Both run as <code>onSend</code> hooks:
+      </p>
+      <ul>
+        <li>
+          <strong>
+            If <code>etag()</code> runs first
+          </strong>{" "}
+          it sets a strong ETag over the uncompressed body.{" "}
+          <code>compression()</code> then encodes the body and downgrades the
+          strong ETag to weak so the validator stays consistent with what
+          actually leaves the server.
+        </li>
+        <li>
+          <strong>
+            If <code>compression()</code> runs first
+          </strong>{" "}
+          it encodes the body. <code>etag()</code> then hashes the
+          already-compressed bytes, which is also valid — the strong tag still
+          byte-matches the wire bytes the client receives.
+        </li>
+      </ul>
+      <p>
+        Either way, conditional <code>GET</code>s using{" "}
+        <code>If-None-Match</code> stay correct across <code>br</code>,{" "}
+        <code>gzip</code>, <code>deflate</code>, and <code>identity</code>{" "}
+        clients because the <code>Vary: Accept-Encoding</code> header forces
+        per-encoding cache keys. You don&apos;t have to manage the weak/strong
+        downgrade yourself — even if you set <code>ETag</code> manually from a
+        route handler, <code>compression()</code> performs the downgrade for you
+        on the way out.
       </p>
 
       <h2>No compression level knob</h2>

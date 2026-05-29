@@ -42,6 +42,42 @@ export default function Page() {
         same window without a hot key shootout.
       </p>
 
+      <h2>When to use Redis (and when not to)</h2>
+      <p>
+        The Redis store is built for{" "}
+        <strong>long-lived multi-replica deployments</strong> — VPS, containers,
+        Kubernetes, Fly.io, Render, ECS, App Runner, Railway. Anywhere you run
+        more than one Node / Bun / Deno process and need a shared counter so a
+        client can&apos;t get <code>N&times;</code> the limit by load-balancing
+        across replicas.
+      </p>
+      <p>
+        On <strong>edge runtimes</strong> (Cloudflare Workers, Vercel Edge,
+        Fastly Compute), prefer the platform&apos;s native primitive rather than
+        fronting Redis from every region:
+      </p>
+      <ul>
+        <li>
+          <strong>Cloudflare Workers</strong> — Durable Objects (strongly
+          consistent per-key), or KV / D1 for relaxed consistency.
+        </li>
+        <li>
+          <strong>Vercel Edge</strong> — Vercel KV (Upstash Redis under the
+          hood) is reachable from edge functions; for very high RPS prefer Edge
+          Config + a Node region for the counter write path.
+        </li>
+        <li>
+          <strong>Fastly Compute</strong> — Edge Dictionaries for static quotas,
+          KV Store for dynamic counters.
+        </li>
+      </ul>
+      <p>
+        <code>rateLimit()</code> accepts any object implementing the{" "}
+        <code>RateLimitStore</code> contract, so each of these platforms can be
+        wired up in a few lines using the same middleware. The Redis adapter
+        shown below is just the most common case.
+      </p>
+
       <h2>Install your Redis client</h2>
       <p>
         DaloyJS does not bundle a Redis client. Pick whichever is already in
