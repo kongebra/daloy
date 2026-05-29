@@ -39,3 +39,7 @@ bench/**/node_modules/
 bench/**/results.json
 bench/cross-framework/pnpm-lock.yaml
 bench/cross-framework/package-lock.json
+
+
+# Monorepo-bff example
+monorepo-bff-architecture
