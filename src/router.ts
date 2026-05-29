@@ -45,6 +45,18 @@ export class Router<T> {
   /** Static (no-param/no-wildcard) routes for O(1) lookup. */
   private staticTable = new Map<string, Partial<Record<HttpMethod, T>>>();
 
+  /**
+   * Register a handler for the given method and path. Static paths land in the
+   * O(1) `staticTable`; paths with `:param`/`*wildcard` segments are inserted
+   * into the trie. Wildcards must be the terminal segment.
+   *
+   * @param method - HTTP method to register the handler under.
+   * @param path - Route path; supports `:param` and a trailing `*wildcard`.
+   * @param handler - Value returned by {@link Router.find} on a match.
+   * @param operationId - Optional unique id; tracked to reject duplicates.
+   * @throws Error on a duplicate route, duplicate `operationId`, or conflicting
+   *   param names at the same trie position.
+   */
   add(method: HttpMethod, path: string, handler: T, operationId?: string): void {
     const segments = splitPath(path);
     if (operationId && this.operationIds.has(operationId)) throw new Error(`Duplicate operationId: "${operationId}"`);
@@ -94,6 +106,16 @@ export class Router<T> {
     node.handlers[method] = handler;
   }
 
+  /**
+   * Look up the handler registered for the given method and path. Tries the
+   * static fast path first, then walks the trie, extracting and decoding path
+   * params. Path-traversal lookups (`..`, `//`) are rejected up front.
+   *
+   * @param method - HTTP method to match.
+   * @param path - Request path to resolve, including any dynamic segments.
+   * @returns The matched handler with decoded params, or `undefined` if no
+   *   route matches the method + path.
+   */
   find(method: HttpMethod, path: string): RouteMatch<T> | undefined {
     // Reject path traversal attempts before walking.
     if (path.includes("/../") || path.endsWith("/..") || path.includes("//")) {

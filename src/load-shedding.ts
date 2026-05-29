@@ -42,7 +42,18 @@ export interface LoadSheddingOptions {
  *
  * @internal
  */
-export interface LoadSheddingSnapshot { eventLoopDelayMs: number; heapUsedBytes: number; rssBytes: number; eventLoopUtilization: number; reason?: string; }
+export interface LoadSheddingSnapshot {
+  /** Sampled event-loop delay in milliseconds. */
+  eventLoopDelayMs: number;
+  /** Sampled `heapUsed` in bytes. */
+  heapUsedBytes: number;
+  /** Sampled resident set size (`rss`) in bytes. */
+  rssBytes: number;
+  /** Sampled event-loop utilization in the range `[0, 1]`. */
+  eventLoopUtilization: number;
+  /** Reason the request was shed, when a threshold is exceeded. */
+  reason?: string;
+}
 
 type EventLoopUtilization = { idle: number; active: number; utilization: number };
 

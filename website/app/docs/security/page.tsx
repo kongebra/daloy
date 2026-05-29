@@ -52,8 +52,8 @@ export default function Page() {
           <tr>
             <td>Body-size limit</td>
             <td>
-              A weight limit on a parcel before the post office accepts it — no
-              truck-bombing the sorting room.
+              A weight limit on a parcel before the post office accepts it — so
+              one oversized package can&apos;t jam the whole sorting room.
             </td>
           </tr>
           <tr>
@@ -195,9 +195,10 @@ export default function Page() {
           <tr>
             <td>jwt / jwk</td>
             <td>
-              A passport (JWT) issued by a known embassy (JWKS). The border
-              officer checks the issuing authority&apos;s signature against the
-              embassy&apos;s public seal, not against the passport itself.
+              A passport (JWT) issued by a known embassy (the identity
+              provider). The border officer checks the issuing authority&apos;s
+              signature against the embassy&apos;s published seals (JWKS), not
+              against the passport itself.
             </td>
           </tr>
           <tr>
