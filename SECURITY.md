@@ -454,7 +454,7 @@ Can a maintainer-dispute attack happen inside DaloyJS itself?
 - Branch protection requires PR review; CODEOWNERS enforces for `package.json` / `pnpm-lock.yaml` / `.npmrc` / `.github/`. Release commits and `v*` tags are signed. The `npm-publish` Environment requires a second-maintainer approval. A single-maintainer push-then-tag does not produce a release on its own.
 - `verify:governance-audits` + `zizmor` refuse silently weakening workflows; both gates run in CI and the pre-publish `verify` job.
 - The pre-publish `verify` job refuses to publish unless the actor is in the **Active** block.
-- Release authority moves in three places together: `SECURITY-CONTACTS.md`, `.github/CODEOWNERS`, and the signed-tag chain. `PROJECT_HISTORY.md` is append-only; we have never force-pushed `main` or deleted a published npm version.
+- Release authority moves in three places together: `SECURITY-CONTACTS.md`, `.github/CODEOWNERS`, and the signed-tag chain. we have never force-pushed `main` or deleted a published npm version.
 - Quarterly disclosure exercise verifies recovery-email-domain ownership for every active contact.
 
 What this does **not** cover: a consumer who depends on a different low-level package that hits its own fsnotify-shaped dispute (the consumer re-pins on a known-good lockfile, waits the 24 h cooldown, verifies provenance before adopting); two compromised Daloy maintainers acting in concert (mandatory hardware 2FA + off-boarding checklist make that expensive).

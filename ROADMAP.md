@@ -58,8 +58,6 @@ Published to npm as **`@daloyjs/core`** (latest: `0.32.0`).
 
 ## Release log — `0.2.x` through `0.32.x`
 
-Each row is a shipped release. For deeper context see [`PROJECT_HISTORY.md`](./PROJECT_HISTORY.md).
-
 | Version | Theme | Key additions |
 |---|---|---|
 | `0.2.x` | Confidence & lifecycle | `onSend` hook, GitHub Actions CI, `SECURITY.md`, OIDC publish w/ provenance, `pnpm create daloy` scaffolder (`node-basic`, `vercel-edge`, `cloudflare-worker`), docs metadata + ORM guides. |
