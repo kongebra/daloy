@@ -4,6 +4,7 @@
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { banner, summary } from "./lib/format.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "../..");
@@ -66,9 +67,13 @@ const rows = [];
 for (const spec of all) rows.push(await median(spec));
 
 rows.sort((a, b) => (b.ms ?? 0) - (a.ms ?? 0));
-console.log("module".padEnd(60) + "median (ms)");
-console.log("-".repeat(75));
-for (const r of rows) {
-  const label = r.spec.replace(ROOT, ".").padEnd(60);
-  console.log(label + (r.error ? `ERR: ${r.error}` : r.ms.toFixed(1)));
-}
+console.error(banner("Per-module import cost", `${ITER} cold-process samples · median reported`));
+console.log("\n" + summary({
+  head: ["module", "median (ms)"],
+  rows: rows.map((r) => [
+    r.spec.replace(ROOT, "."),
+    r.error ? `ERR: ${r.error}` : r.ms.toFixed(1),
+  ]),
+  align: ["l", "r"],
+  highlight: (row) => row[0].includes("@daloyjs/core"),
+}) + "\n");

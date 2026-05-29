@@ -16,17 +16,18 @@ import {
   __dirname, machineInfo, parseArgs,
   startServer, killServer, waitForHealthy, stats, fmt, warnBenchEnvironment,
 } from "./lib/common.mjs";
+import { c, section, summary, fail, metric, metricsLine } from "./lib/format.mjs";
 
 const FRAMEWORKS = [
-  { name: "daloy", file: "servers/throughput/daloy.ts" },
+  { name: "daloy",     file: "servers/throughput/daloy.ts" },
   { name: "daloy-min", file: "servers/throughput/daloy-minimal.ts" },
-  // { name: "hono",     file: "servers/throughput/hono.ts" },
-  // { name: "fastify",  file: "servers/throughput/fastify.ts" },
-  // { name: "express",  file: "servers/throughput/express.ts" },
-  // { name: "koa",      file: "servers/throughput/koa.ts" },
-  // { name: "nest",     file: "servers/throughput/nest.ts" },
-  // { name: "elysia",   file: "servers/throughput/elysia.ts" },
-  // { name: "feathers", file: "servers/throughput/feathers.ts" },
+  { name: "hono",      file: "servers/throughput/hono.ts" },
+  { name: "fastify",   file: "servers/throughput/fastify.ts" },
+  { name: "express",   file: "servers/throughput/express.ts" },
+  { name: "koa",       file: "servers/throughput/koa.ts" },
+  { name: "nest",      file: "servers/throughput/nest.ts" },
+  { name: "elysia",    file: "servers/throughput/elysia.ts" },
+  { name: "feathers",  file: "servers/throughput/feathers.ts" },
 ];
 
 const args = parseArgs(process.argv);
@@ -78,7 +79,7 @@ function runAutocannon(sc, duration) {
 }
 
 async function benchOne(fw) {
-  console.error(`\n=== ${fw.name} ===`);
+  console.error(section(fw.name));
   const child = await startServer(fw.file, { port: PORT });
   await waitForHealthy(PORT);
   try {
@@ -98,7 +99,10 @@ async function benchOne(fw) {
       const rps = stats(samples.map((s) => s.reqPerSec));
       const p99 = samples.reduce((a, s) => a + s.p99, 0) / samples.length;
       out[sc.id] = { reqPerSec: rps, p99, samples };
-      console.error(`  ${sc.title.padEnd(40)} ${fmt(rps.median).padStart(8)} req/s  p99 ${p99.toFixed(2)}ms`);
+      console.error(metricsLine(sc.title, [
+        c.green(c.bold(fmt(rps.median))) + c.dim(" req/s"),
+        metric("p99", p99.toFixed(2), { unit: "ms" }),
+      ], { labelWidth: 38 }));
     }
     return out;
   } finally {
@@ -115,29 +119,31 @@ async function main() {
       const results = await benchOne(fw);
       rows.push({ framework: fw.name, results });
     } catch (err) {
-      console.error(`  ✗ ${fw.name} failed: ${err.message}`);
+      console.error("  " + fail(`${fw.name} failed: ${err.message}`));
       rows.push({ framework: fw.name, error: err.message });
     }
   }
 
-  const lines = [
-    "| Framework  | scenario                              | req/s (median) | p99 (ms) |",
-    "| ---------- | :------------------------------------ | -------------: | -------: |",
-  ];
+  const tableRows = [];
   for (const r of rows) {
     if (!r.results) continue;
     for (const sc of SCENARIOS) {
       const s = r.results[sc.id];
       if (!s) continue;
-      lines.push(
-        `| ${r.framework.padEnd(10)} `
-        + `| ${sc.title.padEnd(37)} `
-        + `| ${fmt(s.reqPerSec.median).padStart(14)} `
-        + `| ${s.p99.toFixed(2).padStart(8)} |`,
-      );
+      tableRows.push([
+        r.framework,
+        sc.title,
+        fmt(s.reqPerSec.median),
+        s.p99.toFixed(2),
+      ]);
     }
   }
-  console.log("\n" + lines.join("\n") + "\n");
+  console.log("\n" + summary({
+    head: ["Framework", "scenario", "req/s (median)", "p99 (ms)"],
+    rows: tableRows,
+    align: ["l", "l", "r", "r"],
+    highlight: (row) => row[0].includes("daloy"),
+  }) + "\n");
 
   writeFileSync(
     path.join(__dirname, "results.error-path.json"),

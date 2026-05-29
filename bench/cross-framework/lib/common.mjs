@@ -6,6 +6,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import os from "node:os";
+import { warn } from "./format.mjs";
 
 export const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = path.dirname(__dirname);
@@ -108,9 +109,11 @@ export function warnBenchEnvironment({ maxConnections = 100 } = {}) {
   const info = machineInfo();
   if (info.onBattery === true) {
     console.error(
-      "⚠ Running on BATTERY power. Laptops throttle the CPU on battery, so " +
-      "throughput/latency numbers will be noisy and not comparable to an " +
-      "on-AC run. Plug in for stable results.",
+      warn(
+        "Running on BATTERY power. Laptops throttle the CPU on battery, so " +
+        "throughput/latency numbers will be noisy and not comparable to an " +
+        "on-AC run. Plug in for stable results.",
+      ),
     );
   }
   // Each connection needs a client socket + an accepted server socket, plus
@@ -120,9 +123,11 @@ export function warnBenchEnvironment({ maxConnections = 100 } = {}) {
     const needed = maxConnections * 3 + 64;
     if (info.fdLimit < needed) {
       console.error(
-        `⚠ File-descriptor soft limit is ${info.fdLimit}, which may be too low ` +
-        `for ${maxConnections} connections (need ~${needed}). On macOS/Linux run ` +
-        `\`ulimit -n 4096\` in this shell before benchmarking to avoid EMFILE errors.`,
+        warn(
+          `File-descriptor soft limit is ${info.fdLimit}, which may be too low ` +
+          `for ${maxConnections} connections (need ~${needed}). On macOS/Linux run ` +
+          `\`ulimit -n 4096\` in this shell before benchmarking to avoid EMFILE errors.`,
+        ),
       );
     }
   }

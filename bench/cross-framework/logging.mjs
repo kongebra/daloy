@@ -26,10 +26,13 @@ import {
   fmt,
   warnBenchEnvironment,
 } from "./lib/common.mjs";
+import { c, section, summary, fail, info, metric, metricsLine, sym } from "./lib/format.mjs";
 
 const FRAMEWORKS = [
   { name: "daloy", file: "servers/logging/daloy.ts" },
+  { name: "daloy-nozod", file: "servers/logging/daloy-nozod.ts" },
   { name: "hono", file: "servers/logging/hono.ts" },
+  { name: "hono-validated", file: "servers/logging/hono-validated.ts" },
   { name: "fastify", file: "servers/logging/fastify.ts" },
   { name: "express", file: "servers/logging/express.ts" },
   { name: "koa", file: "servers/logging/koa.ts" },
@@ -138,7 +141,7 @@ function summarize(samples) {
 }
 
 async function benchOne(fw) {
-  console.error(`\n=== ${fw.name} (access logs) ===`);
+  console.error(section(fw.name, "access logs"));
   const child = await startServer(fw.file, { port: PORT, extraEnv: { LOG_DEST } });
   await waitForHealthy(PORT);
   try {
@@ -170,15 +173,15 @@ async function benchOne(fw) {
       const totalErr = summary.errors.non2xx + summary.errors.errors + summary.errors.timeouts;
       const errBadge =
         totalErr > 0
-          ? `  ! non2xx=${summary.errors.non2xx} err=${summary.errors.errors} to=${summary.errors.timeouts}`
+          ? c.red(`${sym.warn} non2xx=${summary.errors.non2xx} err=${summary.errors.errors} to=${summary.errors.timeouts}`)
           : "";
-      console.error(
-        `  ${scenario.title.padEnd(18)} ${fmt(summary.reqPerSec.median).padStart(8)} req/s  ` +
-          `p50 ${summary.latency.p50.toFixed(2)}ms  ` +
-          `p99 ${summary.latency.p99.toFixed(2)}ms  ` +
-          `p99.9 ${summary.latency.p999.toFixed(2)}ms` +
-          errBadge
-      );
+      console.error(metricsLine(scenario.title, [
+        c.green(c.bold(fmt(summary.reqPerSec.median))) + c.dim(" req/s"),
+        metric("p50", summary.latency.p50.toFixed(2), { unit: "ms" }),
+        metric("p99", summary.latency.p99.toFixed(2), { unit: "ms" }),
+        metric("p99.9", summary.latency.p999.toFixed(2), { unit: "ms" }),
+        errBadge,
+      ].filter(Boolean), { labelWidth: 16 }));
     }
     return results;
   } finally {
@@ -186,22 +189,26 @@ async function benchOne(fw) {
   }
 }
 
-function renderTable(rows) {
-  const lines = [
-    "| Framework  | GET /static logged req/s | GET /users/:id logged req/s | POST /echo logged req/s | p99 /static (ms) |",
-    "| ---------- | -----------------------: | --------------------------: | ----------------------: | ---------------: |",
-  ];
+function renderSummary(rows) {
+  const tableRows = [];
   for (const row of rows) {
     if (!row.results) continue;
-    lines.push(
-      `| ${row.framework.padEnd(10)} ` +
-        `| ${fmt(row.results.static.reqPerSec.median).padStart(24)} ` +
-        `| ${fmt(row.results.dynamic.reqPerSec.median).padStart(27)} ` +
-        `| ${fmt(row.results.echo.reqPerSec.median).padStart(23)} ` +
-        `| ${row.results.static.latency.p99.toFixed(2).padStart(16)} |`
-    );
+    tableRows.push([
+      row.framework,
+      fmt(row.results.static.reqPerSec.median),
+      fmt(row.results.dynamic.reqPerSec.median),
+      fmt(row.results.echo.reqPerSec.median),
+      row.results.static.latency.p99.toFixed(2),
+    ]);
   }
-  return lines.join("\n");
+  return summary({
+    head: [
+      "Framework", "GET /static logged req/s", "GET /users/:id logged req/s",
+      "POST /echo logged req/s", "p99 /static (ms)",
+    ],
+    rows: tableRows,
+    highlight: (row) => row[0].includes("daloy"),
+  });
 }
 
 async function main() {
@@ -213,13 +220,13 @@ async function main() {
       const results = await benchOne(fw);
       rows.push({ framework: fw.name, results });
     } catch (err) {
-      console.error(`  x ${fw.name} failed: ${err.message}`);
+      console.error("  " + fail(`${fw.name} failed: ${err.message}`));
       rows.push({ framework: fw.name, error: err.message });
     }
   }
 
   const ok = rows.filter((r) => r.results);
-  console.log("\n" + renderTable(ok) + "\n");
+  console.log("\n" + renderSummary(ok) + "\n");
 
   writeFileSync(
     path.join(__dirname, "results.logging.json"),
@@ -240,7 +247,7 @@ async function main() {
       2
     )
   );
-  console.error(`Wrote results.logging.json (${ok.length}/${rows.length} frameworks OK).`);
+  console.error(info(`Wrote ${c.bold("results.logging.json")} ${c.dim(`(${ok.length}/${rows.length} frameworks OK)`)}`));
 }
 
 main().catch((err) => {

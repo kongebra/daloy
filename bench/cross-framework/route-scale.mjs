@@ -13,6 +13,7 @@ import {
   __dirname, machineInfo, parseArgs,
   startServer, killServer, waitForHealthy, stats, fmt, warnBenchEnvironment,
 } from "./lib/common.mjs";
+import { c, section, summary, fail, metric, metricsLine } from "./lib/format.mjs";
 
 // Only servers that honor the ROUTE_COUNT env var and expose /r/:i routes
 // belong here. The plain `daloy` / `hono` servers expose only /static,
@@ -57,7 +58,7 @@ function runAutocannon({ duration, urlPath }) {
 }
 
 async function benchOneCount(fw, routeCount) {
-  console.error(`\n=== ${fw.name} (${routeCount} routes) ===`);
+  console.error(section(fw.name, `${routeCount} routes`));
   const child = await startServer(fw.file, { port: PORT, extraEnv: { ROUTE_COUNT: String(routeCount) } });
   await waitForHealthy(PORT, "/r/0");
   try {
@@ -72,7 +73,10 @@ async function benchOneCount(fw, routeCount) {
     }
     const rps = stats(samples.map((s) => s.reqPerSec));
     const p99 = samples.reduce((a, s) => a + s.p99, 0) / samples.length;
-    console.error(`  median ${fmt(rps.median).padStart(8)} req/s  p99 ${p99.toFixed(2)}ms`);
+    console.error(metricsLine(`${routeCount} routes`, [
+      c.green(c.bold(fmt(rps.median))) + c.dim(" req/s"),
+      metric("p99", p99.toFixed(2), { unit: "ms" }),
+    ], { labelWidth: 14 }));
     return { routeCount, reqPerSec: rps, p99, samples };
   } finally {
     await killServer(child);
@@ -89,32 +93,33 @@ async function main() {
       try {
         series.push(await benchOneCount(fw, rc));
       } catch (err) {
-        console.error(`  ✗ ${fw.name} @ ${rc} routes: ${err.message}`);
+        console.error("  " + fail(`${fw.name} @ ${rc} routes: ${err.message}`));
         series.push({ routeCount: rc, error: err.message });
       }
     }
     rows.push({ framework: fw.name, series });
   }
 
-  const lines = [
-    "| Framework  | routes | req/s (median) | p99 (ms) |",
-    "| ---------- | -----: | -------------: | -------: |",
-  ];
+  const tableRows = [];
   for (const r of rows) {
     for (const s of r.series) {
       if (s.error) {
-        lines.push(`| ${r.framework.padEnd(10)} | ${String(s.routeCount).padStart(6)} | ${"ERR".padStart(14)} | ${"—".padStart(8)} |`);
+        tableRows.push([r.framework, String(s.routeCount), "ERR", "—"]);
       } else {
-        lines.push(
-          `| ${r.framework.padEnd(10)} `
-          + `| ${String(s.routeCount).padStart(6)} `
-          + `| ${fmt(s.reqPerSec.median).padStart(14)} `
-          + `| ${s.p99.toFixed(2).padStart(8)} |`,
-        );
+        tableRows.push([
+          r.framework,
+          String(s.routeCount),
+          fmt(s.reqPerSec.median),
+          s.p99.toFixed(2),
+        ]);
       }
     }
   }
-  console.log("\n" + lines.join("\n") + "\n");
+  console.log("\n" + summary({
+    head: ["Framework", "routes", "req/s (median)", "p99 (ms)"],
+    rows: tableRows,
+    highlight: (row) => row[0].includes("daloy"),
+  }) + "\n");
 
   writeFileSync(
     path.join(__dirname, "results.route-scale.json"),

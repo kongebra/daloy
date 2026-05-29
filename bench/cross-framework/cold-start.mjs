@@ -12,17 +12,18 @@ import path from "node:path";
 import {
   __dirname, ROOT, machineInfo, parseArgs, stats, fmt, httpRequest,
 } from "./lib/common.mjs";
+import { c, section, summary, fail, info, metricsLine } from "./lib/format.mjs";
 
 const FRAMEWORKS = [
   { name: "daloy",        file: "servers/throughput/daloy.ts" },
   { name: "daloy-nozod",  file: "servers/throughput/daloy-nozod.ts" },
   { name: "hono",         file: "servers/throughput/hono.ts" },
-  // { name: "fastify",  file: "servers/throughput/fastify.ts" },
-  // { name: "express",  file: "servers/throughput/express.ts" },
-  // { name: "koa",      file: "servers/throughput/koa.ts" },
-  // { name: "nest",     file: "servers/throughput/nest.ts" },
-  // { name: "elysia",   file: "servers/throughput/elysia.ts" },
-  // { name: "feathers", file: "servers/throughput/feathers.ts" },
+  { name: "fastify",      file: "servers/throughput/fastify.ts" },
+  { name: "express",      file: "servers/throughput/express.ts" },
+  { name: "koa",          file: "servers/throughput/koa.ts" },
+  { name: "nest",         file: "servers/throughput/nest.ts" },
+  { name: "elysia",       file: "servers/throughput/elysia.ts" },
+  { name: "feathers",     file: "servers/throughput/feathers.ts" },
 ];
 
 const args = parseArgs(process.argv);
@@ -70,12 +71,14 @@ async function measureColdStart(file, port) {
 }
 
 async function benchOne(fw, port) {
-  console.error(`\n=== ${fw.name} ===`);
+  console.error(section(fw.name));
   const samples = [];
   for (let i = 0; i < ITERATIONS; i++) {
     const ms = await measureColdStart(fw.file, port);
     samples.push(ms);
-    console.error(`  iter ${i + 1}/${ITERATIONS}: ${ms.toFixed(1)} ms`);
+    console.error(metricsLine(`iter ${i + 1}/${ITERATIONS}`, [
+      c.green(c.bold(ms.toFixed(1))) + c.dim(" ms"),
+    ], { labelWidth: 14 }));
     await new Promise((r) => setTimeout(r, 250));
   }
   return { samples, stats: stats(samples) };
@@ -90,27 +93,28 @@ async function main() {
       const r = await benchOne(fw, port++);
       rows.push({ framework: fw.name, ...r });
     } catch (err) {
-      console.error(`  ✗ ${fw.name} failed: ${err.message}`);
+      console.error("  " + fail(`${fw.name} failed: ${err.message}`));
       rows.push({ framework: fw.name, error: err.message });
     }
   }
 
-  const lines = [
-    "| Framework  | min (ms) | median (ms) | mean (ms) | stddev | max (ms) |",
-    "| ---------- | -------: | ----------: | --------: | -----: | -------: |",
-  ];
+  const tableRows = [];
   for (const r of rows) {
     if (!r.stats) continue;
-    lines.push(
-      `| ${r.framework.padEnd(10)} `
-      + `| ${r.stats.min.toFixed(1).padStart(8)} `
-      + `| ${r.stats.median.toFixed(1).padStart(11)} `
-      + `| ${r.stats.mean.toFixed(1).padStart(9)} `
-      + `| ${r.stats.stddev.toFixed(1).padStart(6)} `
-      + `| ${r.stats.max.toFixed(1).padStart(8)} |`,
-    );
+    tableRows.push([
+      r.framework,
+      r.stats.min.toFixed(1),
+      r.stats.median.toFixed(1),
+      r.stats.mean.toFixed(1),
+      r.stats.stddev.toFixed(1),
+      r.stats.max.toFixed(1),
+    ]);
   }
-  console.log("\n" + lines.join("\n") + "\n");
+  console.log("\n" + summary({
+    head: ["Framework", "min (ms)", "median (ms)", "mean (ms)", "stddev", "max (ms)"],
+    rows: tableRows,
+    highlight: (row) => row[0].includes("daloy"),
+  }) + "\n");
 
   writeFileSync(
     path.join(__dirname, "results.cold-start.json"),
@@ -121,7 +125,7 @@ async function main() {
       rows,
     }, null, 2),
   );
-  console.error(`Wrote results.cold-start.json (${rows.filter((r) => r.stats).length}/${rows.length} OK).`);
+  console.error(info(`Wrote ${c.bold("results.cold-start.json")} ${c.dim(`(${rows.filter((r) => r.stats).length}/${rows.length} OK)`)}`));
 }
 
 main().catch((err) => { console.error(err); process.exit(1); });

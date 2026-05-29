@@ -32,6 +32,9 @@ import {
   waitForHealthy, httpRequest,
   stats, fmt, warnBenchEnvironment,
 } from "./lib/common.mjs";
+import {
+  c, section, summary, fail, info, metric, metricsLine, sym, banner,
+} from "./lib/format.mjs";
 
 const FRAMEWORKS = [
   { name: "daloy",    file: "servers/throughput/daloy.ts" },
@@ -136,7 +139,7 @@ function summarize(samples) {
 }
 
 async function benchOne(fw) {
-  console.error(`\n=== ${fw.name} ===`);
+  console.error(section(fw.name));
   const child = await startServer(fw.file, { port: PORT });
   await waitForHealthy(PORT);
   try {
@@ -172,19 +175,17 @@ async function benchOne(fw) {
           results[pointKey][sc.id] = summary;
           const totalErr = summary.errors.non2xx + summary.errors.errors + summary.errors.timeouts;
           const errBadge = totalErr > 0
-            ? `  ⚠ non2xx=${summary.errors.non2xx} err=${summary.errors.errors} to=${summary.errors.timeouts}`
+            ? c.red(`${sym.warn} non2xx=${summary.errors.non2xx} err=${summary.errors.errors} to=${summary.errors.timeouts}`)
             : "";
-          const suffix = (CONNECTION_POINTS.length > 1 || PIPELINING_POINTS.length > 1)
-            ? ` [c=${connections} p=${pipelining}]` : "";
-          console.error(
-            `  ${sc.title.padEnd(18)}${suffix.padEnd(14)} `
-            + `${fmt(summary.reqPerSec.median).padStart(8)} req/s `
-            + `(±${fmt(summary.reqPerSec.stddev).padStart(5)})  `
-            + `p50 ${summary.latency.p50.toFixed(2)}ms  `
-            + `p99 ${summary.latency.p99.toFixed(2)}ms  `
-            + `p99.9 ${summary.latency.p999.toFixed(2)}ms`
-            + errBadge,
-          );
+          const label = (CONNECTION_POINTS.length > 1 || PIPELINING_POINTS.length > 1)
+            ? `${sc.title} ${c.dim(`[c=${connections} p=${pipelining}]`)}` : sc.title;
+          console.error(metricsLine(label, [
+            c.green(c.bold(fmt(summary.reqPerSec.median))) + c.dim(" req/s") + c.dim(` ±${fmt(summary.reqPerSec.stddev)}`),
+            metric("p50", summary.latency.p50.toFixed(2), { unit: "ms" }),
+            metric("p99", summary.latency.p99.toFixed(2), { unit: "ms" }),
+            metric("p99.9", summary.latency.p999.toFixed(2), { unit: "ms" }),
+            errBadge,
+          ].filter(Boolean), { labelWidth: 28 }));
         }
       }
     }
@@ -194,48 +195,61 @@ async function benchOne(fw) {
   }
 }
 
-function renderTable(rows) {
+function renderSummary(rows) {
   const pointKey = `c${CONNECTION_POINTS[0]}_p${PIPELINING_POINTS[0]}`;
-  const lines = [
-    "| Framework  | GET /static (req/s) | GET /users/:id (req/s) | POST /echo (req/s) | p50 (ms) | p99 (ms) | p99.9 (ms) |",
-    "| ---------- | ------------------: | ---------------------: | -----------------: | -------: | -------: | ---------: |",
+  const head = [
+    "Framework", "GET /static (req/s)", "GET /users/:id (req/s)",
+    "POST /echo (req/s)", "p50 (ms)", "p99 (ms)", "p99.9 (ms)",
   ];
+  const tableRows = [];
   for (const r of rows) {
     const p = r.results?.[pointKey];
     if (!p) continue;
-    lines.push(
-      `| ${r.framework.padEnd(10)} `
-      + `| ${fmt(p.static.reqPerSec.median).padStart(19)} `
-      + `| ${fmt(p.dynamic.reqPerSec.median).padStart(22)} `
-      + `| ${fmt(p.echo.reqPerSec.median).padStart(18)} `
-      + `| ${p.static.latency.p50.toFixed(2).padStart(8)} `
-      + `| ${p.static.latency.p99.toFixed(2).padStart(8)} `
-      + `| ${p.static.latency.p999.toFixed(2).padStart(10)} |`,
-    );
+    tableRows.push([
+      r.framework,
+      fmt(p.static.reqPerSec.median),
+      fmt(p.dynamic.reqPerSec.median),
+      fmt(p.echo.reqPerSec.median),
+      p.static.latency.p50.toFixed(2),
+      p.static.latency.p99.toFixed(2),
+      p.static.latency.p999.toFixed(2),
+    ]);
   }
-  return lines.join("\n");
+  return summary({
+    head,
+    rows: tableRows,
+    highlight: (row) => row[0].includes("daloy"),
+  });
 }
 
 async function main() {
   warnBenchEnvironment({ maxConnections: Math.max(...CONNECTION_POINTS) });
   const targets = FRAMEWORKS.filter((f) => !ONLY || ONLY.has(f.name));
+  console.error(banner(
+    "Cross-framework HTTP benchmark",
+    `${targets.length} framework(s) · ${SCENARIOS.length} scenarios · ` +
+    `${WARMUP_SECONDS}s warmup · ${ITERATIONS}×${DURATION}s · ` +
+    `c=${CONNECTION_POINTS.join(",")} p=${PIPELINING_POINTS.join(",")}`,
+  ));
   const rows = [];
   for (const fw of targets) {
     try {
       const results = await benchOne(fw);
       rows.push({ framework: fw.name, results });
     } catch (err) {
-      console.error(`  ✗ ${fw.name} failed: ${err.message}`);
+      console.error("  " + fail(`${fw.name} failed: ${err.message}`));
       rows.push({ framework: fw.name, error: err.message });
     }
   }
 
   const ok = rows.filter((r) => r.results);
-  console.log("\n" + renderTable(ok) + "\n");
+  console.log("\n" + renderSummary(ok) + "\n");
   console.log(
-    "Note: orange-to-apple. daloy validates request + response against Zod\n" +
-    "schemas on every route; the others validate little to nothing. See\n" +
-    "README.md \u2192 \"Honest caveats\" and the *-nozod / *-validated variants.\n",
+    c.dim(
+      "Note: orange-to-apple. daloy validates request + response against Zod\n" +
+      "schemas on every route; the others validate little to nothing. See\n" +
+      "README.md \u2192 \"Honest caveats\" and the *-nozod / *-validated variants.\n",
+    ),
   );
 
   writeFileSync(
@@ -254,7 +268,7 @@ async function main() {
       rows,
     }, null, 2),
   );
-  console.error(`Wrote results.json (${ok.length}/${rows.length} frameworks OK).`);
+  console.error(info(`Wrote ${c.bold("results.json")} ${c.dim(`(${ok.length}/${rows.length} frameworks OK)`)}`));
 }
 
 main().catch((err) => {

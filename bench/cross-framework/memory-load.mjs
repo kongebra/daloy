@@ -18,18 +18,19 @@ import {
   __dirname, machineInfo, parseArgs,
   startServer, killServer, waitForHealthy, fmt, warnBenchEnvironment,
 } from "./lib/common.mjs";
+import { c, section, summary, fail, metric, metricsLine } from "./lib/format.mjs";
 
 const FRAMEWORKS = [
-  { name: "daloy", file: "servers/throughput/daloy.ts" },
-  { name: "fastify",  file: "servers/throughput/fastify.ts" },
-  // { name: "daloy-nozod", file: "servers/throughput/daloy-nozod.ts" },
-  // { name: "hono",     file: "servers/throughput/hono.ts" },
-  // { name: "hono-validated", file: "servers/throughput/hono-validated.ts" },
-  // { name: "elysia",   file: "servers/throughput/elysia.ts" },
-  // { name: "nest",     file: "servers/throughput/nest.ts" },
-  // { name: "koa",      file: "servers/throughput/koa.ts" },
-  // { name: "feathers", file: "servers/throughput/feathers.ts" },
-  // { name: "express",  file: "servers/throughput/express.ts" },
+  { name: "daloy",          file: "servers/throughput/daloy.ts" },
+  { name: "daloy-nozod",    file: "servers/throughput/daloy-nozod.ts" },
+  { name: "hono",           file: "servers/throughput/hono.ts" },
+  { name: "hono-validated", file: "servers/throughput/hono-validated.ts" },
+  { name: "fastify",        file: "servers/throughput/fastify.ts" },
+  { name: "express",        file: "servers/throughput/express.ts" },
+  { name: "koa",            file: "servers/throughput/koa.ts" },
+  { name: "nest",           file: "servers/throughput/nest.ts" },
+  { name: "elysia",         file: "servers/throughput/elysia.ts" },
+  { name: "feathers",       file: "servers/throughput/feathers.ts" },
 ];
 
 const args = parseArgs(process.argv);
@@ -102,7 +103,7 @@ function startLoad() {
 }
 
 async function benchOne(fw) {
-  console.error(`\n=== ${fw.name} ===`);
+  console.error(section(fw.name));
   const child = await startServer(fw.file, { port: PORT });
   await waitForHealthy(PORT);
   try {
@@ -124,13 +125,14 @@ async function benchOne(fw) {
     const loadAvgRss = loadSamples.reduce((a, s) => a + s.rss, 0) / loadSamples.length;
     const growth = settleRss - idleRss;
 
-    console.error(
-      `  idle=${(idleRss / 1024 / 1024).toFixed(1)} MiB  ` +
-      `load-avg=${(loadAvgRss / 1024 / 1024).toFixed(1)} MiB  ` +
-      `peak=${(peakRss / 1024 / 1024).toFixed(1)} MiB  ` +
-      `settle=${(settleRss / 1024 / 1024).toFixed(1)} MiB  ` +
-      `growth=${(growth / 1024 / 1024).toFixed(1)} MiB`,
-    );
+    const MiB = (b) => (b / 1024 / 1024).toFixed(1);
+    console.error(metricsLine("RSS", [
+      metric("idle", MiB(idleRss), { unit: " MiB" }),
+      metric("load-avg", MiB(loadAvgRss), { unit: " MiB" }),
+      metric("peak", MiB(peakRss), { unit: " MiB", color: c.yellow }),
+      metric("settle", MiB(settleRss), { unit: " MiB" }),
+      metric("growth", MiB(growth), { unit: " MiB", color: growth > 0 ? c.yellow : c.green }),
+    ], { labelWidth: 6 }));
 
     return { idleRss, loadAvgRss, peakRss, settleRss, growth, idleSamples, loadSamples, settleSamples };
   } finally {
@@ -147,27 +149,29 @@ async function main() {
       const r = await benchOne(fw);
       rows.push({ framework: fw.name, ...r });
     } catch (err) {
-      console.error(`  ✗ ${fw.name} failed: ${err.message}`);
+      console.error("  " + fail(`${fw.name} failed: ${err.message}`));
       rows.push({ framework: fw.name, error: err.message });
     }
   }
 
-  const lines = [
-    "| Framework  | idle (MiB) | load avg (MiB) | peak (MiB) | settle (MiB) | growth (MiB) |",
-    "| ---------- | ---------: | -------------: | ---------: | -----------: | -----------: |",
-  ];
+  const tableRows = [];
   for (const r of rows) {
     if (!r.idleRss) continue;
-    lines.push(
-      `| ${r.framework.padEnd(10)} `
-      + `| ${(r.idleRss / 1024 / 1024).toFixed(1).padStart(10)} `
-      + `| ${(r.loadAvgRss / 1024 / 1024).toFixed(1).padStart(14)} `
-      + `| ${(r.peakRss / 1024 / 1024).toFixed(1).padStart(10)} `
-      + `| ${(r.settleRss / 1024 / 1024).toFixed(1).padStart(12)} `
-      + `| ${(r.growth / 1024 / 1024).toFixed(1).padStart(12)} |`,
-    );
+    const MiB = (b) => (b / 1024 / 1024).toFixed(1);
+    tableRows.push([
+      r.framework,
+      MiB(r.idleRss),
+      MiB(r.loadAvgRss),
+      MiB(r.peakRss),
+      MiB(r.settleRss),
+      MiB(r.growth),
+    ]);
   }
-  console.log("\n" + lines.join("\n") + "\n");
+  console.log("\n" + summary({
+    head: ["Framework", "idle (MiB)", "load avg (MiB)", "peak (MiB)", "settle (MiB)", "growth (MiB)"],
+    rows: tableRows,
+    highlight: (row) => row[0].includes("daloy"),
+  }) + "\n");
 
   writeFileSync(
     path.join(__dirname, "results.memory-load.json"),

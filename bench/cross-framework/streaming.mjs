@@ -18,6 +18,7 @@ import {
   __dirname, machineInfo, parseArgs,
   startServer, killServer, waitForHealthy, stats, fmt, warnBenchEnvironment,
 } from "./lib/common.mjs";
+import { c, section, summary, fail, metric, metricsLine } from "./lib/format.mjs";
 
 const FRAMEWORKS = [
   { name: "daloy",    file: "servers/stream/daloy.ts" },
@@ -52,7 +53,7 @@ function runAutocannon(duration) {
 }
 
 async function benchOne(fw) {
-  console.error(`\n=== ${fw.name} ===`);
+  console.error(section(fw.name));
   const child = await startServer(fw.file, { port: PORT });
   try {
     await waitForHealthy(PORT, "/health");
@@ -70,11 +71,11 @@ async function benchOne(fw) {
     const rps = stats(samples.map((s) => s.reqPerSec));
     const tput = stats(samples.map((s) => s.throughputMBps));
     const p99 = samples.reduce((a, s) => a + s.p99, 0) / samples.length;
-    console.error(
-      `  ${fmt(rps.median).padStart(6)} req/s  ` +
-      `${tput.median.toFixed(1).padStart(7)} MiB/s  ` +
-      `p99 ${p99.toFixed(2)}ms`,
-    );
+    console.error(metricsLine("stream", [
+      c.green(c.bold(fmt(rps.median))) + c.dim(" req/s"),
+      c.cyan(tput.median.toFixed(1)) + c.dim(" MiB/s"),
+      metric("p99", p99.toFixed(2), { unit: "ms" }),
+    ], { labelWidth: 8 }));
     return { reqPerSec: rps, throughputMBps: tput, p99, samples };
   } finally {
     await killServer(child);
@@ -90,25 +91,26 @@ async function main() {
       const r = await benchOne(fw);
       rows.push({ framework: fw.name, ...r });
     } catch (err) {
-      console.error(`  ✗ ${fw.name} failed: ${err.message}`);
+      console.error("  " + fail(`${fw.name} failed: ${err.message}`));
       rows.push({ framework: fw.name, error: err.message });
     }
   }
 
-  const lines = [
-    "| Framework  | req/s (median) | MiB/s (median) | p99 (ms) |",
-    "| ---------- | -------------: | -------------: | -------: |",
-  ];
+  const tableRows = [];
   for (const r of rows) {
     if (!r.reqPerSec) continue;
-    lines.push(
-      `| ${r.framework.padEnd(10)} `
-      + `| ${fmt(r.reqPerSec.median).padStart(14)} `
-      + `| ${r.throughputMBps.median.toFixed(1).padStart(14)} `
-      + `| ${r.p99.toFixed(2).padStart(8)} |`,
-    );
+    tableRows.push([
+      r.framework,
+      fmt(r.reqPerSec.median),
+      r.throughputMBps.median.toFixed(1),
+      r.p99.toFixed(2),
+    ]);
   }
-  console.log("\n" + lines.join("\n") + "\n");
+  console.log("\n" + summary({
+    head: ["Framework", "req/s (median)", "MiB/s (median)", "p99 (ms)"],
+    rows: tableRows,
+    highlight: (row) => row[0].includes("daloy"),
+  }) + "\n");
 
   writeFileSync(
     path.join(__dirname, "results.streaming.json"),

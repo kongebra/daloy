@@ -23,6 +23,7 @@ import { readFileSync, readdirSync, statSync, writeFileSync, existsSync, realpat
 import { createRequire } from "node:module";
 import path from "node:path";
 import { __dirname, ROOT, machineInfo, parseArgs, fmt } from "./lib/common.mjs";
+import { c, summary, fail, metric, metricsLine } from "./lib/format.mjs";
 
 const FRAMEWORKS = [
   { name: "daloy",    variant: "minimal",       pkgs: ["@daloyjs/core"] },
@@ -183,48 +184,53 @@ async function main() {
     try {
       const r = measure(fw.pkgs);
       rows.push({ framework: fw.name, variant: fw.variant ?? null, ...r });
-      console.error(`${label(fw).padEnd(24)} v${r.version}  ` +
-        `own=${(r.ownBytes / 1024).toFixed(1)} KiB / ${r.ownFiles} files  ` +
-        `total=${(r.totalBytes / 1024).toFixed(1)} KiB / ${r.totalFiles} files  ` +
-        `deps=${r.directDepCount} direct / ${r.transitiveDepCount} transitive`);
+      console.error(metricsLine(label(fw), [
+        c.dim(`v${r.version}`),
+        metric("own", `${(r.ownBytes / 1024).toFixed(1)} KiB / ${r.ownFiles} files`),
+        metric("total", `${(r.totalBytes / 1024).toFixed(1)} KiB / ${r.totalFiles} files`, { color: c.cyan }),
+        metric("deps", `${r.directDepCount} direct / ${r.transitiveDepCount} transitive`),
+      ], { labelWidth: 24 }));
     } catch (err) {
-      console.error(`✗ ${label(fw)}: ${err.message}`);
+      console.error("  " + fail(`${label(fw)}: ${err.message}`));
       rows.push({ framework: fw.name, variant: fw.variant ?? null, error: err.message });
     }
   }
 
-  const lines = [
-    "| Framework               | own (KiB) | own files | total (KiB) | total files | direct deps | transitive deps |",
-    "| ----------------------- | --------: | --------: | ----------: | ----------: | ----------: | --------------: |",
-  ];
+  const tableRows = [];
   for (const r of rows) {
     if (!r.totalBytes) continue;
     const name = r.variant ? `${r.framework} (${r.variant})` : r.framework;
-    lines.push(
-      `| ${name.padEnd(23)} `
-      + `| ${fmt(r.ownBytes / 1024).padStart(9)} `
-      + `| ${fmt(r.ownFiles).padStart(9)} `
-      + `| ${fmt(r.totalBytes / 1024).padStart(11)} `
-      + `| ${fmt(r.totalFiles).padStart(11)} `
-      + `| ${fmt(r.directDepCount).padStart(11)} `
-      + `| ${fmt(r.transitiveDepCount).padStart(15)} |`,
-    );
+    tableRows.push([
+      name,
+      fmt(r.ownBytes / 1024),
+      fmt(r.ownFiles),
+      fmt(r.totalBytes / 1024),
+      fmt(r.totalFiles),
+      fmt(r.directDepCount),
+      fmt(r.transitiveDepCount),
+    ]);
   }
-  lines.push("");
-  lines.push("Notes:");
-  lines.push("  - \"minimal\"       = framework's core packages only (router/runtime).");
-  lines.push("  - \"secure parity\" = framework + middleware needed to match Daloy's");
-  lines.push("                       secure-by-default posture (helmet/secure-headers,");
-  lines.push("                       CORS, rate-limit, HS256 JWT verify).");
-  lines.push("    Daloy's two rows are identical because those guards ship in");
-  lines.push("    `@daloyjs/core` — zero extra packages. Hono's two rows are also");
-  lines.push("    identical because its middleware lives inside the `hono` package");
-  lines.push("    via subpath imports. Every other framework's footprint grows.");
-  lines.push("    Compare the secure-parity rows for an apples-to-apples number.");
-  lines.push("  - Optional peer deps (e.g. NestJS's class-validator, class-transformer,");
-  lines.push("    websockets, microservices) are skipped — pnpm/npm don't install them");
-  lines.push("    automatically and a minimal app doesn't pull them in.");
-  console.log("\n" + lines.join("\n") + "\n");
+  const notes = [
+    "",
+    "Notes:",
+    "  - \"minimal\"       = framework's core packages only (router/runtime).",
+    "  - \"secure parity\" = framework + middleware needed to match Daloy's",
+    "                       secure-by-default posture (helmet/secure-headers,",
+    "                       CORS, rate-limit, HS256 JWT verify).",
+    "    Daloy's two rows are identical because those guards ship in",
+    "    `@daloyjs/core` — zero extra packages. Hono's two rows are also",
+    "    identical because its middleware lives inside the `hono` package",
+    "    via subpath imports. Every other framework's footprint grows.",
+    "    Compare the secure-parity rows for an apples-to-apples number.",
+    "  - Optional peer deps (e.g. NestJS's class-validator, class-transformer,",
+    "    websockets, microservices) are skipped — pnpm/npm don't install them",
+    "    automatically and a minimal app doesn't pull them in.",
+  ];
+  console.log("\n" + summary({
+    head: ["Framework", "own (KiB)", "own files", "total (KiB)", "total files", "direct deps", "transitive deps"],
+    rows: tableRows,
+    highlight: (row) => row[0].includes("daloy"),
+  }) + "\n" + c.dim(notes.join("\n")) + "\n");
 
   writeFileSync(
     path.join(__dirname, "results.install-size.json"),

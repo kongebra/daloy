@@ -14,6 +14,7 @@ import path from "node:path";
 import os from "node:os";
 import { build } from "esbuild";
 import { __dirname, ROOT, machineInfo, parseArgs, fmt } from "./lib/common.mjs";
+import { c, summary, fail, metric, metricsLine } from "./lib/format.mjs";
 
 // Each entry is a minimal source string. Keep them comparable: one route
 // each, no extras. We let esbuild resolve from this folder's node_modules.
@@ -398,36 +399,42 @@ async function main() {
     try {
       const r = await bundleOne(fw);
       rows.push({ framework: fw.name, variant: fw.variant ?? null, ...r });
-      console.error(`${label(fw).padEnd(24)} raw=${(r.raw / 1024).toFixed(1)} KiB  gz=${(r.gzipped / 1024).toFixed(1)} KiB`);
+      console.error(metricsLine(label(fw), [
+        metric("raw", (r.raw / 1024).toFixed(1), { unit: " KiB" }),
+        metric("gz", (r.gzipped / 1024).toFixed(1), { unit: " KiB", color: c.cyan }),
+      ], { labelWidth: 24 }));
     } catch (err) {
-      console.error(`✗ ${label(fw)}: ${err.message}`);
+      console.error("  " + fail(`${label(fw)}: ${err.message}`));
       rows.push({ framework: fw.name, variant: fw.variant ?? null, error: err.message });
     }
   }
 
-  const lines = [
-    "| Framework               | raw (KiB) | gzipped (KiB) |",
-    "| ----------------------- | --------: | ------------: |",
-  ];
+  const tableRows = [];
   for (const r of rows) {
     if (!r.raw) continue;
     const name = r.variant ? `${r.framework} (${r.variant})` : r.framework;
-    lines.push(`| ${name.padEnd(23)} | ${fmt(r.raw / 1024).padStart(9)} | ${fmt(r.gzipped / 1024).padStart(13)} |`);
+    tableRows.push([name, fmt(r.raw / 1024), fmt(r.gzipped / 1024)]);
   }
-  lines.push("");
-  lines.push("Notes:");
-  lines.push("  - \"minimal\"       = framework's documented hello-world (bare router).");
-  lines.push("  - \"secure parity\" = same hello-world + request-id, secure headers,");
-  lines.push("                       CORS allowlist, rate-limit hook, HS256 JWT verify.");
-  lines.push("    Daloy ships those guards in core; every other framework here requires");
-  lines.push("    opt-in middleware (helmet/secure-headers, cors, a rate limiter, JWT).");
-  lines.push("    For an apples-to-apples edge/serverless number, compare the secure-parity");
-  lines.push("    rows to each other. The minimal rows are router-only baselines and are");
-  lines.push("    NOT production-ready bundles.");
-  lines.push("  - NestJS optional peer deps (class-validator, class-transformer, websockets,");
-  lines.push("    microservices, platform-express) are marked external — they aren't installed");
-  lines.push("    by a minimal nest app and shouldn't be counted in its bundle.");
-  console.log("\n" + lines.join("\n") + "\n");
+  const notes = [
+    "",
+    "Notes:",
+    "  - \"minimal\"       = framework's documented hello-world (bare router).",
+    "  - \"secure parity\" = same hello-world + request-id, secure headers,",
+    "                       CORS allowlist, rate-limit hook, HS256 JWT verify.",
+    "    Daloy ships those guards in core; every other framework here requires",
+    "    opt-in middleware (helmet/secure-headers, cors, a rate limiter, JWT).",
+    "    For an apples-to-apples edge/serverless number, compare the secure-parity",
+    "    rows to each other. The minimal rows are router-only baselines and are",
+    "    NOT production-ready bundles.",
+    "  - NestJS optional peer deps (class-validator, class-transformer, websockets,",
+    "    microservices, platform-express) are marked external — they aren't installed",
+    "    by a minimal nest app and shouldn't be counted in its bundle.",
+  ];
+  console.log("\n" + summary({
+    head: ["Framework", "raw (KiB)", "gzipped (KiB)"],
+    rows: tableRows,
+    highlight: (row) => row[0].includes("daloy"),
+  }) + "\n" + c.dim(notes.join("\n")) + "\n");
 
   writeFileSync(
     path.join(__dirname, "results.bundle-size.json"),

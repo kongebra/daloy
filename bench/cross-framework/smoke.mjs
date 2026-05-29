@@ -12,6 +12,7 @@
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { c, banner, ok, fail, sym } from "./lib/format.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ONLY = process.argv.includes("--only=daloy") ? "--only=daloy" : null;
@@ -61,23 +62,24 @@ function runOne(file, extraArgs) {
 }
 
 async function main() {
+  process.stderr.write(banner("Bench smoke test", "runs every script with minimal settings") + "\n\n");
   const results = [];
   for (const [file, extraArgs] of SCRIPTS) {
-    process.stderr.write(`[smoke] ${file.padEnd(22)} ... `);
+    process.stderr.write(`${c.gray(sym.bullet)} ${c.white(file.padEnd(22))} ${c.dim("…")} `);
     const r = await runOne(file, extraArgs);
     results.push(r);
-    const status = r.code === 0 ? "OK " : "FAIL";
-    process.stderr.write(`${status}  (${(r.ms / 1000).toFixed(1)}s)\n`);
+    const status = r.code === 0 ? c.green("OK") : c.red("FAIL");
+    process.stderr.write(`${status}  ${c.dim(`(${(r.ms / 1000).toFixed(1)}s)`)}\n`);
     if (r.code !== 0) {
-      process.stderr.write(r.stderr.split("\n").slice(-20).map((l) => `    ${l}`).join("\n") + "\n");
+      process.stderr.write(c.red(r.stderr.split("\n").slice(-20).map((l) => `    ${l}`).join("\n")) + "\n");
     }
   }
   const failed = results.filter((r) => r.code !== 0);
   if (failed.length > 0) {
-    process.stderr.write(`\n${failed.length}/${results.length} smoke runs FAILED.\n`);
+    process.stderr.write("\n" + fail(`${failed.length}/${results.length} smoke runs FAILED.`) + "\n");
     process.exit(1);
   }
-  process.stderr.write(`\nAll ${results.length} bench scripts smoked OK.\n`);
+  process.stderr.write("\n" + ok(`All ${results.length} bench scripts smoked OK.`) + "\n");
 }
 
 main().catch((err) => { console.error(err); process.exit(1); });

@@ -19,6 +19,7 @@ import {
   __dirname, machineInfo, parseArgs,
   startServer, killServer, waitForHealthy, stats, fmt, warnBenchEnvironment,
 } from "./lib/common.mjs";
+import { c, section, summary, fail, metric, metricsLine, sym } from "./lib/format.mjs";
 
 const FRAMEWORKS = [
   { name: "daloy",    file: "servers/secured/daloy.ts" },
@@ -78,7 +79,7 @@ function runAutocannon(sc, duration) {
 }
 
 async function benchOne(fw) {
-  console.error(`\n=== ${fw.name} (secured stack) ===`);
+  console.error(section(fw.name, "secured stack"));
   const child = await startServer(fw.file, { port: PORT });
   await waitForHealthy(PORT, "/static", { headers: { authorization: AUTH } });
   try {
@@ -104,12 +105,12 @@ async function benchOne(fw) {
         non2xx: samples.reduce((a, s) => a + s.non2xx, 0),
         samples,
       };
-      console.error(
-        `  ${sc.title.padEnd(18)} ${fmt(rps.median).padStart(8)} req/s  ` +
-        `p50 ${out[sc.id].latency.p50.toFixed(2)}ms  ` +
-        `p99 ${out[sc.id].latency.p99.toFixed(2)}ms` +
-        (out[sc.id].non2xx ? `  ⚠ ${out[sc.id].non2xx} non-2xx` : ""),
-      );
+      console.error(metricsLine(sc.title, [
+        c.green(c.bold(fmt(rps.median))) + c.dim(" req/s"),
+        metric("p50", out[sc.id].latency.p50.toFixed(2), { unit: "ms" }),
+        metric("p99", out[sc.id].latency.p99.toFixed(2), { unit: "ms" }),
+        out[sc.id].non2xx ? c.red(`${sym.warn} ${out[sc.id].non2xx} non-2xx`) : "",
+      ].filter(Boolean), { labelWidth: 16 }));
     }
     return out;
   } finally {
@@ -126,26 +127,27 @@ async function main() {
       const results = await benchOne(fw);
       rows.push({ framework: fw.name, results });
     } catch (err) {
-      console.error(`  ✗ ${fw.name} failed: ${err.message}`);
+      console.error("  " + fail(`${fw.name} failed: ${err.message}`));
       rows.push({ framework: fw.name, error: err.message });
     }
   }
 
-  const lines = [
-    "| Framework  | GET /static (req/s) | GET /users/:id (req/s) | POST /echo (req/s) | p99 /static (ms) |",
-    "| ---------- | ------------------: | ---------------------: | -----------------: | ---------------: |",
-  ];
+  const tableRows = [];
   for (const r of rows) {
     if (!r.results) continue;
-    lines.push(
-      `| ${r.framework.padEnd(10)} `
-      + `| ${fmt(r.results.static.reqPerSec.median).padStart(19)} `
-      + `| ${fmt(r.results.dynamic.reqPerSec.median).padStart(22)} `
-      + `| ${fmt(r.results.echo.reqPerSec.median).padStart(18)} `
-      + `| ${r.results.static.latency.p99.toFixed(2).padStart(16)} |`,
-    );
+    tableRows.push([
+      r.framework,
+      fmt(r.results.static.reqPerSec.median),
+      fmt(r.results.dynamic.reqPerSec.median),
+      fmt(r.results.echo.reqPerSec.median),
+      r.results.static.latency.p99.toFixed(2),
+    ]);
   }
-  console.log("\n" + lines.join("\n") + "\n");
+  console.log("\n" + summary({
+    head: ["Framework", "GET /static (req/s)", "GET /users/:id (req/s)", "POST /echo (req/s)", "p99 /static (ms)"],
+    rows: tableRows,
+    highlight: (row) => row[0].includes("daloy"),
+  }) + "\n");
 
   writeFileSync(
     path.join(__dirname, "results.middleware-stack.json"),

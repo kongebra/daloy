@@ -16,6 +16,7 @@ import {
   __dirname, machineInfo, parseArgs,
   startServer, killServer, waitForHealthy, stats, fmt, warnBenchEnvironment,
 } from "./lib/common.mjs";
+import { c, section, summary, fail, metric, metricsLine, sym } from "./lib/format.mjs";
 
 const FRAMEWORKS = [
   { name: "daloy",    file: "servers/echo-bytes/daloy.ts" },
@@ -66,7 +67,7 @@ function runAutocannon({ duration, connections, body }) {
 }
 
 async function benchOne(fw) {
-  console.error(`\n=== ${fw.name} ===`);
+  console.error(section(fw.name));
   const child = await startServer(fw.file, { port: PORT });
   await waitForHealthy(PORT, "/health");
   try {
@@ -97,13 +98,12 @@ async function benchOne(fw) {
         errors: samples.reduce((a, s) => a + s.non2xx + s.errors, 0),
         samples,
       };
-      console.error(
-        `  ${sz.id.padStart(7)}  ` +
-        `${fmt(rps.median).padStart(8)} req/s  ` +
-        `${tput.median.toFixed(1).padStart(7)} MiB/s  ` +
-        `p99 ${out[sz.id].p99.toFixed(2)}ms` +
-        (out[sz.id].errors ? `  ⚠ ${out[sz.id].errors} errors` : ""),
-      );
+      console.error(metricsLine(sz.id, [
+        c.green(c.bold(fmt(rps.median))) + c.dim(" req/s"),
+        c.cyan(tput.median.toFixed(1)) + c.dim(" MiB/s"),
+        metric("p99", out[sz.id].p99.toFixed(2), { unit: "ms" }),
+        out[sz.id].errors ? c.red(`${sym.warn} ${out[sz.id].errors} errors`) : "",
+      ].filter(Boolean), { labelWidth: 8 }));
     }
     return out;
   } finally {
@@ -120,32 +120,34 @@ async function main() {
       const results = await benchOne(fw);
       rows.push({ framework: fw.name, results });
     } catch (err) {
-      console.error(`  ✗ ${fw.name} failed: ${err.message}`);
+      console.error("  " + fail(`${fw.name} failed: ${err.message}`));
       rows.push({ framework: fw.name, error: err.message });
     }
   }
 
   // One row per (framework, size) so the table is easy to scan.
-  const lines = [
-    "| Framework  | size    | req/s (median) | MiB/s (median) | p99 (ms) | errors |",
-    "| ---------- | :------ | -------------: | -------------: | -------: | -----: |",
-  ];
+  const tableRows = [];
   for (const r of rows) {
     if (!r.results) continue;
     for (const sz of SIZES) {
       const s = r.results[sz.id];
       if (!s) continue;
-      lines.push(
-        `| ${r.framework.padEnd(10)} `
-        + `| ${sz.id.padEnd(7)} `
-        + `| ${fmt(s.reqPerSec.median).padStart(14)} `
-        + `| ${s.throughputMBps.median.toFixed(1).padStart(14)} `
-        + `| ${s.p99.toFixed(2).padStart(8)} `
-        + `| ${String(s.errors).padStart(6)} |`,
-      );
+      tableRows.push([
+        r.framework,
+        sz.id,
+        fmt(s.reqPerSec.median),
+        s.throughputMBps.median.toFixed(1),
+        s.p99.toFixed(2),
+        String(s.errors),
+      ]);
     }
   }
-  console.log("\n" + lines.join("\n") + "\n");
+  console.log("\n" + summary({
+    head: ["Framework", "size", "req/s (median)", "MiB/s (median)", "p99 (ms)", "errors"],
+    rows: tableRows,
+    align: ["l", "l", "r", "r", "r", "r"],
+    highlight: (row) => row[0].includes("daloy"),
+  }) + "\n");
 
   writeFileSync(
     path.join(__dirname, "results.body-size.json"),
