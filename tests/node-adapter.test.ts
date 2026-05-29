@@ -157,6 +157,57 @@ test("node adapter: rejects invalid maxHeaderBytes", () => {
   );
 });
 
+test("node adapter: maxConnections forwards to server.maxConnections", async () => {
+  const { handle, port } = await startServer(buildEchoApp(), { maxConnections: 5 });
+  try {
+    assert.equal(handle.server.maxConnections, 5);
+    // Admitted requests still succeed normally under the cap.
+    const res = await fetch(`http://127.0.0.1:${port}/hello`);
+    assert.equal(res.status, 200);
+  } finally {
+    await handle.close();
+  }
+});
+
+test("node adapter: maxConnections sheds overflow sockets while admitted ones stay served", async () => {
+  // Cap at a single concurrent connection, then hold it open with a slow
+  // handler. A second connection must be refused at accept time (ECONNRESET /
+  // ECONNREFUSED) instead of being queued — that is the graceful-degradation
+  // contract: overflow is rejected fast rather than inflating tail latency.
+  const app = new App({ logger: false });
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  app.route({
+    method: "GET",
+    path: "/slow",
+    operationId: "slow",
+    responses: { 200: { description: "ok", body: z.object({ ok: z.boolean() }) as any } },
+    handler: async () => { await gate; return { status: 200 as const, body: { ok: true } }; },
+  });
+  const { handle, port } = await startServer(app, { maxConnections: 1 });
+  try {
+    // First connection occupies the only allowed socket (kept open by `gate`).
+    const slow = fetch(`http://127.0.0.1:${port}/slow`, {
+      headers: { connection: "keep-alive" },
+    });
+    // Give the first socket time to be accepted before opening the second.
+    await new Promise((r) => setTimeout(r, 50));
+    // Second connection should be rejected at the socket layer.
+    await assert.rejects(
+      fetch(`http://127.0.0.1:${port}/slow`, { headers: { connection: "close" } }),
+      /fetch failed|ECONNRESET|ECONNREFUSED|socket/i,
+    );
+    // The admitted request still completes successfully once released.
+    release();
+    const res = await slow;
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { ok: true });
+  } finally {
+    release();
+    await handle.close();
+  }
+});
+
 test("node adapter: handleSignals registers SIGTERM/SIGINT listeners", async () => {
   const app = new App({ logger: false });
   const beforeT = process.listenerCount("SIGTERM");

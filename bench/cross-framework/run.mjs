@@ -37,14 +37,15 @@ import {
 } from "./lib/format.mjs";
 
 const FRAMEWORKS = [
-  { name: "daloy",    file: "servers/throughput/daloy.ts" },
-  { name: "hono",     file: "servers/throughput/hono.ts" },
-  { name: "fastify",  file: "servers/throughput/fastify.ts" },
-  { name: "express",  file: "servers/throughput/express.ts" },
-  { name: "koa",      file: "servers/throughput/koa.ts" },
-  { name: "nest",     file: "servers/throughput/nest.ts" },
-  { name: "elysia",   file: "servers/throughput/elysia.ts" },
-  { name: "feathers", file: "servers/throughput/feathers.ts" },
+  { name: "daloy",      file: "servers/throughput/daloy.ts" },
+  { name: "daloy-shed", file: "servers/throughput/daloy-shed.ts" },
+  { name: "hono",       file: "servers/throughput/hono.ts" },
+  // { name: "fastify",  file: "servers/throughput/fastify.ts" },
+  // { name: "express",  file: "servers/throughput/express.ts" },
+  // { name: "koa",      file: "servers/throughput/koa.ts" },
+  // { name: "nest",     file: "servers/throughput/nest.ts" },
+  // { name: "elysia",   file: "servers/throughput/elysia.ts" },
+  // { name: "feathers", file: "servers/throughput/feathers.ts" },
 ];
 
 const args = parseArgs(process.argv);

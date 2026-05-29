@@ -46,6 +46,17 @@ export interface NodeServerOptions {
   /** Maximum HTTP header size bytes (DoS protection). Default: 16 KiB. */
   maxHeaderBytes?: number;
   /**
+   * Maximum number of concurrent sockets the server will accept, forwarded to
+   * Node's `server.maxConnections`. Acts as connection-layer admission
+   * control: once the limit is reached, additional incoming connections are
+   * rejected at accept time instead of being queued into the event loop,
+   * where they would otherwise inflate tail latency for everyone under
+   * overload. Pair it with an upstream load balancer / API gateway that
+   * translates the rejection into a `503 Retry-After` for clients. Leave
+   * unset for Node's default (unbounded). Default: unset.
+   */
+  maxConnections?: number;
+  /**
    * When true, honor `x-forwarded-proto` and `x-forwarded-host` headers when
    * constructing the request URL. Enable this only when running behind a
    * trusted reverse proxy (e.g. a TLS-terminating load balancer); otherwise
@@ -102,6 +113,11 @@ export function serve(app: App, opts: NodeServerOptions = {}): NodeServerHandle 
   server.requestTimeout = opts.connectionTimeoutMs ?? 30_000;
   server.headersTimeout = opts.connectionTimeoutMs ?? 30_000;
   server.keepAliveTimeout = 5_000;
+  // Connection-layer admission control. Reject overflow sockets at accept time
+  // rather than queuing them into the event loop under overload.
+  if (typeof opts.maxConnections === "number" && opts.maxConnections > 0) {
+    server.maxConnections = opts.maxConnections;
+  }
   const wsSockets = new Set<Duplex>();
   if (app.webSocketRoutes.size > 0) {
     server.on("upgrade", (req, socket, head) => {

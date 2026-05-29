@@ -892,6 +892,7 @@ interface NodeServerOptions {
   handleSignals?:        boolean;  // default: true (SIGINT/SIGTERM)
   maxHeaderBytes?:       number;   // default: 16 KiB
   trustProxy?:           boolean;  // honor x-forwarded-proto/host (only behind a trusted LB)
+  maxConnections?:       number;   // cap concurrent sockets (admission control); default: unset (unbounded)
   bufferedBodyMaxBytes?: number;   // default: 256 KiB (pre-buffer threshold for POST hot path)
 }
 interface NodeServerHandle { server: Server; port: number; close(): Promise<void> }`}
