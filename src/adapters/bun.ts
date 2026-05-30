@@ -94,19 +94,25 @@ export function serve(app: App, opts: BunServeOptions = {}): BunServerHandle {
           return app.fetch(req);
         }
       : (req: Request) => app.fetch(req),
-    error: (err: Error) =>
-      new Response(
+    error: (err: Error) => {
+      // Last-resort handler reached only if app.fetch itself throws (it
+      // normally catches everything). Log the error server-side but never
+      // echo `err.message` to the client — that would leak internal details
+      // and bypass the framework's prod-mode error redaction. Mirrors the
+      // redacted problem+json body the Node adapter emits in writeAdapterError.
+      app.log.error({ err }, "Unhandled error in Bun fetch handler");
+      return new Response(
         JSON.stringify({
           type: "https://daloyjs.dev/errors/internal",
           title: "Internal Server Error",
           status: 500,
-          detail: err.message,
         }),
         {
           status: 500,
           headers: { "content-type": "application/problem+json" },
         },
-      ),
+      );
+    },
   };
   if (hasWs) cfg.websocket = buildBunWebSocketConfig(app);
   if (opts.unix === undefined) {

@@ -75,14 +75,20 @@ export function serve(app: App, opts: DenoServeOptions = {}): DenoServerHandle {
   const shutdown = async () => {
     if (stopped) return;
     stopped = true;
-    controller.abort();
     opts.signal?.removeEventListener("abort", onSignal);
     if (opts.handleSignals !== false && typeof D?.removeSignalListener === "function") {
       D.removeSignalListener("SIGTERM", onSignal);
       D.removeSignalListener("SIGINT", onSignal);
     }
+    // Drain app-level hooks first (while the HTTP server can still respond),
+    // then ask Deno to stop gracefully — `server.shutdown()` stops accepting
+    // new connections and lets in-flight requests finish. Aborting the listen
+    // signal happens last, purely as a safety net for runtimes that lack
+    // `HttpServer.shutdown()`. Doing it the other way around (aborting first)
+    // tears the listener down before in-flight requests can complete.
     await app.shutdown(opts.shutdownTimeoutMs ?? 10_000);
     await server.shutdown?.();
+    controller.abort();
   };
 
   return { shutdown };

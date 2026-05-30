@@ -1181,7 +1181,9 @@ test("bun adapter delegates fetch to app and produces a problem+json error respo
     assert.equal(err.headers.get("content-type"), "application/problem+json");
     const body: any = await err.json();
     assert.equal(body.title, "Internal Server Error");
-    assert.equal(body.detail, "boom");
+    // The fallback handler must not leak the internal error message to clients.
+    assert.equal(body.detail, undefined);
+    assert.ok(!JSON.stringify(body).includes("boom"));
 
     await handle.stop();
   } finally {

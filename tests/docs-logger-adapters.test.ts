@@ -270,6 +270,11 @@ test("bun adapter passes modern options through to Bun.serve", async () => {
     const errRes = errFn(new Error("boom"));
     assert.equal(errRes.status, 500);
     assert.match(errRes.headers.get("content-type") ?? "", /application\/problem\+json/);
+    // The runtime fallback error handler must NOT leak the internal error
+    // message to clients (prod-mode redaction parity with the Node adapter).
+    const errBody = await errRes.json();
+    assert.equal(errBody.detail, undefined);
+    assert.ok(!JSON.stringify(errBody).includes("boom"));
     await handle.stop();
     assert.deepEqual(stopped, [true]);
   } finally {
