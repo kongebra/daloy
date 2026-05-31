@@ -33,13 +33,13 @@ export default function Page() {
           RFC 9421
         </a>
         ) — the IETF-standard way to prove a server-to-server request came from
-        a trusted peer. Where{" "}
-        <a href="/docs/webhook-delivery">webhook HMAC</a> binds a signature to a
-        request <em>body</em> and <a href="/docs/mtls">mTLS</a> authenticates
-        the TLS <em>peer</em>, message signatures bind a signature to a
-        caller-chosen set of <strong>HTTP message components</strong> (method,
-        path, authority, selected headers&hellip;) carried in the standard{" "}
-        <code>Signature</code> / <code>Signature-Input</code> headers.
+        a trusted peer. Where <a href="/docs/webhook-delivery">webhook HMAC</a>{" "}
+        binds a signature to a request <em>body</em> and{" "}
+        <a href="/docs/mtls">mTLS</a> authenticates the TLS <em>peer</em>,
+        message signatures bind a signature to a caller-chosen set of{" "}
+        <strong>HTTP message components</strong> (method, path, authority,
+        selected headers&hellip;) carried in the standard <code>Signature</code>{" "}
+        / <code>Signature-Input</code> headers.
       </p>
       <p>
         The module is dependency-free and runtime-portable (WebCrypto only, no{" "}
@@ -51,10 +51,9 @@ export default function Page() {
       <h2>Secure-by-default</h2>
       <ul>
         <li>
-          The verifier requires an explicit{" "}
-          <code>algorithms</code> allowlist — there is no implicit
-          &ldquo;accept any algorithm&rdquo; mode, and a resolved key may pin
-          its own algorithm to defeat algorithm-confusion.
+          The verifier requires an explicit <code>algorithms</code> allowlist —
+          there is no implicit &ldquo;accept any algorithm&rdquo; mode, and a
+          resolved key may pin its own algorithm to defeat algorithm-confusion.
         </li>
         <li>
           <code>created</code> is required by default and the signature is
@@ -141,8 +140,8 @@ app.route({
       <h2>Sign an outbound request</h2>
       <p>
         <code>signRequest()</code> returns a new <code>Request</code> with the{" "}
-        <code>Signature</code> and <code>Signature-Input</code> headers
-        attached (the original is not mutated).
+        <code>Signature</code> and <code>Signature-Input</code> headers attached
+        (the original is not mutated).
       </p>
       <CodeBlock
         language="ts"
@@ -250,8 +249,8 @@ if (!result.valid) {
         <code>alg_not_allowed</code>, <code>alg_mismatch</code>,{" "}
         <code>key_not_found</code>, <code>replay_detected</code>,{" "}
         <code>tag_mismatch</code>, or <code>malformed_signature_headers</code>.
-        They throw only on a programming error (an empty{" "}
-        <code>algorithms</code> allowlist, or WebCrypto being unavailable).
+        They throw only on a programming error (an empty <code>algorithms</code>{" "}
+        allowlist, or WebCrypto being unavailable).
       </p>
     </>
   );
