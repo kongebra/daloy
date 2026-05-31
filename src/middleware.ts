@@ -52,11 +52,6 @@ export function requestId(opts: RequestIdOptions = {}): Hooks {
       (ctx.state as Record<string, unknown>).requestId = id;
       ctx.set.headers.set(header, id);
     },
-    onResponse(res) {
-      // Defence in depth: also stamp on responses produced by error paths.
-      // (No-op if already set.)
-      void res;
-    },
   };
 }
 
@@ -736,11 +731,6 @@ export function cors(opts: CorsOptions): Hooks {
         return new Response(null, { status: 204, headers: h });
       }
       return undefined;
-    },
-    onResponse(res) {
-      // Mirror set headers onto the final response.
-      // (No-op if already present.)
-      void res;
     },
   };
   (hooks as Record<PropertyKey, unknown>)[CORS_HOOK_MARKER] = true;
