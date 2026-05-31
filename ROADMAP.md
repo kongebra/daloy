@@ -115,6 +115,57 @@ The branch-coverage gate shipped, but the floor was **relaxed from ≥95% to ≥
 
 ---
 
+## Planned — capability gaps (`0.x`, before `1.0.0`)
+
+Capabilities a contract-first, production-grade API framework is expected to ship that are **not yet implemented and were missing from this roadmap entirely** (surfaced by a full `src/` + docs audit on 2026-05-31). These are slated for upcoming `0.x` minors (we still have plenty of runway before the freeze) — **not** for the `1.0.0` stabilization phase itself, which is about locking the API, not adding to it. None of these block each other; they are ordered by priority. The two flagged **(pre-`1.0` candidate)** should land before the public API freeze because they shape the contract surface itself.
+
+### Contract lifecycle & API evolution
+
+- [ ] **API versioning + breaking-change detection** _(pre-`1.0` candidate)_ — route-level `deprecated` lifecycle, `Deprecation` + `Sunset` headers (RFC 8594), and an **OpenAPI diff / breaking-change gate** that compares the generated spec against the last published one in CI. For a single-source-of-truth framework, "did this PR break my published API?" is the obvious missing tool. Today `openapi.ts` only carries a free-form `version` string.
+- [ ] **AsyncAPI generation for WebSockets** — the RFC 6455 stack (`src/websocket.ts`) and its CSWSH defenses ship with no contract/doc artifact. Extend the contract-first story past HTTP by emitting AsyncAPI for `app.ws()` surfaces, mirroring the built-in OpenAPI generator.
+
+### Request/response semantics
+
+- [ ] **Idempotency keys** _(pre-`1.0` candidate)_ — first-class `Idempotency-Key` handling (request fingerprinting, response replay, in-flight conflict `409`, pluggable store mirroring `SessionStore` / rate-limit backends). Table-stakes for the payments surface (docs already cover 9 processors) and for safe serverless retries.
+- [ ] **Response caching middleware** — server-side cache (cache-key + TTL + `Cache-Control` orchestration, stale-while-revalidate). Complements existing `etag()` (conditional requests) and `compression()`, which do not cache bodies.
+- [ ] **Pagination & cursor helpers** — opaque cursor encode/decode, `Link` header (RFC 8288) emission, and OpenAPI parameter wiring for list endpoints.
+
+### Observability & resilience
+
+- [ ] **Metrics / `/metrics` endpoint** — the third observability pillar. Logging (`logger.ts`) and tracing (`tracing.ts`) exist; add Prometheus/OpenMetrics exposition with RED/USE counters and an opt-in, auth-guarded `/metrics` route (same posture as `app.healthcheck()`).
+- [ ] **Outbound resilience for `fetch`** — circuit breaker, retry-with-backoff, and per-call timeout layered on top of `fetchGuard()` (which only covers SSRF on egress). Rounds out the "mature Node ops" (Fastify-parity) positioning.
+
+### Integrations the framework should own
+
+- [ ] **Outbound webhook delivery** — counterpart to the existing inbound `verifyWebhookSignature` / `signWebhookPayload`: signed delivery with retry/backoff, timestamped signatures, and dead-letter semantics.
+- [ ] **Scheduled tasks / in-process cron** — a queue-agnostic schedule primitive (distinct from the "background-job interface" research bullet below), with graceful-shutdown integration and single-flight guarantees.
+- [ ] **mTLS / client-certificate auth** — `conn-info.ts` already detects TLS; add a client-certificate authentication path for zero-trust / service-to-service deployments.
+
+### Edge / WAF-parity hardening (in-app layer)
+
+DaloyJS deliberately delegates pure L3/L4 network DoS to the operator's CDN/WAF (see [`SECURITY.md`](SECURITY.md) availability row). These are the WAF/reverse-proxy features that genuinely belong **inside** the app — where the framework already owns request parsing and identity — rather than at the edge. Existing primitives already cover a lot: `rateLimit()` (+Redis), `ipRestriction()` (CIDR allow/deny), `maxConnections` (accept-time socket cap, `0.36.0`), `loadShedding()`, slow-loris timeouts (`requestTimeout` / `headersTimeout` / `maxHeaderSize`), request-smuggling rejection (duplicate `Content-Length` / `Transfer-Encoding`), and the SQLi / NoSQLi / command-injection input guards. The gaps:
+
+- [ ] **Adaptive auto-ban (fail2ban-style)** — generalize `loginThrottle()` into a reusable escalating-ban primitive: repeated `401` / `403` / `429` / validation failures from one client trip a temporary, decaying IP/identity ban backed by the same pluggable store as `rateLimit()`. Today throttling is auth-login-specific.
+- [ ] **Bot / User-Agent management middleware** — block empty or known-abusive `User-Agent` strings and verify declared crawlers (Googlebot/Bingbot) via reverse-DNS + forward-confirm, the way Nginx/WAF bot rules do. Opt-in, allowlist-friendly.
+- [ ] **IP reputation / dynamic denylist feed** — pluggable reputation interface so operators can wire abuse feeds (Tor exit lists, Spamhaus DROP, cloud-abuse ranges) into `ipRestriction()` without rebuilding it; periodic refresh + fail-open semantics.
+- [ ] **Per-route / per-client concurrency limits + queueing** — HAProxy `maxconn`/queue parity at the app layer: bound in-flight requests per route and per client identity with bounded FIFO queueing and a fast `503`, complementing the global `maxConnections` admission cap and `loadShedding()`.
+- [ ] **GeoIP / geo-blocking hook** — country allow/deny middleware that consumes an operator-supplied MaxMind/IP-to-country dataset (no bundled DB, no runtime dep), reusing the `conn-info.ts` client-IP resolution.
+- [ ] **Inbound request-decompression bomb guard** — core does not decompress request bodies today (safe by omission). If/when `Content-Encoding` request support is added, ship it with a decompressed-ratio + absolute-size cap so a gzip bomb can't blow past `bodyLimitBytes` after inflation.
+- [ ] **Opt-in WAF-lite signature/anomaly middleware (OWASP CRS-lite)** — wire the existing SQLi / XSS / NoSQLi / command-injection detectors into a single scored, opt-in inbound-inspection middleware with per-rule enable/disable and a block/log mode. Not a full ModSecurity CRS (that stays the operator's edge WAF), but a first-party "defense-in-depth" layer for teams without one.
+
+### Server-to-server & supply-chain hardening
+
+Builds on shipped supply-chain work (`fetchGuard()` SSRF, lockfile-source gates, SBOM, `verify:*` IOC corpus, SHA-pinned Actions, provenance publishing).
+
+- [ ] **Subresource Integrity (SRI) for CDN-loaded docs assets** — `src/docs.ts` injects Scalar / Swagger UI via `<script src="https://cdn.jsdelivr.net/...">` with **no `integrity` hash**. A compromised/poisoned jsDelivr asset would execute in the docs page. Pin version-exact `sha384-` SRI hashes (+ `crossorigin`), or document a self-hosted-asset mode, so the docs UI inherits the same supply-chain posture as the rest of the framework.
+- [ ] **HTTP Message Signatures (RFC 9421)** — first-class sign/verify for server-to-server request authentication (`Signature` / `Signature-Input`), complementing the existing inbound-only webhook HMAC and the proposed mTLS path. The standards-based answer to "prove this internal call came from a trusted peer."
+
+### Roadmap hygiene
+
+- [ ] **Add an "Integrations & docs" track** — the docs site already ships and maintains large surfaces the release log never tracks: Email (7 providers), Payments (9), Databases (5), ORM (7), ODM (2), Auth providers (5), Deployment platforms (4), Compliance, and Tutorials. Capture this ongoing work in the roadmap so it is visible to planning instead of invisible.
+
+---
+
 ## Stabilization — `1.0.0` ("public API freeze")
 
 Target ship date: when all of these are simultaneously true. We'd rather delay `1.0.0` than freeze the wrong API.
@@ -136,6 +187,8 @@ Items we want but don't yet have a concrete design for. Fair game to prototype; 
 - [ ] HTTP/2 + HTTP/3 adapters (Node h2; explore Workers AutoHTTP/3).
 - [ ] Pluggable serialization (CBOR, MessagePack) gated by `Accept`.
 - [ ] First-class background-job interface (queue-agnostic).
+- [ ] **SPIFFE / SPIRE workload identity** — zero-trust service-to-service identity (SVID issuance/validation) as a deeper alternative to the planned mTLS + RFC 9421 paths. Heavy; needs a concrete integration design before committing.
+- [ ] **Runtime artifact / plugin signature verification (Sigstore / cosign)** — releases are already cosign-signed with provenance; explore optionally verifying third-party plugin artifacts at load time rather than only at install/CI time.
 
 ---
 
