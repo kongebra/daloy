@@ -48,6 +48,7 @@
 
 import { readdir, readFile, stat } from "node:fs/promises";
 import { relative } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const REPO_ROOT = new URL("../", import.meta.url);
 
@@ -179,7 +180,7 @@ async function* walkRepo(dir: URL): AsyncGenerator<{
     if (entry.isDirectory()) {
       yield* walkRepo(child);
     } else if (entry.isFile()) {
-      yield { absolute: child.pathname, name: entry.name };
+      yield { absolute: fileURLToPath(child), name: entry.name };
     }
   }
 }
@@ -188,7 +189,10 @@ async function main(): Promise<void> {
   const findings: NativeAddonFinding[] = [];
 
   for await (const file of walkRepo(REPO_ROOT)) {
-    const rel = relative(REPO_ROOT.pathname, file.absolute);
+    const rel = relative(fileURLToPath(REPO_ROOT), file.absolute).replaceAll(
+      "\\",
+      "/",
+    );
     if (file.name === "package.json") {
       const text = await readFile(file.absolute, "utf8");
       let parsed: PackageJsonLike;
@@ -213,7 +217,7 @@ async function main(): Promise<void> {
     }
   }
 
-  const lockfilePath = new URL("pnpm-lock.yaml", REPO_ROOT).pathname;
+  const lockfilePath = fileURLToPath(new URL("pnpm-lock.yaml", REPO_ROOT));
   try {
     const stats = await stat(lockfilePath);
     if (stats.isFile()) {

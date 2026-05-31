@@ -57,6 +57,7 @@
 
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 export interface ShrinkwrapViolation {
   readonly path: string;
@@ -66,7 +67,7 @@ export interface ShrinkwrapViolation {
     | "manifest scripts reference npm shrinkwrap command";
 }
 
-const REPO_ROOT = resolve(new URL("..", import.meta.url).pathname);
+const REPO_ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
 
 /**
  * Directories we never recurse into when scanning for a stray

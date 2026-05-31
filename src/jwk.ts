@@ -90,6 +90,21 @@ export interface JwkOptions {
    */
   fetchTtlSeconds?: number;
   /**
+   * Grace window (seconds) during which a *previously fetched* JWKS keeps
+   * being served if a TTL-expiry refresh fails (network error, non-2xx,
+   * or malformed body). Measured from the last successful fetch, on top of
+   * {@link fetchTtlSeconds}; a transient IdP blip therefore does not fail
+   * every request while a perfectly valid cached key set is in hand. The
+   * first fetch is never eligible (there is no last-good set to fall back
+   * to), so an unreachable IdP at boot still rejects. Tokens are always
+   * cryptographically verified and `exp`-checked regardless. Set to `0` to
+   * disable and fail closed the moment the TTL lapses. Default `3600` (1h).
+   * Ignored when `jwks` is not a URL.
+   *
+   * @since 0.41.0
+   */
+  maxStaleSeconds?: number;
+  /**
    * Optional `fetch` implementation override (mainly for tests). Defaults
    * to global `fetch`.
    */
@@ -157,6 +172,7 @@ function makeJwksLoader(
   source: JwkSource,
   fetchImpl: typeof fetch,
   ttlSeconds: number,
+  maxStaleSeconds: number,
 ): () => Promise<JwkSet> {
   if (typeof source === "string") {
     if (!source.startsWith("https://")) {
@@ -186,6 +202,21 @@ function makeJwksLoader(
           }
           cache = { jwks: body, fetchedAt: Date.now() };
           return body;
+        } catch (err) {
+          // Stale-while-error: a TTL-expiry refresh that fails must not take
+          // down all auth when a last-good JWKS is still within the grace
+          // window. Public verification keys rotate slowly; tokens remain
+          // cryptographically verified and exp-checked either way. The first
+          // fetch (no cache) always rethrows, so an unreachable IdP at boot
+          // still fails closed.
+          if (
+            cache &&
+            maxStaleSeconds > 0 &&
+            Date.now() - cache.fetchedAt < (ttlSeconds + maxStaleSeconds) * 1000
+          ) {
+            return cache.jwks;
+          }
+          throw err;
         } finally {
           inflight = undefined;
         }
@@ -259,15 +290,26 @@ export function jwk(opts: JwkOptions): Hooks {
       throw new Error("jwk(): fetchTtlSeconds must be a non-negative finite number.");
     }
   }
+  if (opts.maxStaleSeconds !== undefined) {
+    if (
+      typeof opts.maxStaleSeconds !== "number" ||
+      !Number.isFinite(opts.maxStaleSeconds) ||
+      opts.maxStaleSeconds < 0
+    ) {
+      throw new Error("jwk(): maxStaleSeconds must be a non-negative finite number.");
+    }
+  }
   const realm = opts.realm ?? "api";
   if (/["\r\n\0]/.test(realm)) {
     throw new Error("jwk(): realm must not contain quotes, CR, LF, or NUL bytes.");
   }
   const ttl = opts.fetchTtlSeconds ?? 300;
+  const maxStale = opts.maxStaleSeconds ?? 3600;
   const loader = makeJwksLoader(
     opts.jwks,
     opts.fetch ?? (globalThis.fetch as typeof fetch),
     ttl,
+    maxStale,
   );
 
   const algorithms = [...opts.algorithms] as JwtAlgorithm[];

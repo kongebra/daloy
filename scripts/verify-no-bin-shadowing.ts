@@ -53,6 +53,7 @@
 
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 /**
  * System / package-manager command names a malicious `bin` key would
@@ -267,7 +268,7 @@ async function findTemplateManifests(): Promise<readonly string[]> {
     const candidate = new URL(`${entry.name}/package.json`, root);
     try {
       const s = await stat(candidate);
-      if (s.isFile()) out.push(candidate.pathname);
+      if (s.isFile()) out.push(fileURLToPath(candidate));
     } catch {
       /* template has no package.json (e.g. deno-basic uses deno.json) */
     }
@@ -281,7 +282,7 @@ async function main(): Promise<void> {
   // Layer 1: our own published manifests + every scaffolded template.
   for (const rel of PUBLISHED_MANIFESTS) {
     const url = new URL(rel, import.meta.url);
-    violations.push(...(await checkManifest(url.pathname, true)));
+    violations.push(...(await checkManifest(fileURLToPath(url), true)));
   }
   for (const path of await findTemplateManifests()) {
     violations.push(...(await checkManifest(path, true)));
@@ -290,7 +291,7 @@ async function main(): Promise<void> {
   // Layer 2: installed dependency tree, if present. Skipped silently
   // when node_modules doesn't exist (e.g. on a freshly cloned dev box
   // running this script before `pnpm install`).
-  const nodeModules = new URL("../node_modules/", import.meta.url).pathname;
+  const nodeModules = fileURLToPath(new URL("../node_modules/", import.meta.url));
   try {
     const s = await stat(nodeModules);
     if (s.isDirectory()) {

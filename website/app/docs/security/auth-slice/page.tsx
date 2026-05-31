@@ -58,8 +58,8 @@ export default function Page() {
           setup.
         </li>
         <li>
-          <strong>Your own sibling auth service</strong>: a separate DaloyJS
-          app using <code>createJwtSigner()</code> to mint tokens and exposing a
+          <strong>Your own sibling auth service</strong>: a separate DaloyJS app
+          using <code>createJwtSigner()</code> to mint tokens and exposing a
           JWKS endpoint. The API service then validates those tokens with{" "}
           <code>jwk()</code> exactly as it would for an external IdP.
         </li>
@@ -67,13 +67,13 @@ export default function Page() {
       <p>Rough mapping of which middleware to reach for:</p>
       <ul>
         <li>
-          <strong>Browser app + external IdP (OIDC)</strong>: {" "}
-          <code>jwk()</code> on the API, <code>requireScopes()</code> per route,{" "}
+          <strong>Browser app + external IdP (OIDC)</strong>: <code>jwk()</code>{" "}
+          on the API, <code>requireScopes()</code> per route,{" "}
           <code>session()</code> only if you also need server-side session state
           alongside the access token.
         </li>
         <li>
-          <strong>Service-to-service inside one tenant</strong>: {" "}
+          <strong>Service-to-service inside one tenant</strong>:{" "}
           <code>bearerAuth({"{ validate }"})</code> with an opaque token, or{" "}
           <code>jwk()</code> if both sides already speak JWT. The{" "}
           <a href="/docs/security/internal-service-preset">
@@ -151,6 +151,7 @@ app.use(
     issuer: "https://login.example.com/",
     audience: "https://api.example.com",
     fetchTtlSeconds: 600,
+    maxStaleSeconds: 3600,
     realm: "api",
   }),
 );
@@ -162,12 +163,22 @@ app.use(
         <code>https://</code> URL (with TTL caching and in-flight-promise dedup
         so a thundering-herd of concurrent requests resolves into a single
         fetch), or a custom resolver function. <code>http://</code> JWKS URLs
-        and non-finite / negative <code>fetchTtlSeconds</code> are refused at
-        construction. The middleware stamps{" "}
-        <code>ctx.state.user = {"{ sub, scopes, claims }"}</code>; the scope
-        normalizer reads <code>scope</code> (RFC 6749 space-separated string),{" "}
-        <code>scp</code> (Azure AD array), and <code>scopes</code> (array)
-        claims and dedupes the result.
+        and non-finite / negative <code>fetchTtlSeconds</code> /{" "}
+        <code>maxStaleSeconds</code> are refused at construction. The middleware
+        stamps <code>ctx.state.user = {"{ sub, scopes, claims }"}</code>; the
+        scope normalizer reads <code>scope</code> (RFC 6749 space-separated
+        string), <code>scp</code> (Azure AD array), and <code>scopes</code>{" "}
+        (array) claims and dedupes the result.
+      </p>
+      <p>
+        When the JWKS source is a URL, a TTL-expiry refresh that fails (network
+        error, non-2xx, or malformed body) does not take down every request: the
+        last successfully fetched key set keeps serving for a bounded{" "}
+        <code>maxStaleSeconds</code> grace window (default <code>3600</code>,
+        set <code>0</code> to disable) on top of <code>fetchTtlSeconds</code>.
+        The very first fetch is never eligible for this fallback, so an
+        unreachable IdP at boot still fails closed, and tokens are always
+        cryptographically verified and <code>exp</code>-checked regardless.
       </p>
 
       <h2>

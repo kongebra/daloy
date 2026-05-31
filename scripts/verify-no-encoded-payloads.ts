@@ -59,6 +59,7 @@
 
 import { readdir, readFile, stat } from "node:fs/promises";
 import { relative } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const SCAN_ROOTS: readonly URL[] = [
   new URL("../src/", import.meta.url),
@@ -165,7 +166,7 @@ async function* walk(dir: URL): AsyncGenerator<string> {
     if (entry.isDirectory()) {
       yield* walk(child);
     } else if (entry.isFile() && /\.(?:m?ts|m?js|cjs|mjs)$/.test(entry.name)) {
-      yield child.pathname;
+      yield fileURLToPath(child);
     }
   }
 }
@@ -179,7 +180,7 @@ async function main(): Promise<void> {
       continue;
     }
     for await (const absolute of walk(root)) {
-      const rel = relative(process.cwd(), absolute);
+      const rel = relative(process.cwd(), absolute).replaceAll("\\", "/");
       const text = await readFile(absolute, "utf8");
       const findings = findEncodedPayloadLiterals(rel, text);
       for (const f of findings) {

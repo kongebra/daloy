@@ -40,6 +40,7 @@
 
 import { readdir, readFile, stat } from "node:fs/promises";
 import { relative } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const SRC_ROOT = new URL("../src/", import.meta.url);
 
@@ -234,7 +235,7 @@ async function* walk(dir: URL): AsyncGenerator<string> {
     if (entry.isDirectory()) {
       yield* walk(child);
     } else if (entry.isFile() && /\.(?:m?ts|m?js)$/.test(entry.name)) {
-      yield child.pathname;
+      yield fileURLToPath(child);
     }
   }
 }
@@ -251,7 +252,8 @@ async function main(): Promise<void> {
     return;
   }
   for await (const absolute of walk(SRC_ROOT)) {
-    const rel = "src/" + relative(SRC_ROOT.pathname, absolute);
+    const rel =
+      "src/" + relative(fileURLToPath(SRC_ROOT), absolute).replaceAll("\\", "/");
     const text = await readFile(absolute, "utf8");
     const findings = findForbiddenRemoteExecCalls(rel, text);
     for (const f of findings) {

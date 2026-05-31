@@ -786,3 +786,121 @@ test("jwk: concurrent requests share a single in-flight JWKS fetch", async () =>
   for (const r of results) assert.equal(r.status, 200);
   assert.equal(fetchCalls, 1);
 });
+
+test("jwk: refuses negative maxStaleSeconds", () => {
+  assert.throws(
+    () =>
+      jwk({
+        jwks: "https://issuer/keys",
+        algorithms: ["RS256"],
+        maxStaleSeconds: -1,
+      }),
+    /maxStaleSeconds/,
+  );
+});
+
+test("jwk: serves last-good JWKS when a TTL-expiry refresh fails (stale-while-error)", async () => {
+  const pair = await genEs256Pair();
+  const pub = await publicJwkFor(pair, "k1", "ES256");
+  const priv = await privateJwkFor(pair);
+  const signer = createJwtSigner({
+    alg: "ES256",
+    key: priv,
+    maxLifetimeSeconds: 3600,
+    header: { kid: "k1" },
+  });
+  const now = Math.floor(Date.now() / 1000);
+  const token = await signer.sign({ sub: "ok", exp: now + 300, iat: now });
+
+  let fetchCalls = 0;
+  // First fetch succeeds (seeds the cache); every later refresh fails.
+  const fakeFetch: typeof fetch = async () => {
+    fetchCalls += 1;
+    if (fetchCalls === 1) {
+      return new Response(JSON.stringify({ keys: [pub] }), {
+        headers: { "content-type": "application/json" },
+      });
+    }
+    return new Response("down", { status: 503 });
+  };
+
+  const app = new App();
+  app.use(
+    jwk({
+      jwks: "https://issuer/keys",
+      algorithms: ["ES256"],
+      fetch: fakeFetch,
+      // TTL 0 forces a refresh on every request; the cached set is always
+      // "expired" yet still within the stale window.
+      fetchTtlSeconds: 0,
+      maxStaleSeconds: 3600,
+    }),
+  );
+  app.route({
+    method: "GET",
+    path: "/",
+    responses: { 200: { description: "ok" } },
+    handler: () => ({ status: 200 as const, body: { ok: true } }),
+  });
+  const auth = `Bearer ${token}`;
+  // First request seeds the cache; subsequent requests hit the failing
+  // refresh but must keep validating from the stale-but-valid JWKS.
+  for (let i = 0; i < 3; i++) {
+    const res = await app.request(
+      new Request("http://x/", { headers: { authorization: auth } }),
+    );
+    assert.equal(res.status, 200, `request ${i} should stay 200 on stale JWKS`);
+  }
+  assert.ok(fetchCalls >= 2, "later refreshes should have been attempted");
+});
+
+test("jwk: maxStaleSeconds=0 fails closed the moment a refresh fails", async () => {
+  const pair = await genEs256Pair();
+  const pub = await publicJwkFor(pair, "k1", "ES256");
+  const priv = await privateJwkFor(pair);
+  const signer = createJwtSigner({
+    alg: "ES256",
+    key: priv,
+    maxLifetimeSeconds: 3600,
+    header: { kid: "k1" },
+  });
+  const now = Math.floor(Date.now() / 1000);
+  const token = await signer.sign({ sub: "ok", exp: now + 300, iat: now });
+
+  let fetchCalls = 0;
+  const fakeFetch: typeof fetch = async () => {
+    fetchCalls += 1;
+    if (fetchCalls === 1) {
+      return new Response(JSON.stringify({ keys: [pub] }), {
+        headers: { "content-type": "application/json" },
+      });
+    }
+    return new Response("down", { status: 503 });
+  };
+
+  const app = new App();
+  app.use(
+    jwk({
+      jwks: "https://issuer/keys",
+      algorithms: ["ES256"],
+      fetch: fakeFetch,
+      fetchTtlSeconds: 0,
+      maxStaleSeconds: 0,
+    }),
+  );
+  app.route({
+    method: "GET",
+    path: "/",
+    responses: { 200: { description: "ok" } },
+    handler: () => ({ status: 200 as const, body: { ok: true } }),
+  });
+  const auth = `Bearer ${token}`;
+  const first = await app.request(
+    new Request("http://x/", { headers: { authorization: auth } }),
+  );
+  assert.equal(first.status, 200, "first request seeds cache and succeeds");
+  const second = await app.request(
+    new Request("http://x/", { headers: { authorization: auth } }),
+  );
+  assert.equal(second.status, 401, "stale disabled → failed refresh rejects");
+});

@@ -60,6 +60,7 @@
 
 import { readdir, readFile, stat } from "node:fs/promises";
 import { relative } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const REPO_ROOT = new URL("../", import.meta.url);
 
@@ -211,7 +212,7 @@ async function* walkForPackageJson(dir: URL): AsyncGenerator<string> {
     if (entry.isDirectory()) {
       yield* walkForPackageJson(child);
     } else if (entry.isFile() && entry.name === "package.json") {
-      yield child.pathname;
+      yield fileURLToPath(child);
     }
   }
 }
@@ -229,11 +230,14 @@ async function main(): Promise<void> {
       // other tooling complain.
       continue;
     }
-    const rel = relative(REPO_ROOT.pathname, absolute);
+    const rel = relative(fileURLToPath(REPO_ROOT), absolute).replaceAll(
+      "\\",
+      "/",
+    );
     findings.push(...findForbiddenSandboxesInPackageJson(rel, parsed));
   }
 
-  const lockfilePath = new URL("pnpm-lock.yaml", REPO_ROOT).pathname;
+  const lockfilePath = fileURLToPath(new URL("pnpm-lock.yaml", REPO_ROOT));
   try {
     const stats = await stat(lockfilePath);
     if (stats.isFile()) {
