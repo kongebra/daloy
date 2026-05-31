@@ -260,6 +260,13 @@ export type {
   AutoBanEvent,
   AutoBanStrikeEvent,
 } from "./auto-ban.js";
+export { botGuard, GOOGLEBOT, BINGBOT, WELL_KNOWN_BOTS } from "./bot-guard.js";
+export type {
+  BotGuardOptions,
+  BotGuardEvent,
+  BotResolver,
+  VerifiedBotRule,
+} from "./bot-guard.js";
 export { safeRedirect, OpenRedirectBlockedError } from "./safe-redirect.js";
 export type {
   SafeRedirectOptions,

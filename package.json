@@ -165,6 +165,10 @@
       "types": "./dist/auto-ban.d.ts",
       "import": "./dist/auto-ban.js"
     },
+    "./bot-guard": {
+      "types": "./dist/bot-guard.d.ts",
+      "import": "./dist/bot-guard.js"
+    },
     "./banner": {
       "types": "./dist/banner.d.ts",
       "import": "./dist/banner.js"

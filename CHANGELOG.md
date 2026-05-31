@@ -16,6 +16,29 @@ For the forward-looking plan and the full thematic release log, see
 
 ### Added
 
+- **Bot / User-Agent management middleware.** New dependency-free
+  `@daloyjs/core/bot-guard` module adds `botGuard()`, the in-app equivalent of
+  the bot rules Nginx, Cloudflare, and other WAFs run at the edge — but inside
+  the app, where the framework already owns request parsing and client-IP
+  resolution. It does three opt-in jobs: blocks empty / missing `User-Agent`
+  strings (on by default, a common scraper/scanner signature); blocks
+  known-abusive `User-Agent` patterns (caller-supplied substrings or `RegExp`s);
+  and **verifies declared crawlers** — when a request claims to be Googlebot or
+  Bingbot, it is confirmed via reverse-DNS + forward-confirm (the method Google
+  and Bing themselves document) so a spoofed `User-Agent` cannot impersonate a
+  trusted crawler. Ships `GOOGLEBOT`, `BINGBOT`, and the `WELL_KNOWN_BOTS`
+  bundle, and accepts custom `VerifiedBotRule`s. Allowlist-first:
+  `allowUserAgents` is consulted before every other rule. Secure-by-default:
+  `verifiedBots` refuses to construct without a client-IP source (`resolveIp` or
+  `trustProxyHeaders`), and a crawler that cannot be verified — no client IP, or
+  a DNS failure — is blocked unless `blockUnverifiableBots: false`. Domain
+  matching is subdomain-boundary-safe (a leading dot in a rule domain stops
+  `evil-googlebot.com` from satisfying `.googlebot.com`), verification results
+  are cached per IP (default 1 h) to keep DNS off the hot path, a `mode: "log"`
+  monitor mode reports matches via `onBlock` without blocking, and the DNS
+  resolver is a pluggable `BotResolver` (default lazy `node:dns/promises`).
+  Exports `botGuard`, `GOOGLEBOT`, `BINGBOT`, `WELL_KNOWN_BOTS`, and the
+  `BotGuardOptions`, `BotGuardEvent`, `BotResolver`, and `VerifiedBotRule` types.
 - **Adaptive auto-ban (fail2ban-style).** New dependency-free
   `@daloyjs/core/auto-ban` module adds `autoBan()`, a reusable escalating /
   decaying ban primitive that generalizes `loginThrottle()` beyond credential

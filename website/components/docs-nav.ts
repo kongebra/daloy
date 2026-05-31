@@ -143,6 +143,7 @@ export const docsNav: DocsNavSection[] = [
       { title: "Scheduled tasks (cron)", href: "/docs/scheduler" as Route },
       { title: "mTLS / client certificates", href: "/docs/mtls" as Route },
       { title: "Adaptive auto-ban", href: "/docs/auto-ban" as Route },
+      { title: "Bot / User-Agent management", href: "/docs/bot-guard" as Route },
       { title: "Secure admin panels", href: "/docs/security/admin-panels" as Route },
       { title: "Sessions", href: "/docs/security/session" },
       {
