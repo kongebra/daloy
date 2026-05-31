@@ -127,7 +127,7 @@ Capabilities a contract-first, production-grade API framework is expected to shi
 
 ### Request/response semantics
 
-- [ ] **Idempotency keys** _(pre-`1.0` candidate)_ — first-class `Idempotency-Key` handling (request fingerprinting, response replay, in-flight conflict `409`, pluggable store mirroring `SessionStore` / rate-limit backends). Table-stakes for the payments surface (docs already cover 9 processors) and for safe serverless retries.
+- [x] **Idempotency keys** _(pre-`1.0` candidate)_ — first-class `Idempotency-Key` handling (request fingerprinting, response replay, in-flight conflict `409`, pluggable store mirroring `SessionStore` / rate-limit backends). Table-stakes for the payments surface (docs already cover 9 processors) and for safe serverless retries. _(Shipped in 0.37.0: the dependency-free `idempotency()` middleware and `@daloyjs/core/idempotency` module — `IdempotencyStore` + `MemoryIdempotencyStore`, byte-for-byte replay with an `Idempotency-Replayed` marker, a `409` in-flight `ConflictError`, and a `422` on key reuse with a different payload.)_
 - [ ] **Response caching middleware** — server-side cache (cache-key + TTL + `Cache-Control` orchestration, stale-while-revalidate). Complements existing `etag()` (conditional requests) and `compression()`, which do not cache bodies.
 - [ ] **Pagination & cursor helpers** — opaque cursor encode/decode, `Link` header (RFC 8288) emission, and OpenAPI parameter wiring for list endpoints.
 

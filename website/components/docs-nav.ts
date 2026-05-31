@@ -25,6 +25,7 @@ export const docsNav: DocsNavSection[] = [
       { title: "Plugins & encapsulation", href: "/docs/plugins" },
       { title: "Errors & problem+json", href: "/docs/errors" },
       { title: "File uploads (multipart)", href: "/docs/multipart" },
+      { title: "Idempotency keys", href: "/docs/idempotency" },
     ],
   },
   {

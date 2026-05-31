@@ -16,6 +16,16 @@ For the forward-looking plan and the full thematic release log, see
 
 ### Added
 
+- **Idempotency keys.** New dependency-free `idempotency()` middleware (also
+  exported from `@daloyjs/core/idempotency`) gives unsafe methods
+  (`POST`/`PUT`/`PATCH`/`DELETE`) exactly-once semantics under retries. A
+  client-supplied `Idempotency-Key` header drives request fingerprinting
+  (method + path + body), byte-for-byte response replay (with an
+  `Idempotency-Replayed: true` marker), an in-flight `409 Conflict`, and a
+  `422` when a key is reused with a different payload. Ships a pluggable
+  `IdempotencyStore` (mirroring `SessionStore`) with an in-memory
+  `MemoryIdempotencyStore` default, plus a new `ConflictError` (`409`).
+  Server errors and oversized responses are never cached so retries stay safe.
 - **API lifecycle headers (RFC 8594).** Routes accept an optional `sunset`
   date (ISO-8601 string or `Date`). A route with a `sunset` is implicitly
   deprecated: every response carries a `Deprecation: true` header and a

@@ -67,6 +67,7 @@ export {
   BadRequestError,
   ValidationError,
   NotFoundError,
+  ConflictError,
   UnauthorizedError,
   ForbiddenError,
   MethodNotAllowedError,
@@ -311,6 +312,18 @@ export type {
   SessionState,
   RotateSessionOptions,
 } from "./session.js";
+
+export {
+  idempotency,
+  MemoryIdempotencyStore,
+  _resetSharedIdempotencyStoresForTests,
+} from "./idempotency.js";
+export type {
+  IdempotencyOptions,
+  IdempotencyStore,
+  IdempotencyRecord,
+  StoredIdempotentResponse,
+} from "./idempotency.js";
 
 export {
   fileField,

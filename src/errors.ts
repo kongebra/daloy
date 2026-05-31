@@ -404,6 +404,33 @@ export class NotFoundError extends HttpError {
 }
 
 /**
+ * `409 Conflict` — the request could not be completed because it conflicts
+ * with the current state of the target resource. The built-in
+ * {@link idempotency} middleware throws this when a second request arrives
+ * with an `Idempotency-Key` that is still being processed by an in-flight
+ * request (the original response has not been produced yet). The response
+ * carries `Cache-Control: no-store` so a private cache cannot mask the
+ * conflict.
+ *
+ * @param detail - Optional human-readable explanation surfaced to the client.
+ * @since 0.37.0
+ */
+export class ConflictError extends HttpError {
+  constructor(detail?: string) {
+    super(
+      409,
+      {
+        type: "https://daloyjs.dev/errors/conflict",
+        title: "Conflict",
+        ...(detail ? { detail } : {}),
+      },
+      { "cache-control": "no-store" }
+    );
+    this.name = "ConflictError";
+  }
+}
+
+/**
  * `401 Unauthorized` — authentication is required and missing or invalid.
  * Pair with a `WWW-Authenticate` header on the response when issuing a
  * challenge (the built-in `bearerAuth` middleware does this for you).

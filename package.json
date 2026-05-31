@@ -129,6 +129,10 @@
       "types": "./dist/session.d.ts",
       "import": "./dist/session.js"
     },
+    "./idempotency": {
+      "types": "./dist/idempotency.d.ts",
+      "import": "./dist/idempotency.js"
+    },
     "./banner": {
       "types": "./dist/banner.d.ts",
       "import": "./dist/banner.js"
