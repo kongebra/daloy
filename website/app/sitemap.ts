@@ -210,6 +210,7 @@ const STATIC_PATHS: Array<{
   { path: "/docs/mtls", changeFrequency: "monthly", priority: 0.8 },
   { path: "/docs/auto-ban", changeFrequency: "monthly", priority: 0.8 },
   { path: "/docs/bot-guard", changeFrequency: "monthly", priority: 0.8 },
+  { path: "/docs/ip-reputation", changeFrequency: "monthly", priority: 0.8 },
   { path: "/docs/security/admin-panels", changeFrequency: "monthly", priority: 0.7 },
   { path: "/docs/security/secure-defaults", changeFrequency: "monthly", priority: 0.7 },
   { path: "/docs/security/boot-guards", changeFrequency: "monthly", priority: 0.7 },

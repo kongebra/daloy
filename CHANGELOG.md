@@ -16,6 +16,27 @@ For the forward-looking plan and the full thematic release log, see
 
 ### Added
 
+- **IP reputation / dynamic denylist feed.** New dependency-free
+  `@daloyjs/core/ip-reputation` module adds `ipReputation()`. Where
+  `ipRestriction()` enforces a static allow/deny list compiled once at startup,
+  `ipReputation()` wires pluggable, periodically-refreshed abuse feeds — Tor exit
+  lists, Spamhaus DROP, cloud-abuse ranges, or your own threat intelligence —
+  into the request path without a redeploy, reusing the same SSRF-grade CIDR
+  matcher as `ipRestriction()`. Feeds implement the `IpReputationFeed` interface;
+  `urlFeed()` ships for the common case (fetch a newline / Spamhaus-DROP-style
+  list over HTTP, understands the `<cidr> ; <annotation>` format, skips `#` / `;`
+  / `//` comment lines, and keeps the good rows from a partially-malformed feed).
+  **Fail-open by design** — a feed that cannot be loaded never blocks traffic: a
+  failed initial load leaves an empty (permissive) denylist, a failed refresh
+  retains that feed's last-known-good entries, and an unresolvable client IP is
+  treated as not-listed. The denylist reloads on an `unref`'d timer
+  (`refreshIntervalMs`, default hourly), with a per-feed `fetchTimeoutMs`
+  abort. Returns an `IpReputationController` exposing `hooks` (for `app.use`),
+  manual `refresh()`, `stop()`, `has()`, `size`, and a `ready` promise. Offers a
+  `mode: "log"` monitor mode, `onMatch` / `onError` callbacks, and pluggable IP
+  resolution (`trustProxyHeaders` / `resolveIp`). Exports `ipReputation`,
+  `urlFeed`, and the `IpReputationOptions`, `IpReputationFeed`,
+  `IpReputationMatch`, `IpReputationController`, and `UrlFeedOptions` types.
 - **Bot / User-Agent management middleware.** New dependency-free
   `@daloyjs/core/bot-guard` module adds `botGuard()`, the in-app equivalent of
   the bot rules Nginx, Cloudflare, and other WAFs run at the edge — but inside

@@ -267,6 +267,14 @@ export type {
   BotResolver,
   VerifiedBotRule,
 } from "./bot-guard.js";
+export { ipReputation, urlFeed } from "./ip-reputation.js";
+export type {
+  IpReputationOptions,
+  IpReputationFeed,
+  IpReputationMatch,
+  IpReputationController,
+  UrlFeedOptions,
+} from "./ip-reputation.js";
 export { safeRedirect, OpenRedirectBlockedError } from "./safe-redirect.js";
 export type {
   SafeRedirectOptions,

@@ -169,6 +169,10 @@
       "types": "./dist/bot-guard.d.ts",
       "import": "./dist/bot-guard.js"
     },
+    "./ip-reputation": {
+      "types": "./dist/ip-reputation.d.ts",
+      "import": "./dist/ip-reputation.js"
+    },
     "./banner": {
       "types": "./dist/banner.d.ts",
       "import": "./dist/banner.js"
