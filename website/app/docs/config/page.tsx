@@ -1,0 +1,160 @@
+import { CodeBlock } from "../../../components/code-block";
+
+import { buildMetadata } from "@/lib/seo";
+
+export const metadata = buildMetadata({
+  title: "Config validation",
+  description:
+    "Validate application configuration at boot with defineConfig(): load from env, a file, or an async secrets resolver, validate against any Standard Schema validator, and fail fast with every issue reported at once.",
+  path: "/docs/config",
+  keywords: [
+    "DaloyJS config",
+    "defineConfig",
+    "config validation",
+    "env validation",
+    "fail fast configuration",
+    "Standard Schema config",
+  ],
+  type: "article",
+});
+
+export default function Page() {
+  return (
+    <>
+      <h1>Config validation</h1>
+      <blockquote>
+        <strong>Think of it like…</strong> a pre-flight checklist. Instead of
+        taking off and discovering the fuel gauge is broken at 30,000 feet, you
+        catch every problem on the ground — and you get the whole list at once,
+        not one redeploy at a time.
+      </blockquote>
+      <p>
+        <code>defineConfig()</code> is a single boot-time helper that loads your
+        application configuration from a source you choose, validates the merged
+        object against a Standard Schema validator (Zod, Valibot, ArkType,
+        TypeBox, and others), and aggregates <strong>every</strong> validation
+        issue into one structured error printed to stderr before the process
+        exits.
+      </p>
+      <p>
+        The point is to fail fast and loud: a misconfigured deployment should
+        surface every missing or invalid key in one shot, so operators do not
+        have to redeploy four times to discover four different typos.
+      </p>
+
+      <h2>Quick start (from the environment)</h2>
+      <p>
+        By default <code>defineConfig()</code> reads from{" "}
+        <code>process.env</code>. The result is fully typed from your schema.
+      </p>
+      <CodeBlock
+        code={`import { z } from "zod";
+import { defineConfig } from "@daloyjs/core";
+
+const Config = z.object({
+  PORT: z.coerce.number().int().min(1).max(65535),
+  DATABASE_URL: z.string().url(),
+  NODE_ENV: z.enum(["development", "production", "test"]),
+});
+
+// Top-level await at module scope; resolves only when validation passed.
+export const config = await defineConfig({ schema: Config });
+
+// config.PORT is a number, config.DATABASE_URL is a string, etc.`}
+      />
+      <p>
+        If any key is missing or malformed, the process prints a summary and
+        throws before your server ever binds a port:
+      </p>
+      <CodeBlock
+        language="text"
+        code={`defineConfig(): configuration is invalid (2 issues)
+  - PORT: Expected number, received nan
+  - DATABASE_URL: Invalid url`}
+      />
+
+      <h2>Choosing a source</h2>
+      <p>
+        The <code>source</code> option selects where the raw object comes from.
+        The built-in sources are intentionally narrow; anything more elaborate
+        (Vault, Doppler, AWS Secrets Manager) arrives through the{" "}
+        <code>custom</code> source with an async resolver.
+      </p>
+      <CodeBlock
+        language="ts"
+        code={`// Default: read from process.env
+await defineConfig({ schema: Config });
+await defineConfig({ schema: Config, source: "env" });
+
+// Read from an explicit env map (handy in tests)
+await defineConfig({ schema: Config, source: { kind: "env", env: customEnv } });
+
+// Read and parse a file on disk (defaults to JSON.parse)
+await defineConfig({
+  schema: Config,
+  source: { kind: "file", path: "./config.json" },
+});
+
+// Validate an in-memory object
+await defineConfig({
+  schema: Config,
+  source: { kind: "object", data: { PORT: "3000" } },
+});
+
+// Pull from an async secrets resolver
+await defineConfig({
+  schema: Config,
+  source: { kind: "custom", resolve: () => fetchSecretsFromVault() },
+});`}
+      />
+
+      <h2>Transforming before validation</h2>
+      <p>
+        Use <code>transform</code> to coerce or rename raw values before they
+        hit the schema — for example mapping <code>FOO_BAR</code> to{" "}
+        <code>fooBar</code>, or normalizing string flags. It receives the raw
+        source object and returns the object handed to the validator.
+      </p>
+      <CodeBlock
+        language="ts"
+        code={`await defineConfig({
+  schema: Config,
+  transform: (raw) => ({
+    ...raw,
+    FEATURE_FLAGS: String(raw.FEATURE_FLAGS ?? "").split(","),
+  }),
+});`}
+      />
+
+      <h2>Handling the error programmatically</h2>
+      <p>
+        On failure, <code>defineConfig()</code> throws a{" "}
+        <code>ConfigValidationError</code> whose <code>issues</code> array holds
+        every <code>&#123; key, message &#125;</code> pair. Catch it when you
+        want to render the failures in a startup probe or dashboard instead of
+        relying on the stderr summary.
+      </p>
+      <CodeBlock
+        language="ts"
+        code={`import { defineConfig, ConfigValidationError } from "@daloyjs/core";
+
+try {
+  const config = await defineConfig({ schema: Config });
+  startServer(config);
+} catch (err) {
+  if (err instanceof ConfigValidationError) {
+    for (const issue of err.issues) {
+      reportToHealthDashboard(issue.key, issue.message);
+    }
+  }
+  throw err;
+}`}
+      />
+      <p>
+        The stderr summary is on by default. Set <code>stderr: false</code> to
+        suppress the printed output; the thrown{" "}
+        <code>ConfigValidationError</code> still carries <code>issues</code>.
+      </p>
+    </>
+  );
+}

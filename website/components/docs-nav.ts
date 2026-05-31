@@ -12,7 +12,14 @@ export const docsNav: DocsNavSection[] = [
       { title: "Scaffold a project", href: "/docs/scaffolder" },
       { title: "CLI inspector", href: "/docs/cli" },
       { title: "Getting started", href: "/docs/getting-started" },
+      { title: "Config validation", href: "/docs/config" as Route },
       { title: "Where to use DaloyJS", href: "/docs/where-to-use" as Route },
+    ],
+  },
+  {
+    title: "Migrating",
+    items: [
+      { title: "From Express.js", href: "/docs/migrating/express" as Route },
     ],
   },
   {
@@ -23,6 +30,8 @@ export const docsNav: DocsNavSection[] = [
       { title: "Zod", href: "/docs/validation/zod" },
       { title: "Valibot", href: "/docs/validation/valibot" },
       { title: "Plugins & encapsulation", href: "/docs/plugins" },
+      { title: "Middleware combinators", href: "/docs/combinators" as Route },
+      { title: "Structured logging", href: "/docs/logging" as Route },
       { title: "Errors & problem+json", href: "/docs/errors" },
       { title: "File uploads (multipart)", href: "/docs/multipart" },
       { title: "Idempotency keys", href: "/docs/idempotency" },
@@ -135,6 +144,9 @@ export const docsNav: DocsNavSection[] = [
       { title: "secureDefaults enforcement", href: "/docs/security/secure-defaults-enforcement" as Route },
       { title: "Internal services & meshes", href: "/docs/security/internal-service-preset" as Route },
       { title: "CSRF protection", href: "/docs/security/csrf" },
+      { title: "IP allow/deny lists", href: "/docs/security/ip-restriction" as Route },
+      { title: "Open redirect protection", href: "/docs/security/safe-redirect" as Route },
+      { title: "Cookie helpers", href: "/docs/security/cookies" as Route },
       { title: "SQL injection", href: "/docs/security/sql-injection" as Route },
       { title: "Command injection", href: "/docs/security/command-injection" as Route },
       { title: "SSRF guard (fetchGuard)", href: "/docs/security/fetch-guard" as Route },

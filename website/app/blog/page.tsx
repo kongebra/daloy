@@ -13,6 +13,16 @@ export const metadata = buildMetadata({
 
 const POSTS = [
   {
+    slug: "best-node-express-alternative-daloyjs",
+    title:
+      "The Best Node.js Express Alternative in 2026 Is Contract-First: The Case for DaloyJS",
+    description:
+      "Looking for a modern Node.js Express alternative? The honest argument for why a contract-first framework wins the category in 2026, and why DaloyJS is the Express alternative I now reach for, with the caveats where it does not hold.",
+    date: "2026-05-31",
+    readingTime: "11 min read",
+    author: "Devlin Duldulao",
+  },
+  {
     slug: "software-security-for-developers-laur-spilca-goto-2026",
     title:
       "Watch: Laur Spilca on Software Security for Developers (GOTO 2026), and What DaloyJS Already Decides for You",
