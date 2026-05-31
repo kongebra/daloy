@@ -13,6 +13,16 @@ export const metadata = buildMetadata({
 
 const POSTS = [
   {
+    slug: "software-security-for-developers-laur-spilca-goto-2026",
+    title:
+      "Watch: Laur Spilca on Software Security for Developers (GOTO 2026), and What DaloyJS Already Decides for You",
+    description:
+      "Laurentiu Spilca and Thomas Vitale spend a GOTO 2026 conversation on why developers avoid security, the eternal encoding-vs-hashing-vs-encryption confusion, the danger of reinventing crypto, AI writing code with no security awareness, and why PKI still matters. Here is the talk, plus an honest mapping of which of those problems a DaloyJS app already takes out of your hands.",
+    date: "2026-05-31",
+    readingTime: "9 min read",
+    author: "Devlin Duldulao",
+  },
+  {
     slug: "ghost-cms-clickfix-campaign-mapped-to-daloyjs",
     title:
       "The Ghost CMS / ClickFix Campaign, Mapped to DaloyJS \u2014 Plus the One Default We Just Tightened",
