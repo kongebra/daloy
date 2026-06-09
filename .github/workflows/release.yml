@@ -179,6 +179,9 @@ jobs:
       - name: Verify no leaky agent skills in shipped SKILL.md / AGENTS.md (Snyk OpenClaw "leaky skills" gate)
         run: pnpm verify:no-leaky-agent-skills
 
+      - name: Verify no AI-agent / editor config auto-run wiring (Miasma worm config-injection gate)
+        run: pnpm verify:no-agent-config-autorun
+
       - name: Verify no invisible Unicode carriers (Aikido GlassWorm gate)
         run: pnpm verify:no-invisible-unicode
 
@@ -289,6 +292,9 @@ jobs:
 
       - name: Verify no leaky agent skills in shipped SKILL.md / AGENTS.md (Snyk OpenClaw "leaky skills" gate)
         run: pnpm verify:no-leaky-agent-skills
+
+      - name: Verify no AI-agent / editor config auto-run wiring (Miasma worm config-injection gate)
+        run: pnpm verify:no-agent-config-autorun
 
       - name: Verify tag matches package.json version
         if: github.event_name == 'push'
@@ -407,6 +413,9 @@ jobs:
 
       - name: Verify no leaky agent skills in shipped SKILL.md / AGENTS.md (Snyk OpenClaw "leaky skills" gate)
         run: pnpm verify:no-leaky-agent-skills
+
+      - name: Verify no AI-agent / editor config auto-run wiring (Miasma worm config-injection gate)
+        run: pnpm verify:no-agent-config-autorun
 
       - name: Packaging signal (npm publish dry-run)
         working-directory: packages/create-daloy

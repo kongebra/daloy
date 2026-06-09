@@ -182,6 +182,9 @@ jobs:
       - name: Verify no toxic agent skills in shipped SKILL.md / AGENTS.md (Snyk-Tessl ToxicSkills gate)
         run: pnpm verify:no-toxic-agent-skills
 
+      - name: Verify no AI-agent / editor config auto-run wiring (Miasma worm config-injection gate)
+        run: pnpm verify:no-agent-config-autorun
+
       - name: Verify no invisible Unicode carriers (Aikido GlassWorm gate)
         run: pnpm verify:no-invisible-unicode
 
