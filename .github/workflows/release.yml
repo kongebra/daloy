@@ -428,3 +428,112 @@ jobs:
         run: npm stage publish . --access public --provenance
         env:
           NPM_CONFIG_PROVENANCE: "true"
+
+  # ---------------------------------------------------------------------------
+  # Publish the GitHub Release object for the pushed tag.
+  #
+  # A git tag and a GitHub Release are two different things: pushing `vX.Y.Z`
+  # triggers the npm publish jobs above, but it does NOT populate the "Releases"
+  # panel on the repo page. This job closes that gap automatically so the
+  # Release (and its "Latest" badge) always tracks the published version.
+  #
+  # It runs ONLY on tag pushes and ONLY after BOTH npm publish jobs succeed, so
+  # it inherits their protected-environment approval: no Release is created
+  # unless a human approved the npm publish and both packages went out.
+  # ---------------------------------------------------------------------------
+  github-release:
+    name: Publish GitHub Release
+    needs: [publish-core, publish-create-daloy]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      # `contents: write` is required to create the Release. It is granted ONLY
+      # here, ONLY after the npm publishes succeeded, and the job runs no
+      # third-party scripts.
+      contents: write
+
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2
+        with:
+          # `gh release create` only talks to the GitHub API.
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+            github.com:443
+            objects.githubusercontent.com:443
+          disable-sudo: true
+
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+          show-progress: false
+          # Full history + tags so we can compute the previous release tag for
+          # the compare link in the generated notes.
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Verify tag matches package.json version
+        run: |
+          set -eu
+          tag_version="${GITHUB_REF_NAME#v}"
+          pkg_version="$(node -p "require('./package.json').version")"
+          if [ "$tag_version" != "$pkg_version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $pkg_version"
+            exit 1
+          fi
+
+      - name: Extract release notes from CHANGELOG.md
+        run: |
+          set -eu
+          version="${GITHUB_REF_NAME#v}"
+          # Previous semver tag (excluding the current one), newest first.
+          previous_ref="$(git tag --list 'v*' --sort=-version:refname \
+            | grep -v -x "${GITHUB_REF_NAME}" | head -n 1 || true)"
+          export PREVIOUS_REF="$previous_ref"
+          node -e '
+            const fs = require("node:fs");
+            const version = process.argv[1];
+            const text = fs.readFileSync("CHANGELOG.md", "utf8");
+            const lines = text.split(/\r?\n/);
+            const start = lines.findIndex((l) => l.startsWith(`## [${version}]`));
+            if (start === -1) {
+              console.error(`::error::CHANGELOG.md has no "## [${version}]" section.`);
+              process.exit(1);
+            }
+            let end = lines.length;
+            for (let i = start + 1; i < lines.length; i++) {
+              if (lines[i].startsWith("## ")) { end = i; break; }
+            }
+            const body = lines.slice(start + 1, end).join("\n").trim();
+            const repo = process.env.GITHUB_REPOSITORY;
+            const prev = process.env.PREVIOUS_REF;
+            const current = process.env.GITHUB_REF_NAME;
+            const compare = prev
+              ? `\n\n**Full changelog:** https://github.com/${repo}/compare/${prev}...${current}`
+              : "";
+            fs.writeFileSync("RELEASE_NOTES.md", `${body}${compare}\n`);
+          ' "$version"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          # `--verify-tag` attaches to the already-pushed tag; `--latest`
+          # moves the "Latest" badge to this release. Idempotent: if a release
+          # for the tag already exists, edit it instead of failing the job.
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release edit "${GITHUB_REF_NAME}" \
+              --title "${GITHUB_REF_NAME}" \
+              --notes-file RELEASE_NOTES.md \
+              --latest
+          else
+            gh release create "${GITHUB_REF_NAME}" \
+              --title "${GITHUB_REF_NAME}" \
+              --notes-file RELEASE_NOTES.md \
+              --latest \
+              --verify-tag
+          fi
