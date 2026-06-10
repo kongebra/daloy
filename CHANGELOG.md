@@ -12,6 +12,48 @@ For the forward-looking plan and the full thematic release log, see
 > `create-daloy` are published together — a new core release always ships a
 > matching scaffolder so generated projects pin the latest peer.
 
+## [0.38.0] — 2026-06-10
+
+### Added
+
+- **End-to-end inference for the in-process typed client.** `App` is now
+  generic over the tuple of routes it has registered: each `app.route(...)`
+  call returns an `App` type that accumulates the new route (capturing its
+  literal `operationId`, params, and response schemas). `createClient(app)` and
+  `ClientFor<App>` recover that tuple, so methods such as
+  `client.getBookById({ params: { id } })` are now fully typed end-to-end —
+  precise `operationId` keys, typed params, and a discriminated response union —
+  with **zero codegen and no runtime change**. Inference relies on **chaining**
+  the `route()` calls and letting TypeScript infer the variable type; a widening
+  `const app: App` annotation or a `: App` factory return type erases the tuple
+  and collapses the client back to an untyped surface. New type-level regression
+  test under `tests/types/` plus a dedicated `tsconfig.typetest.json` lock the
+  behavior. TSDoc on `createClient` / `ClientFor`, the README, and the
+  `/docs/typed-client` and `/docs/getting-started` pages document the chaining
+  requirement.
+
+### Changed
+
+- **`create-daloy` templates now use `.ts` relative import specifiers** (for
+  example `./build-app.ts` and `../api/[...path].ts`) instead of `.js`, so the
+  files you import match the files on disk. The `node-basic` and `vercel-edge`
+  templates gain the required `allowImportingTsExtensions` (and, where it emits,
+  `rewriteRelativeImportExtensions`) tsconfig flags; `bun-basic` and
+  `deno-basic` already used `.ts` natively. npm + JSR publish output for
+  `@daloyjs/core` itself is unchanged (source keeps `.js` specifiers). The base
+  `tsconfig.json` enables the same flags so authored examples can use `.ts`.
+
+### Fixed
+
+- **`create-daloy` Dockerfile package-manager scaffolding on CRLF working
+  trees.** `patchDockerfileForPackageManager` used `\n`-only regular
+  expressions and a literal `"...\n"` string replace, so on a Windows checkout
+  (CRLF line endings, no `.gitattributes` normalization) npm/yarn/bun scaffolds
+  kept the pnpm `COPY pnpm-lock.yaml*` / `corepack ... pnpm install` lines and
+  the bun image swap silently no-op'd. The substitutions are now CRLF-tolerant
+  (`\r?\n`). Linux/macOS (LF) output is unchanged; this fixes scaffolding on
+  Windows and any package published from a Windows host.
+
 ## [0.37.0] — 2026-05-31
 
 ### Added
@@ -916,7 +958,8 @@ For the forward-looking plan and the full thematic release log, see
   publish with provenance, `pnpm create daloy` scaffolder (`node-basic`,
   `vercel-edge`, `cloudflare-worker`), docs metadata + ORM guides.
 
-[Unreleased]: https://github.com/daloyjs/daloy/compare/v0.37.0...HEAD
+[Unreleased]: https://github.com/daloyjs/daloy/compare/v0.38.0...HEAD
+[0.38.0]: https://github.com/daloyjs/daloy/compare/v0.37.0...v0.38.0
 [0.37.0]: https://github.com/daloyjs/daloy/compare/f37ce20...v0.37.0
 [0.36.0]: https://github.com/daloyjs/daloy/compare/10de2f5...f37ce20
 [0.35.2]: https://github.com/daloyjs/daloy/compare/f4a9733...10de2f5

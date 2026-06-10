@@ -1,6 +1,6 @@
 import { serve } from "@daloyjs/core/node";
 import { printStartupBanner, type StartupBannerLink } from "@daloyjs/core/banner";
-import { buildApp } from "./build-app.js";
+import { buildApp } from "./build-app.ts";
 
 const app = buildApp();
 const port = Number(process.env.PORT ?? 3000);

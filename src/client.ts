@@ -26,6 +26,13 @@ export type RoutesOf<A extends App> = A["routes"][number];
  * Typed client surface generated from an `App`. The result is a record keyed
  * by each route's `operationId` whose values are async methods inferred from
  * the route's request and response schemas.
+ *
+ * The per-method types are recovered from the `App`'s accumulated route tuple,
+ * which is built up as you **chain** `app.route(...)` calls. If the `App` type
+ * is widened back to its bare default — e.g. a `const app: App` annotation, a
+ * `: App` factory return type, or registering routes as separate statements
+ * rather than a chain — the tuple is erased and this type collapses to an
+ * untyped, string-indexed record.
  */
 export type ClientFor<A extends App> = {
   [R in Extract<RoutesOf<A>, { operationId: string }> as R["operationId"]]: ClientMethod<R>;
@@ -71,9 +78,25 @@ export interface ClientOptions {
  * For non-TypeScript consumers, run `pnpm gen` to emit a fully-typed SDK
  * from the OpenAPI document instead.
  *
+ * @remarks
+ * The method signatures are inferred from the `App`'s accumulated route tuple,
+ * so chain your `app.route(...)` registrations and let TypeScript infer the
+ * variable's type. A widening `const app: App` annotation, a `: App` factory
+ * return type, or registering routes as separate statements erases the
+ * per-route types and yields an untyped client.
+ *
  * @example
  * ```ts
  * import { createClient } from "@daloyjs/core/client";
+ *
+ * const app = new App().route({
+ *   method: "GET",
+ *   path: "/books/:id",
+ *   operationId: "getBook",
+ *   request: { params: z.object({ id: z.string() }) },
+ *   responses: { 200: { description: "OK", body: z.object({ id: z.string(), title: z.string() }) } },
+ *   handler: ({ params }) => ({ status: 200, body: { id: params.id, title: "Dune" } }),
+ * });
  *
  * const client = createClient(app, { baseUrl: "https://api.example.com" });
  * const res = await client.getBook({ params: { id: "123" } });

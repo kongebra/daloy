@@ -44,6 +44,12 @@ printStartupBanner({
 });
 
 // In-process typed client smoke (no codegen step).
+//
+// `buildExampleApp()` returns a widened `App` (its signature is annotated
+// `: App`), which erases the per-route tuple the typed client infers from.
+// To get inference automatically, chain `app.route(...)` calls and let
+// TypeScript infer the variable type instead of annotating it `: App`. Here we
+// keep the shared factory and annotate the one call site we exercise.
 const client = createClient(app, { baseUrl: `http://localhost:${port}` }) as {
   getBookById(input: { params: { id: string } }): Promise<{
     status: number;

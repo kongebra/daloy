@@ -630,8 +630,12 @@ async function patchDockerfileForPackageManager(dir, packageManager) {
 
   const raw = await readFile(file, "utf8");
   const install = dockerInstallSnippet(packageManager);
+  // Match the pnpm install block tolerant of both LF and CRLF line endings.
+  // Windows checkouts (and packages published from Windows) can carry CRLF;
+  // an `\n`-only pattern would silently fail to match there, leaving the
+  // pnpm-specific COPY/RUN lines in place for npm/yarn/bun scaffolds.
   let next = raw.replace(
-    /COPY package\.json pnpm-lock\.yaml\* \.\/\nRUN corepack enable && corepack prepare pnpm@latest --activate && \\\n+\s+pnpm install --frozen-lockfile --ignore-scripts/,
+    /COPY package\.json pnpm-lock\.yaml\* \.\/\r?\nRUN corepack enable && corepack prepare pnpm@latest --activate && \\\r?\n\s+pnpm install --frozen-lockfile --ignore-scripts/,
     `${install.copy}\n${install.run}`,
   );
 
@@ -645,8 +649,11 @@ async function patchDockerfileForPackageManager(dir, packageManager) {
 
   if (packageManager === "bun" && next.includes("FROM ${NODE_IMAGE} AS builder")) {
     if (!next.includes("ARG BUN_IMAGE=")) {
+      // CRLF-tolerant: the working tree may carry `\r\n`, so a plain
+      // `"...alpine\n"` substring replace would miss and the BUN_IMAGE ARG
+      // would never be inserted.
       next = next.replace(
-        "ARG NODE_IMAGE=node:24-alpine\n",
+        /ARG NODE_IMAGE=node:24-alpine\r?\n/,
         "ARG NODE_IMAGE=node:24-alpine\nARG BUN_IMAGE=oven/bun:1-alpine\n",
       );
     }

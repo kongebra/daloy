@@ -114,7 +114,7 @@ test("node-basic separates buildApp() from server boot so codegen has no side ef
     path.join(pkgRoot, "templates/node-basic/src/index.ts"),
     "utf8",
   );
-  assert.match(indexFile, /from\s+"\.\/build-app\.js"/);
+  assert.match(indexFile, /from\s+"\.\/build-app\.ts"/);
   assert.match(indexFile, /\bserve\s*\(\s*app\b/);
 
   const dump = await readFile(
@@ -123,8 +123,8 @@ test("node-basic separates buildApp() from server boot so codegen has no side ef
   );
   // dump-openapi must use the factory, not import the server entrypoint
   // (that would boot the HTTP listener as a side effect of codegen).
-  assert.match(dump, /from\s+"\.\.\/src\/build-app\.js"/);
-  assert.doesNotMatch(dump, /from\s+"\.\.\/src\/index\.js"/);
+  assert.match(dump, /from\s+"\.\.\/src\/build-app\.ts"/);
+  assert.doesNotMatch(dump, /from\s+"\.\.\/src\/index\.ts"/);
 
   const tsconfig = JSON.parse(
     await readFile(
@@ -1481,18 +1481,18 @@ test("deno-basic template ships a runtime-native scaffold", async () => {
   );
   assert.match(denoJson.tasks.dev, /^deno run.*--watch src\/main\.ts$/);
   assert.match(denoJson.tasks.test, /^deno test\b/);
-  assert.equal(denoJson.imports["@daloyjs/core"], "jsr:@daloyjs/daloy@^0.37.0");
+  assert.equal(denoJson.imports["@daloyjs/core"], "jsr:@daloyjs/daloy@^0.38.0");
   assert.equal(
     denoJson.imports["@daloyjs/core/deno"],
-    "jsr:@daloyjs/daloy@^0.37.0/deno",
+    "jsr:@daloyjs/daloy@^0.38.0/deno",
   );
   assert.equal(
     denoJson.imports["@daloyjs/core/banner"],
-    "jsr:@daloyjs/daloy@^0.37.0/banner",
+    "jsr:@daloyjs/daloy@^0.38.0/banner",
   );
   assert.equal(
     denoJson.imports["@daloyjs/core/openapi"],
-    "jsr:@daloyjs/daloy@^0.37.0/openapi",
+    "jsr:@daloyjs/daloy@^0.38.0/openapi",
   );
 });
 

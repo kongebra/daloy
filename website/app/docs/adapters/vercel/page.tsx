@@ -25,9 +25,9 @@ export default function Page() {
       <h1>Vercel</h1>
       <p>
         Vercel has two standalone places you can mount a DaloyJS REST API
-        handler, Node.js Functions and Edge Functions. Each target
-        expects a slightly different export shape; the underlying{" "}
-        <code>app</code> object is identical.
+        handler, Node.js Functions and Edge Functions. Each target expects a
+        slightly different export shape; the underlying <code>app</code> object
+        is identical.
       </p>
 
       <h2>When to choose Vercel</h2>
@@ -63,7 +63,7 @@ pnpm vercel dev`}
         language="ts"
         code={`// api/[...path].ts
 import { toFetchHandler } from "@daloyjs/core/vercel";
-import { app } from "../src/server.js";
+import { app } from "../src/server.ts";
 
 // Node.js is the default runtime. No runtime export needed.
 export default toFetchHandler(app);`}
@@ -74,7 +74,7 @@ export default toFetchHandler(app);`}
         language="ts"
         code={`// api/[...path].ts
 import { toWebHandler } from "@daloyjs/core/vercel";
-import { app } from "../src/server.js";
+import { app } from "../src/server.ts";
 
 export const runtime = "edge";
 export default toWebHandler(app);`}
@@ -124,8 +124,8 @@ pnpm vercel env add SESSION_SECRET production`}
           products.
         </strong>{" "}
         They were sunset in December 2024 and existing stores were migrated
-        automatically, Vercel KV to Upstash Redis, Vercel Postgres to
-        Neon. For new projects, add the equivalent integration from the{" "}
+        automatically, Vercel KV to Upstash Redis, Vercel Postgres to Neon. For
+        new projects, add the equivalent integration from the{" "}
         <a
           href="https://vercel.com/marketplace"
           target="_blank"
@@ -133,9 +133,8 @@ pnpm vercel env add SESSION_SECRET production`}
         >
           Vercel Marketplace
         </a>{" "}
-        (Neon for Postgres, Upstash for Redis), the integration
-        provisions the store and injects the connection env vars into your
-        project.
+        (Neon for Postgres, Upstash for Redis), the integration provisions the
+        store and injects the connection env vars into your project.
       </p>
       <p>
         Vercel Blob and Edge Config are still first-party Vercel products. See{" "}
@@ -149,9 +148,9 @@ pnpm vercel env add SESSION_SECRET production`}
       <h2>Gotchas</h2>
       <ul>
         <li>
-          Edge runtime has no <code>node:*</code>: keep middleware
-          portable, and prefer fetch-based drivers (Neon serverless,
-          PlanetScale, Turso) when running on Edge.
+          Edge runtime has no <code>node:*</code>: keep middleware portable, and
+          prefer fetch-based drivers (Neon serverless, PlanetScale, Turso) when
+          running on Edge.
         </li>
         <li>
           Standalone Vercel Node functions want a <strong>default</strong>{" "}

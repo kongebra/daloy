@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import handler from "../api/[...path].js";
+import handler from "../api/[...path].ts";
 
 test("Vercel Edge handler responds through DaloyJS", async () => {
   const response = await handler(new Request("https://example.test/healthz"));

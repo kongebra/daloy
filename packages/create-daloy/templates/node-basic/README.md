@@ -48,13 +48,13 @@ node dist/index.js
 
 ## Imports
 
-This project uses Node.js **ESM** with `"module": "NodeNext"`. Relative imports must include a `.js` extension, even when the source file is `.ts`:
+This project uses Node.js **ESM** with `"module": "NodeNext"` and `"rewriteRelativeImportExtensions"`. Relative imports use the `.ts` extension — the actual file on disk:
 
 ```ts
-import { buildApp } from "./build-app.js"; // ./build-app.ts on disk
+import { buildApp } from "./build-app.ts";
 ```
 
-TypeScript resolves the `.js` specifier to the matching `.ts` file at typecheck, and the compiled output really is `.js`. This is the official Node ESM convention — not a typo.
+On `pnpm build`, TypeScript rewrites the `.ts` specifier to `.js` in the compiled `dist/` output, so the deployed code is valid Node ESM. (Node ESM has no extensionless relative imports — `.ts` is the most natural form available.)
 
 ## What's included
 

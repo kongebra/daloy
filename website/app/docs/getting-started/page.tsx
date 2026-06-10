@@ -135,7 +135,7 @@ curl http://localhost:3000/greet/world
         Don&apos;t want to spin up a real server? Every <code>App</code> exposes{" "}
         <code>app.request(input, init?)</code>, an in-process test client that
         takes a URL or <code>Request</code> and returns a <code>Response</code>{" "}
-, no network stack, no port, no second terminal. It&apos;s the same
+        , no network stack, no port, no second terminal. It&apos;s the same
         entrypoint the typed client and{" "}
         <Link href="/docs/testing">testing guide</Link> use:
       </p>
@@ -249,6 +249,13 @@ const r = await client.greet({ params: { name: "DaloyJS" } });
 //    ^? { status: 200; body: { msg: string } }
 console.log(r.status, r.body);`}
       />
+      <p>
+        The client&apos;s methods are inferred from the routes you chained onto{" "}
+        <code>app</code>. Keep the registrations chained (
+        <code>new App().route(a).route(b)</code>) and avoid a widening{" "}
+        <code>const app: App</code> annotation; either one erases the per-route
+        types and the client falls back to an untyped surface.
+      </p>
 
       <h2>5. Generate a Hey API SDK</h2>
       <p>

@@ -21,13 +21,13 @@ A [DaloyJS](https://daloyjs.dev) REST API deployed to **Vercel Edge**. **Contrac
 
 ## Imports
 
-This project uses TypeScript with `"module": "NodeNext"` (ESM). Relative imports **must include a `.js` extension**, even when the source file is `.ts`:
+This project uses TypeScript with `"allowImportingTsExtensions"`, so relative imports use the **`.ts` extension** — the actual file you see on disk:
 
 ```ts
-import handler from "../api/[...path].js"; // resolves to the .ts source at typecheck, .js at runtime
+import handler from "../api/[...path].ts";
 ```
 
-This is the official Node.js ESM convention — TypeScript rewrites the specifier during typecheck, and the deployed output really is `.js`. Bare-specifier imports from packages (`@daloyjs/core`, `zod`, …) do not need an extension.
+You import the file you see. Vercel bundles the `api/` functions at deploy time and resolves `.ts` directly, and the test runner (tsx) does too. Bare-specifier imports from packages (`@daloyjs/core`, `zod`, …) do not need an extension.
 
 ## Core rules
 

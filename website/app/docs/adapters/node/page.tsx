@@ -71,7 +71,7 @@ pnpm dev    # hot-reload via daloy dev`}
         language="ts"
         code={`// src/server.ts
 import { serve } from "@daloyjs/core/node";
-import { app } from "./app.js";
+import { app } from "./app.ts";
 
 const { port, close } = serve(app, {
   port: Number(process.env.PORT ?? 3000),
@@ -99,8 +99,8 @@ await close();`}
         <li>
           SIGTERM / SIGINT handlers that call <code>server.close()</code>{" "}
           followed by <code>server.closeAllConnections()</code> after{" "}
-          <code>shutdownTimeoutMs</code>: the pattern that became stable in
-          Node 18.2 and is recommended on Node 24+.
+          <code>shutdownTimeoutMs</code>: the pattern that became stable in Node
+          18.2 and is recommended on Node 24+.
         </li>
         <li>
           When <code>trustProxy: true</code>, the adapter reads{" "}
@@ -148,7 +148,7 @@ await close();`}
       <CodeBlock
         language="ts"
         code={`import { serve } from "@daloyjs/core/node";
-import { app } from "./app.js";
+import { app } from "./app.ts";
 
 serve(app, {
   port: 3000,
@@ -162,13 +162,13 @@ serve(app, {
         Pick the cap empirically: run a connection sweep against your real
         routes and set <code>maxConnections</code> at (or just below) the
         concurrency where p99/p99.9 latency stays in its healthy range. The
-        right value is workload-specific, CPU-bound JSON validation saturates
-        at a very different point than I/O-bound proxying.
+        right value is workload-specific, CPU-bound JSON validation saturates at
+        a very different point than I/O-bound proxying.
       </p>
 
       <h3>Pair it with an upstream gateway</h3>
       <p>
-        When the cap is hit, the overflow socket is refused at the TCP layer, 
+        When the cap is hit, the overflow socket is refused at the TCP layer,
         the client sees a connection reset, not an HTTP response. In production
         you want a load balancer or API gateway in front that translates that
         refusal into a clean <code>503 Service Unavailable</code> with a{" "}
@@ -196,8 +196,8 @@ serve(app, {
           <strong>
             <code>loadShedding()</code>
           </strong>{" "}
-          (application layer) sheds requests when an honest overload signal, 
-          event-loop <em>delay</em> (queue backlog) or in-flight concurrency, 
+          (application layer) sheds requests when an honest overload signal,
+          event-loop <em>delay</em> (queue backlog) or in-flight concurrency,
           trips a threshold.
         </li>
       </ul>

@@ -944,10 +944,37 @@ export const DALOY_RAW_STREAM = Symbol.for("daloyjs.response.rawStream");
  * serve(app, { port: 3000 });
  * ```
  *
+/**
+ * Append a freshly-registered route to an `App`'s accumulated route tuple.
+ *
+ * A newly-constructed `App` starts with the permissive default
+ * `readonly RouteDefinition<any, any, any, any>[]` so that bare `App`
+ * annotations (e.g. `serve(app: App)`) accept any instance. The first
+ * {@link App.route} call resets that wide default to a clean single-element
+ * tuple, so the typed client (`createClient(app)`) is keyed only by the
+ * routes the caller actually registered; subsequent calls append precisely.
+ *
+ * @typeParam Routes - The current accumulated route tuple.
+ * @typeParam R - The route definition being registered.
+ */
+type AppendRoute<
+  Routes extends readonly RouteDefinition<any, any, any, any>[],
+  R extends RouteDefinition<any, any, any, any>,
+> = readonly RouteDefinition<any, any, any, any>[] extends Routes
+  ? readonly [R]
+  : readonly [...Routes, R];
+
+/**
  * @since 0.1.0
  */
-export class App {
-  readonly options: Required<
+export class App<
+  Routes extends readonly RouteDefinition<any, any, any, any>[] = readonly RouteDefinition<
+    any,
+    any,
+    any,
+    any
+  >[],
+> {  readonly options: Required<
     Pick<
       AppOptions,
       "validateResponses" | "bodyLimitBytes" | "requestTimeoutMs"
@@ -955,8 +982,17 @@ export class App {
   > &
     AppOptions;
   readonly log: Logger;
-  /** Public registry: enables OpenAPI gen, typed-client gen, dead-route detection. */
-  readonly routes: RouteDefinition<any, any, any, any>[] = [];
+  /**
+   * Public registry: enables OpenAPI gen, typed-client gen, dead-route detection.
+   *
+   * Statically the property is typed as the `Routes` tuple so that
+   * {@link App.route} can accumulate each registered route's literal
+   * `operationId`, request, and response types. The typed client
+   * (`createClient(app)`) reads this tuple to derive a precisely-typed method
+   * per route. At runtime it is an ordinary growable array — the tuple typing
+   * is a compile-time view only.
+   */
+  readonly routes: Routes = [] as unknown as Routes;
 
   private router = new Router<CompiledRoute>();
   /**
@@ -1711,15 +1747,26 @@ export class App {
    * });
    * ```
    *
+   * The return type widens `Routes` with the freshly-registered route so
+   * that chained registration (`new App().route(a).route(b)`) accumulates a
+   * precise tuple. The typed client (`createClient(app)`) consumes that tuple
+   * to expose a method per `operationId` with parameters and responses
+   * inferred from the route's own schemas. Non-chained calls
+   * (`app.route(a); app.route(b);`) keep the variable's original type, so
+   * chain the calls when you want the inferred client surface.
+   *
    * @param def - The route definition.
-   * @returns This `App` instance for chaining.
+   * @returns This `App` instance (widened with the new route) for chaining.
    */
   route<
     P extends PathString,
     M extends HttpMethod,
     Req extends RequestSchemas | undefined,
     Res extends ResponsesMap,
-  >(def: RouteDefinition<P, M, Req, Res>): this {
+    const Op extends string | undefined = undefined,
+  >(
+    def: RouteDefinition<P, M, Req, Res> & { operationId?: Op },
+  ): App<AppendRoute<Routes, RouteDefinition<P, M, Req, Res> & { operationId: Op }>> {
     // Refuse non-canonical HTTP methods at runtime.
     // The TypeScript `HttpMethod` union already constrains the public
     // surface, but an unsafe cast (or a runtime caller in plain JS)
@@ -1773,14 +1820,19 @@ export class App {
       { def: merged, hooks, mergedHooks, hasFinalizeHook, corsOriginAllows, fullCorsOriginAllows },
       def.operationId,
     );
-    this.routes.push(merged);
+    // `routes` is statically a readonly tuple so the typed client can infer
+    // per-route methods; at runtime it is a growable array, so we push through
+    // a mutable view.
+    (this.routes as unknown as RouteDefinition<any, any, any, any>[]).push(merged);
     this.routeSecurityMarkers.push({
       method: merged.method,
       path: merged.path,
       ...securityMarkers,
     });
     this.resetBootGuardCache();
-    return this;
+    return this as unknown as App<
+      AppendRoute<Routes, RouteDefinition<P, M, Req, Res> & { operationId: Op }>
+    >;
   }
 
   /**

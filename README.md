@@ -227,6 +227,10 @@ const r = await client.getBookById({ params: { id: "1" } });
 //    ^? { status: 200; body: { id: string; title: string } } | { status: 404; ... }
 ```
 
+> Method inference relies on **chaining** your `app.route(...)` calls (`new App().route(a).route(b)`) and letting
+> TypeScript infer the variable's type. A widening `const app: App` annotation, a `: App` factory return type, or
+> registering routes as separate statements erases the per-route types and collapses the client to an untyped surface.
+
 ---
 
 ## Built-in docs UI (Scalar / Swagger UI)

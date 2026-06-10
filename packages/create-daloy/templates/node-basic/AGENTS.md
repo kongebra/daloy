@@ -27,13 +27,13 @@ When `docs: true` is set in `new App({...})`, three routes are auto-mounted:
 
 ## Imports
 
-This project uses TypeScript with `"module": "NodeNext"` (ESM). Relative imports **must include a `.js` extension**, even when the source file is `.ts`:
+This project uses TypeScript with `"module": "NodeNext"` plus `"rewriteRelativeImportExtensions"`, so relative imports use the **`.ts` extension** — the actual file you see on disk:
 
 ```ts
-import { buildApp } from "./build-app.js"; // resolves to build-app.ts at typecheck, build-app.js at runtime
+import { buildApp } from "./build-app.ts";
 ```
 
-This is the official Node.js ESM convention — TypeScript rewrites the specifier during typecheck, and the compiled output really is `.js`. Bare-specifier imports from packages (`@daloyjs/core`, `zod`, …) do not need an extension.
+You import the file you see. On `pnpm build`, TypeScript rewrites the `.ts` specifier to `.js` in the compiled `dist/` output, so the deployed code is still valid Node ESM. (Node ESM has no extensionless relative imports — `.ts` is the most natural form available.) Bare-specifier imports from packages (`@daloyjs/core`, `zod`, …) do not need an extension.
 
 ## Core rules
 

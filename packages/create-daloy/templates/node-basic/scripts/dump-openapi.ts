@@ -1,6 +1,6 @@
 import { writeFile, mkdir } from "node:fs/promises";
 import { generateOpenAPI } from "@daloyjs/core/openapi";
-import { buildApp } from "../src/build-app.js";
+import { buildApp } from "../src/build-app.ts";
 
 // Build a fresh app from the factory so the spec dump never starts the HTTP
 // listener as a side effect. Keep this script deterministic so codegen output
