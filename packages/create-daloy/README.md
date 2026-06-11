@@ -120,6 +120,20 @@ A [Deno](https://deno.com) runtime starter using `@daloyjs/core/deno` with:
 - A health route and contract-first `/books/:id` route with Zod validation.
 - The CLI skips Node-style installs for this template (no `package.json`).
 
+## Authentication (OAuth2 / OpenID Connect)
+
+Scaffolded apps are **resource servers**: DaloyJS verifies and enforces access
+tokens, it does **not** issue them. There is no built-in login UI, user
+database, or OAuth2 authorization server (it is not an identity provider like
+Keycloak, Auth0, or Duende IdentityServer). To add login, bring an OpenID
+Connect provider — managed (Auth0, Okta, Clerk, Microsoft Entra ID, AWS
+Cognito) or self-hosted open source (Keycloak, Zitadel, Ory, Logto) — and have
+DaloyJS verify its JWTs with the first-party `jwk()`, `bearerAuth()`, and
+`requireScopes()` helpers. Don't build your own authorization server.
+
+See [Auth architecture](https://daloyjs.dev/docs/auth/architecture) for the full
+picture and the two recommended designs (API resource server and browser BFF).
+
 ## Minimal scaffolds
 
 Pass `--minimal` to drop the bookstore demo route and the built-in

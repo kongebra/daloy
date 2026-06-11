@@ -326,6 +326,7 @@ const STATIC_PATHS: Array<{
   { path: "/docs/payments/razorpay", changeFrequency: "monthly", priority: 0.7 },
   { path: "/docs/payments/square", changeFrequency: "monthly", priority: 0.7 },
   { path: "/docs/auth", changeFrequency: "monthly", priority: 0.8 },
+  { path: "/docs/auth/architecture", changeFrequency: "monthly", priority: 0.8 },
   { path: "/docs/auth/aws-cognito", changeFrequency: "monthly", priority: 0.7 },
   { path: "/docs/auth/entra-id", changeFrequency: "monthly", priority: 0.7 },
   { path: "/docs/auth/auth0", changeFrequency: "monthly", priority: 0.7 },

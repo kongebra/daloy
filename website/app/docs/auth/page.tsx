@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { Route } from "next";
 
 import { buildMetadata } from "@/lib/seo";
 
@@ -32,17 +33,27 @@ export default function Page() {
         organization. The pages in this section show how to wire up the five
         most common IdPs.
       </p>
+      <p>
+        New to this? Start with{" "}
+        <Link href={"/docs/auth/architecture" as Route}>
+          Auth architecture: where DaloyJS fits in OAuth2 &amp; OpenID Connect
+        </Link>
+        . It explains why DaloyJS is a <strong>resource server</strong> (it
+        verifies tokens, it does not issue them), how that compares to .NET and
+        Duende IdentityServer, whether you actually need Auth0/Okta/Clerk or can
+        self-host an open-source IdP, and the two architectures we recommend.
+      </p>
 
       <h2>Supported providers</h2>
       <ul>
         <li>
           <Link href="/docs/auth/aws-cognito">AWS Cognito</Link>: pay-as-you-go
-          user pools with hosted sign-in. Use{" "}
-          <code>aws-jwt-verify</code> to verify access and ID tokens with zero
-          runtime dependencies; runs on Node, edge, and Lambda.
+          user pools with hosted sign-in. Use <code>aws-jwt-verify</code> to
+          verify access and ID tokens with zero runtime dependencies; runs on
+          Node, edge, and Lambda.
         </li>
         <li>
-          <Link href="/docs/auth/entra-id">Microsoft Entra ID (MSAL)</Link>: 
+          <Link href="/docs/auth/entra-id">Microsoft Entra ID (MSAL)</Link>:
           enterprise SSO for Microsoft 365 / Azure AD users. Verify tokens with
           the OIDC JWKS using <code>jose</code>; acquire downstream tokens with{" "}
           <code>@azure/msal-node</code> when needed.
@@ -78,35 +89,45 @@ export default function Page() {
         </thead>
         <tbody>
           <tr>
-            <td>AWS Cognito (<code>aws-jwt-verify</code>)</td>
+            <td>
+              AWS Cognito (<code>aws-jwt-verify</code>)
+            </td>
             <td>Yes</td>
             <td>Yes (Web Crypto)</td>
             <td>Yes</td>
             <td>Yes</td>
           </tr>
           <tr>
-            <td>Entra ID (<code>jose</code>)</td>
+            <td>
+              Entra ID (<code>jose</code>)
+            </td>
             <td>Yes</td>
             <td>Yes</td>
             <td>Yes</td>
             <td>Yes</td>
           </tr>
           <tr>
-            <td>Auth0 (<code>jose</code>)</td>
+            <td>
+              Auth0 (<code>jose</code>)
+            </td>
             <td>Yes</td>
             <td>Yes</td>
             <td>Yes</td>
             <td>Yes</td>
           </tr>
           <tr>
-            <td>Okta (<code>@okta/jwt-verifier</code>)</td>
+            <td>
+              Okta (<code>@okta/jwt-verifier</code>)
+            </td>
             <td>Yes</td>
             <td>No (Node-only)</td>
             <td>No</td>
             <td>Yes</td>
           </tr>
           <tr>
-            <td>Clerk (<code>@clerk/backend</code>)</td>
+            <td>
+              Clerk (<code>@clerk/backend</code>)
+            </td>
             <td>Yes</td>
             <td>Yes</td>
             <td>Yes</td>
@@ -117,10 +138,10 @@ export default function Page() {
 
       <h2>Common pattern</h2>
       <p>
-        Each provider page implements the same three steps: install the
-        verifier SDK, register a DaloyJS plugin that decorates the request
-        context with an <code>auth</code> object, then guard routes with a
-        small middleware that requires a token (and optional scopes).
+        Each provider page implements the same three steps: install the verifier
+        SDK, register a DaloyJS plugin that decorates the request context with
+        an <code>auth</code> object, then guard routes with a small middleware
+        that requires a token (and optional scopes).
       </p>
       <pre>
         <code>{`// src/plugins/auth.ts
@@ -188,15 +209,16 @@ declare module "@daloyjs/core" {
           (every SDK on the following pages handles this).
         </li>
         <li>
-          <strong>Check <code>iss</code> and <code>aud</code>.</strong> Pin the
-          expected issuer URL and audience/client ID. A correct signature on
-          the wrong audience is still a token confusion attack.
+          <strong>
+            Check <code>iss</code> and <code>aud</code>.
+          </strong>{" "}
+          Pin the expected issuer URL and audience/client ID. A correct
+          signature on the wrong audience is still a token confusion attack.
         </li>
         <li>
           <strong>Authorize, don&apos;t just authenticate.</strong> A valid
-          token only proves the caller is who they say they are. Enforce
-          scopes, roles, or organization membership for every privileged
-          action.
+          token only proves the caller is who they say they are. Enforce scopes,
+          roles, or organization membership for every privileged action.
         </li>
         <li>
           <strong>Use TLS everywhere.</strong> Bearer tokens are
@@ -208,8 +230,8 @@ declare module "@daloyjs/core" {
         </li>
         <li>
           <strong>Rate-limit token-issuing routes.</strong> Login redirects,
-          token-exchange endpoints, and any introspection passthroughs should
-          go through{" "}
+          token-exchange endpoints, and any introspection passthroughs should go
+          through{" "}
           <Link href="/docs/security">
             <code>rateLimit</code>
           </Link>{" "}
@@ -218,11 +240,11 @@ declare module "@daloyjs/core" {
           abuse can&apos;t drive cost or lock out users.
         </li>
         <li>
-          <strong>Protect cookies and CSRF.</strong> If you also use
-          session cookies (for an admin panel, say), enable{" "}
+          <strong>Protect cookies and CSRF.</strong> If you also use session
+          cookies (for an admin panel, say), enable{" "}
           <Link href="/docs/security/csrf">CSRF</Link> and use{" "}
-          <code>SameSite=Lax</code> + <code>Secure</code> + <code>HttpOnly</code>{" "}
-          via the built-in{" "}
+          <code>SameSite=Lax</code> + <code>Secure</code> +{" "}
+          <code>HttpOnly</code> via the built-in{" "}
           <Link href="/docs/security/session">session middleware</Link>.
         </li>
       </ul>

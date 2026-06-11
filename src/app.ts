@@ -1161,7 +1161,8 @@ export class App<
           "If you really need this in production, also pass " +
           "acknowledgeInsecureDefaults: true to confirm. Prefer per-feature opt-outs " +
           "(secureHeaders: false, corsCrossOriginGuard: false, crashOnUnhandledRejection: false, " +
-          "trustProxy: false, csrf: \"off\") instead.",
+          "trustProxy: false, csrf: \"off\") instead. " +
+          "See https://daloyjs.dev/docs/security/secure-defaults-enforcement.",
       );
     }
     if (!insecureDefaultsLoggedThisProcess) {
@@ -1519,8 +1520,11 @@ export class App<
     const err = new Error(
       `session() is registered in the hook chain for a state-changing route ` +
         `(${stateChanging.method} ${stateChanging.path}) but no csrf() hook is installed. ` +
+        `Without CSRF protection a browser can be tricked into making authenticated ` +
+        `state-changing requests cross-site. ` +
         `Register csrf() via app.use(csrf({ strategy: "fetch-metadata", allowedOrigins: [...] })), ` +
-        `or pass app({ csrf: "off" }) to acknowledge that this app is not browser-facing.`,
+        `or pass app({ csrf: "off" }) to acknowledge that this app is not browser-facing. ` +
+        `See https://daloyjs.dev/docs/security/boot-guards.`,
     );
     this.bootGuard.error = err;
     throw err;
@@ -1571,9 +1575,12 @@ export class App<
     }
     throw new InternalError(
       `Refusing to dispatch request: ${found} header is present but app({ trustProxy }) is unconfigured. ` +
+        `Honouring a spoofable forwarded header would let a client forge its source IP for the rate ` +
+        `limiter, audit log, and request-id propagation. ` +
         `Pass app({ trustProxy: true }) when running behind a trusted reverse proxy, ` +
         `or app({ trustProxy: false }) to ignore forwarded headers, ` +
-        `or app({ secureDefaults: false }) to disable this guard.`,
+        `or app({ secureDefaults: false }) to disable this guard. ` +
+        `See https://daloyjs.dev/docs/security/boot-guards.`,
     );
   }
 

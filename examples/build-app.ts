@@ -1,8 +1,18 @@
 /**
  * Shared factory for the example bookstore App.
  *
- * Used by `examples/basic.ts` (runnable demo) and by
+ * Consumed by `examples/basic.ts` (runnable demo + typed-client smoke),
+ * `examples/dast-server.ts` (long-running DAST target), and
  * `scripts/dump-openapi.ts` (writes the spec for Hey API codegen).
+ *
+ * The return type is intentionally **inferred** — this function does *not*
+ * annotate `: App`, and the two routes are registered by *chaining*
+ * `.route(...)` calls rather than as separate `app.route(...)` statements.
+ * That is what carries the accumulated per-route tuple to callers, so
+ * `createClient(buildExampleApp())` gets a fully typed `getBookById` /
+ * `createBook` surface with **no cast**. Annotating `: App` here, or breaking
+ * the chain into separate statements, would widen the type back to a plain
+ * `App` and erase the inference (forcing a hand-written client cast).
  */
 
 import { z } from "zod";
@@ -17,7 +27,10 @@ import {
   timing,
 } from "../src/index.ts";
 
+/** Public book resource returned by the read/write routes. */
 export const BookSchema = z.object({ id: z.string(), title: z.string() });
+
+/** RFC 9457 problem+json shape used by the error responses. */
 export const ProblemSchema = z.object({
   type: z.string(),
   title: z.string(),
@@ -25,13 +38,23 @@ export const ProblemSchema = z.object({
   detail: z.string().optional(),
 });
 
-export function buildExampleApp(): App {
-  const books = new Map<string, { id: string; title: string }>([
+/**
+ * Build the example bookstore {@link App}: the secure-by-default middleware
+ * stack plus two typed routes (`getBookById`, `createBook`).
+ *
+ * @returns An `App` whose route tuple is **inferred**, so a typed client built
+ * from it (see `examples/basic.ts`) needs no cast.
+ * @since 0.1.0
+ */
+export function buildExampleApp() {
+  const books = new Map<string, z.infer<typeof BookSchema>>([
     ["1", { id: "1", title: "Foundation" }],
     ["2", { id: "2", title: "Dune" }],
   ]);
 
-  const app = new App({
+  // One unbroken chain: `new App(...).use(...)....route(...).route(...)`.
+  // The inferred return type therefore is `App<[getBookById, createBook]>`.
+  return new App({
     title: "Bookstore API",
     version: "1.0.0",
     bodyLimitBytes: 64 * 1024,
@@ -41,55 +64,49 @@ export function buildExampleApp(): App {
       securitySchemes: { bearer: { type: "http", scheme: "bearer" } },
     },
     docs: true,
-  });
-
-  app.use(requestId());
-  app.use(secureHeaders());
-  app.use(cors({ origin: "*", credentials: false }));
-  app.use(timing());
-  app.use(rateLimit({ windowMs: 60_000, max: 120 }));
-
-  app.route({
-    method: "GET",
-    path: "/books/:id",
-    operationId: "getBookById",
-    tags: ["Books"],
-    summary: "Fetch a book by id",
-    request: { params: z.object({ id: z.string() }) as any },
-    responses: {
-      200: {
-        description: "Book found",
-        body: BookSchema as any,
-        examples: { default: { id: "1", title: "Foundation" } },
+  })
+    .use(requestId())
+    .use(secureHeaders())
+    .use(cors({ origin: "*", credentials: false }))
+    .use(timing())
+    .use(rateLimit({ windowMs: 60_000, max: 120 }))
+    .route({
+      method: "GET",
+      path: "/books/:id",
+      operationId: "getBookById",
+      tags: ["Books"],
+      summary: "Fetch a book by id",
+      request: { params: z.object({ id: z.string() }) },
+      responses: {
+        200: {
+          description: "Book found",
+          body: BookSchema,
+          examples: { default: { id: "1", title: "Foundation" } },
+        },
+        404: { description: "Book not found", body: ProblemSchema },
       },
-      404: { description: "Book not found", body: ProblemSchema as any },
-    },
-    handler: async ({ params }) => {
-      const book = books.get(params.id);
-      if (!book) throw new NotFoundError(`No book with id ${params.id}`);
-      return { status: 200 as const, body: book };
-    },
-  });
-
-  app.route({
-    method: "POST",
-    path: "/books",
-    operationId: "createBook",
-    tags: ["Books"],
-    auth: { scheme: "bearer" },
-    hooks: bearerAuth({ validate: (t) => t === "demo-token" }),
-    request: { body: BookSchema as any },
-    responses: {
-      201: { description: "Created", body: BookSchema as any },
-      401: { description: "Unauthorized", body: ProblemSchema as any },
-      422: { description: "Validation error", body: ProblemSchema as any },
-    },
-    handler: async ({ body }) => {
-      const b = body as { id: string; title: string };
-      books.set(b.id, b);
-      return { status: 201 as const, body: b };
-    },
-  });
-
-  return app;
+      handler: async ({ params }) => {
+        const book = books.get(params.id);
+        if (!book) throw new NotFoundError(`No book with id ${params.id}`);
+        return { status: 200 as const, body: book };
+      },
+    })
+    .route({
+      method: "POST",
+      path: "/books",
+      operationId: "createBook",
+      tags: ["Books"],
+      auth: { scheme: "bearer" },
+      hooks: bearerAuth({ validate: (t) => t === "demo-token" }),
+      request: { body: BookSchema },
+      responses: {
+        201: { description: "Created", body: BookSchema },
+        401: { description: "Unauthorized", body: ProblemSchema },
+        422: { description: "Validation error", body: ProblemSchema },
+      },
+      handler: async ({ body }) => {
+        books.set(body.id, body);
+        return { status: 201 as const, body };
+      },
+    });
 }

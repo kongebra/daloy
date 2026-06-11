@@ -15,6 +15,7 @@
 [![Publish](https://github.com/daloyjs/daloy/actions/workflows/release.yml/badge.svg)](https://github.com/daloyjs/daloy/actions/workflows/release.yml)
 [![Zizmor](https://github.com/daloyjs/daloy/actions/workflows/zizmor.yml/badge.svg?branch=main)](https://github.com/daloyjs/daloy/actions/workflows/zizmor.yml)
 [![GitHub last commit](https://img.shields.io/github/last-commit/daloyjs/daloy)](https://github.com/daloyjs/daloy/commits/main)
+[![npm version](https://img.shields.io/npm/v/@daloyjs/core)](https://www.npmjs.com/package/@daloyjs/core)
 [![JSR](https://jsr.io/badges/@daloyjs/daloy)](https://jsr.io/@daloyjs/daloy)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/13058/badge)](https://www.bestpractices.dev/projects/13058)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/daloyjs/daloy/badge)](https://securityscorecards.dev/viewer/?uri=github.com/daloyjs/daloy)
@@ -38,6 +39,7 @@ DaloyJS exists to be the framework you'd build if you took the best ideas from e
 | Mature **Swagger / docs / ops** in Node                    | [Fastify](https://fastify.dev/docs/latest/Reference/)                 | Encapsulated plugins, structured logger, graceful shutdown, request ids, and lifecycle hooks — all first-party.       |
 | Modern **TS-first DX**, Bun acceptable                     | [Elysia](https://elysiajs.com/at-glance.html)                         | End-to-end typed handlers, typed context, and a typed in-process client — no codegen step required.                   |
 | Best-in-class **typed client codegen** for any consumer    | [Hey API](https://heyapi.dev/openapi-ts/get-started)                  | One `pnpm gen` command emits a fully-typed fetch SDK from your live OpenAPI spec.                                     |
+| **Contract-first typed client, no codegen**                | [ts-rest](https://ts-rest.com/)                                       | Your route definition *is* the contract: an in-process typed client with zero codegen, plus OpenAPI 3.1 + a Hey API SDK for consumers that can't import your types. |
 | Opinionated **DI / module architecture** for large teams   | [NestJS](https://docs.nestjs.com/)                                    | Plugin encapsulation, `register()` prefixes, and `defineDependency()` typed-DI with per-request dedup — no decorators. |
 | Minimalist **async middleware cascade**                    | [Koa](https://koajs.com/)                                             | Koa-style `Context` on a web-standard core, with validation, OpenAPI, errors, and security headers in-box.            |
 | **Services + real-time** API framework                     | [FeathersJS](https://feathersjs.com/)                                 | First-party `app.ws()` with CSWSH refuse-to-boot guards, plus SSE / NDJSON streaming over explicit OpenAPI routes.    |
@@ -61,6 +63,7 @@ Each existing stack is excellent at one thing and forces tradeoffs everywhere el
 - Fastify has the best Node ops story but is Node-only and validation/types/docs are not unified.
 - FastAPI has the best docs ergonomics — but it's Python.
 - Hey API gives you the best typed client — but you still need a server that produces a clean spec.
+- ts-rest gives lovely end-to-end types from a shared contract — but it rides on top of another server (Express/Fastify/Nest/Next), its safety is TypeScript-only, and OpenAPI and security are bring-your-own.
 - npm leaves supply-chain protection up to you.
 
 DaloyJS combines the wins:
@@ -339,6 +342,33 @@ deployment.
 
 ---
 
+## Authentication, OAuth2 & OpenID Connect
+
+DaloyJS is a **resource server** (and a toolkit for building a relying party),
+**not** an identity provider. Like Hono, Express, Fastify, or ASP.NET Core, it
+*verifies* and *enforces* tokens on each request — it does **not** ship a login
+UI, a user database, or an OAuth2 authorization server. It is **not** an
+"IdentityServer": it cannot, on its own, do what Duende IdentityServer,
+Keycloak, or Auth0 do (run login pages, manage clients/consent, mint tokens).
+
+To add login you bring an **OpenID Connect provider**. It does not have to be
+Auth0/Okta/Clerk specifically — any standards-compliant IdP works, including
+managed (Auth0, Okta, Clerk, Microsoft Entra ID, AWS Cognito) and **self-hosted
+open source** (Keycloak, Zitadel, Ory, Authentik, Logto, SuperTokens, Dex).
+Don't build your own authorization server — verify tokens from a vetted one.
+
+- **API as a resource server (default):** verify JWTs with `jwk()` against the
+  provider's JWKS (asymmetric-only algorithm allowlist, `issuer`/`audience`
+  enforced), then authorize per route with `requireScopes()`.
+- **Browser app:** use the back-end-for-frontend (BFF) pattern — run the
+  authorization-code + PKCE flow server-side, keep tokens in a `session()`
+  cookie (never in JavaScript), and protect mutations with `csrf()`.
+
+Read [Auth architecture: where DaloyJS fits in OAuth2 & OpenID Connect](https://daloyjs.dev/docs/auth/architecture)
+for the full picture, plus the per-provider guides under [`/docs/auth`](https://daloyjs.dev/docs/auth).
+
+---
+
 ## Performance
 
 ```text
@@ -429,6 +459,7 @@ The core only ever sees `Request → Response`. Adapters live at the edge.
 - Hono — portable web-standard router: <https://hono.dev/docs/>
 - Elysia — TS-first DX & typed context: <https://elysiajs.com/at-glance.html>
 - Fastify — production Node web framework: <https://fastify.dev/docs/latest/Reference/>
+- ts-rest — contract-first, RPC-like client/server over REST: <https://ts-rest.com/>
 - pnpm — strict, secure, content-addressable package manager: <https://pnpm.io/motivation>
 - Standard Schema — universal validator interface: <https://github.com/standard-schema/standard-schema>
 - RFC 9457 — Problem Details for HTTP APIs: <https://www.rfc-editor.org/rfc/rfc9457>

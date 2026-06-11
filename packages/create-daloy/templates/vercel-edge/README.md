@@ -77,3 +77,17 @@ Vercel bundles the `api/` functions at deploy time and resolves `.ts` directly, 
   <!-- daloy-minimal:strip-start docs -->
 - A Scalar API reference UI at `/docs`, plus live OpenAPI 3.1 specs at `/openapi.json` and `/openapi.yaml`.
 <!-- daloy-minimal:strip-end docs -->
+
+## Authentication (OAuth2 / OpenID Connect)
+
+This app is a **resource server**: DaloyJS verifies and enforces access tokens,
+it does **not** issue them. There is no built-in login UI, user database, or
+OAuth2 authorization server (it is not an identity provider like Keycloak,
+Auth0, or Duende IdentityServer). To add login, bring an OpenID Connect provider
+— managed (Auth0, Okta, Clerk, Microsoft Entra ID, AWS Cognito) or self-hosted
+open source (Keycloak, Zitadel, Ory, Logto) — and verify its JWTs with the
+first-party `jwk()`, `bearerAuth()`, and `requireScopes()` helpers. Don't build
+your own authorization server.
+
+See [Auth architecture](https://daloyjs.dev/docs/auth/architecture) for the
+recommended designs (API resource server and browser BFF).

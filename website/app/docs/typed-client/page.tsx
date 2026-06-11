@@ -14,6 +14,8 @@ export const metadata = buildMetadata({
     "OpenAPI client TypeScript",
     "Hey API client",
     "end-to-end type safety",
+    "ts-rest alternative",
+    "ts-rest vs DaloyJS",
   ],
   type: "article",
 });
@@ -183,6 +185,84 @@ else console.log(data.title);`}
           <tr>
             <td>Public SDK for third parties</td>
             <td>Hey API SDK, published as its own package</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>Coming from ts-rest?</h2>
+      <p>
+        <a href="https://ts-rest.com/" target="_blank" rel="noreferrer">
+          ts-rest
+        </a>{" "}
+        is a popular contract-first library that gives you end-to-end TypeScript
+        types <strong>without codegen</strong> by sharing a contract (
+        <code>initContract</code>) between an adapter-based server (Express,
+        Fastify, NestJS, Next.js) and a fetch client (<code>initClient</code>).
+        If you like that model, DaloyJS will feel familiar, with two
+        differences.
+      </p>
+      <p>
+        First, in DaloyJS the <strong>route definition is the contract</strong>,
+        there is no separate contract object to keep in sync. The in-process{" "}
+        <code>createClient</code> shown above gives the same zero-codegen,
+        shared-types experience for same-repo TypeScript callers.
+      </p>
+      <p>
+        Second, ts-rest&apos;s type safety is TypeScript-only and requires the
+        client to import the contract. DaloyJS emits a first-class{" "}
+        <strong>OpenAPI 3.1</strong> spec and a Hey API SDK from the same
+        routes, so consumers that can&apos;t import your types (other repos,
+        other languages, public SDKs) are covered too. In ts-rest, OpenAPI is an
+        optional add-on (<code>@ts-rest/open-api</code>). DaloyJS is also the
+        server and runtime itself, portable across Node, Bun, Deno, Cloudflare,
+        and Vercel, rather than a typing layer mounted on a separate framework.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th></th>
+            <th>ts-rest</th>
+            <th>DaloyJS</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Contract source</td>
+            <td>
+              Separate <code>initContract</code> object
+            </td>
+            <td>The route definition itself</td>
+          </tr>
+          <tr>
+            <td>Zero-codegen typed client</td>
+            <td>
+              Yes (<code>initClient</code>, TypeScript only)
+            </td>
+            <td>
+              Yes (<code>createClient</code>, TypeScript only)
+            </td>
+          </tr>
+          <tr>
+            <td>Cross-language / cross-repo clients</td>
+            <td>
+              OpenAPI add-on (<code>@ts-rest/open-api</code>)
+            </td>
+            <td>OpenAPI 3.1 + Hey API SDK, first-class</td>
+          </tr>
+          <tr>
+            <td>Server</td>
+            <td>Adapter on Express / Fastify / NestJS / Next.js</td>
+            <td>Built-in, runtime-portable</td>
+          </tr>
+          <tr>
+            <td>Runtime validation</td>
+            <td>Standard Schema (Zod / Valibot / ArkType)</td>
+            <td>Standard Schema (Zod / Valibot / ArkType / TypeBox)</td>
+          </tr>
+          <tr>
+            <td>Security defaults</td>
+            <td>Bring your own</td>
+            <td>Built-in headers, CSRF, rate limits, body limits, and more</td>
           </tr>
         </tbody>
       </table>

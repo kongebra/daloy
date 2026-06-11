@@ -12,6 +12,39 @@ For the forward-looking plan and the full thematic release log, see
 > `create-daloy` are published together — a new core release always ships a
 > matching scaffolder so generated projects pin the latest peer.
 
+## [0.38.1] — 2026-06-11
+
+### Changed
+
+- **Refuse-to-boot / refuse-to-sign guardrails now explain themselves.** The
+  error messages thrown by the framework's fail-fast security checks are now
+  actionable instead of terse: a weak `session()` secret, `jwt()` configured
+  with `alg: "none"` (both the signer and the verifier allowlist),
+  `secureDefaults: false` in production, a `session()` chain on a state-changing
+  route without `csrf()`, and an unconfigured `trustProxy` when a forwarded
+  header is present each now describe the concrete risk (forged sessions,
+  signature-stripping / algorithm-confusion, cross-site state changes, spoofed
+  client IPs), suggest a fix (e.g. `openssl rand -base64 32`, picking HS256 /
+  RS256 / ES256, the right `trustProxy` value), and link to the relevant docs
+  page. The error **codes** (`alg_none_refused`, …) and the validation behavior
+  are unchanged — only the human-readable guidance improved, so existing
+  programmatic checks keep working.
+- **`create-daloy --with-ci` workflow templates and the repo's own workflows
+  refresh their pinned GitHub Actions SHAs** (CodeQL, OpenGrep, Scorecard, and
+  the container-scan jobs) to current upstream releases. Actions remain fully
+  SHA-pinned; only the pinned commits moved forward.
+
+### Documentation
+
+- **New "where DaloyJS fits in OAuth2 & OpenID Connect" auth-architecture
+  guide** clarifies that DaloyJS is a resource-server / relying-party toolkit
+  rather than an identity provider or authorization server, with managed-vs
+  self-hosted IdP guidance and the two recommended designs. It is linked from
+  the auth overview and summarized in the `@daloyjs/core` and `create-daloy`
+  READMEs and every scaffolded template README.
+- **New "Coming from ts-rest?" comparison** on the typed-client docs page, plus
+  a ts-rest row in the README framework-comparison table.
+
 ## [0.38.0] — 2026-06-10
 
 ### Added
@@ -958,7 +991,8 @@ For the forward-looking plan and the full thematic release log, see
   publish with provenance, `pnpm create daloy` scaffolder (`node-basic`,
   `vercel-edge`, `cloudflare-worker`), docs metadata + ORM guides.
 
-[Unreleased]: https://github.com/daloyjs/daloy/compare/v0.38.0...HEAD
+[Unreleased]: https://github.com/daloyjs/daloy/compare/v0.38.1...HEAD
+[0.38.1]: https://github.com/daloyjs/daloy/compare/v0.38.0...v0.38.1
 [0.38.0]: https://github.com/daloyjs/daloy/compare/v0.37.0...v0.38.0
 [0.37.0]: https://github.com/daloyjs/daloy/compare/f37ce20...v0.37.0
 [0.36.0]: https://github.com/daloyjs/daloy/compare/10de2f5...f37ce20

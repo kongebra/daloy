@@ -379,7 +379,13 @@ export function createJwtSigner(opts: JwtSignerOptions): { sign(payload: Record<
   }
   const { alg } = opts;
   if ((alg as unknown) === "none") {
-    throw new JwtError("alg_none_refused", 'jwt(): alg "none" is refused.');
+    throw new JwtError(
+      "alg_none_refused",
+      'jwt(): alg "none" is refused — it disables signature verification, so anyone could forge a ' +
+        'token by setting the header alg to "none" (the classic JWT signature-stripping / algorithm-' +
+        "confusion attack). Choose a real signing algorithm such as HS256 (shared secret) or " +
+        "RS256 / ES256 (key pair). See https://daloyjs.dev/docs/security/secure-defaults-enforcement.",
+    );
   }
   if (!ALL_ALGS.has(alg)) {
     throw new JwtError(
@@ -514,7 +520,13 @@ export function createJwtVerifier(opts: JwtVerifierOptions): { verify(token: str
   const allow = new Set<JwtAlgorithm>();
   for (const alg of opts.algorithms) {
     if ((alg as unknown) === "none") {
-      throw new JwtError("alg_none_refused", 'jwt(): alg "none" cannot appear in the allowlist.');
+      throw new JwtError(
+        "alg_none_refused",
+        'jwt(): alg "none" cannot appear in the algorithms allowlist — it disables signature ' +
+          "verification and would let any caller forge a token. Remove it and list only real " +
+          "algorithms such as HS256, RS256, or ES256. " +
+          "See https://daloyjs.dev/docs/security/secure-defaults-enforcement.",
+      );
     }
     if (!ALL_ALGS.has(alg)) {
       throw new JwtError(

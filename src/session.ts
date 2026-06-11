@@ -200,7 +200,12 @@ function bytesToBase64Url(bytes: Uint8Array): string {
 
 function makeSigner(secret: string): Signer {
   if (typeof secret !== "string" || secret.length < 16) {
-    throw new Error("session(): each secret must be a string of at least 16 characters.");
+    throw new Error(
+      "session(): each secret must be a string of at least 16 characters — it is the HMAC key " +
+        "that signs every session cookie, so a short or guessable value lets an attacker forge sessions. " +
+        "Generate one with `openssl rand -base64 32` and load it from an env var or secret manager " +
+        "(never hard-code or commit it). See https://daloyjs.dev/docs/security/session.",
+    );
   }
   let keyPromise: Promise<CryptoKey> | null = null;
   const getKey = () => {
