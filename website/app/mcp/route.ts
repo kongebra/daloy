@@ -16,11 +16,11 @@ import { SITE_URL } from "@/lib/seo";
  * - `get_doc` - read the full plain-text body of one page by route or slug.
  * - `list_docs` - enumerate every available docs page.
  *
- * @see https://modelcontextprotocol.io/specification/2025-06-18/basic/transports
+ * @see https://modelcontextprotocol.io/specification/2025-11-25/basic/transports
  */
 
 /** Protocol version this server negotiates against when it has a free choice. */
-const PREFERRED_PROTOCOL_VERSION = "2025-06-18";
+const PREFERRED_PROTOCOL_VERSION = "2025-11-25";
 
 /**
  * MCP protocol revisions this endpoint understands. An incoming
@@ -221,6 +221,9 @@ const TOOLS = [
   },
 ] as const;
 
+/** Fast membership check for protocol-level tool-name validation. */
+const TOOL_NAMES: ReadonlySet<string> = new Set(TOOLS.map((tool) => tool.name));
+
 /** Thrown by a tool to signal a caller-correctable error (bad/missing input). */
 class ToolError extends Error {}
 
@@ -278,6 +281,11 @@ function scoreDoc(page: DocPage, terms: string[], phrase: string): number {
 function readStringArg(args: Record<string, unknown>, key: string): string {
   const value = args[key];
   return typeof value === "string" ? value : "";
+}
+
+/** Check whether a decoded JSON value is a valid JSON-RPC id. */
+function isJsonRpcId(value: unknown): value is JsonRpcId {
+  return value === null || typeof value === "string" || typeof value === "number";
 }
 
 /**
@@ -401,7 +409,7 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<To
         text = await runListDocs();
         break;
       default:
-        return toolErrorResult(`Unknown tool: ${name}`);
+        throw new Error(`Unknown tool passed validation: ${name}`);
     }
     return { content: [{ type: "text", text }] };
   } catch (error) {
@@ -445,6 +453,9 @@ async function handleRpcRequest(message: JsonRpcMessage): Promise<Response> {
       const name = typeof params.name === "string" ? params.name : "";
       if (name.length === 0) {
         return rpcError(id, INVALID_PARAMS, "Missing tool name in `params.name`.");
+      }
+      if (!TOOL_NAMES.has(name)) {
+        return rpcError(id, INVALID_PARAMS, `Unknown tool: ${name}`);
       }
       const args =
         params.arguments && typeof params.arguments === "object"
@@ -494,9 +505,16 @@ export async function POST(request: Request): Promise<Response> {
     return rpcError(null, INVALID_REQUEST, "Request body too large.", undefined, 413);
   }
 
-  const raw = await request.text();
-  if (raw.length > MAX_BODY_BYTES) {
+  const body = await request.arrayBuffer();
+  if (body.byteLength > MAX_BODY_BYTES) {
     return rpcError(null, INVALID_REQUEST, "Request body too large.", undefined, 413);
+  }
+
+  let raw: string;
+  try {
+    raw = new TextDecoder("utf-8", { fatal: true }).decode(body);
+  } catch {
+    return rpcError(null, PARSE_ERROR, "Request body must be valid UTF-8.", undefined, 400);
   }
 
   let message: JsonRpcMessage;
@@ -520,10 +538,21 @@ export async function POST(request: Request): Promise<Response> {
     return rpcError(null, INVALID_REQUEST, "Request must be a JSON-RPC 2.0 message.", undefined, 400);
   }
 
-  // A message without a string method is a response to us; we never issue
-  // server-to-client requests, so simply acknowledge it.
-  if (typeof message.method !== "string") {
+  if (message.id !== undefined && !isJsonRpcId(message.id)) {
+    return rpcError(null, INVALID_REQUEST, "JSON-RPC id must be a string, number, or null.", undefined, 400);
+  }
+
+  // A message without a method can only be a response to us. We never issue
+  // server-to-client requests, so valid responses are simply acknowledged.
+  if (message.method === undefined) {
+    if (!("result" in message) && !("error" in message)) {
+      return rpcError(null, INVALID_REQUEST, "JSON-RPC message is missing `method`, `result`, or `error`.", undefined, 400);
+    }
     return new Response(null, { status: 202, headers: CORS_HEADERS });
+  }
+
+  if (typeof message.method !== "string") {
+    return rpcError(null, INVALID_REQUEST, "JSON-RPC method must be a string.", undefined, 400);
   }
 
   // A message without an id is a notification (e.g. notifications/initialized).

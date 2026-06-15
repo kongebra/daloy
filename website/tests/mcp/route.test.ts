@@ -145,7 +145,7 @@ test("initialize falls back to the preferred version for an unknown request", as
     params: { protocolVersion: "1.0.0", capabilities: {} },
   });
 
-  assert.equal(json.result.protocolVersion, "2025-06-18");
+  assert.equal(json.result.protocolVersion, "2025-11-25");
 });
 
 test("ping returns an empty result", async () => {
@@ -247,6 +247,13 @@ test("a JSON-RPC response (no method) is acknowledged with 202", async () => {
   assert.equal(res.status, 202);
 });
 
+test("a JSON-RPC object without method, result, or error is rejected", async () => {
+  const res = await post({ jsonrpc: "2.0", id: 5 });
+  assert.equal(res.status, 400);
+  const json = await res.json();
+  assert.equal(json.error.code, -32600);
+});
+
 test("resources/list and prompts/list return empty collections", async () => {
   const resources = await rpc({ jsonrpc: "2.0", id: 7, method: "resources/list" });
   assert.deepEqual(resources.json.result, { resources: [] });
@@ -295,6 +302,20 @@ test("a non-2.0 message is rejected with -32600 and HTTP 400", async () => {
   assert.equal(json.error.code, -32600);
 });
 
+test("a non-string JSON-RPC method is rejected with -32600 and HTTP 400", async () => {
+  const res = await post({ jsonrpc: "2.0", id: 1, method: null });
+  assert.equal(res.status, 400);
+  const json = await res.json();
+  assert.equal(json.error.code, -32600);
+});
+
+test("a JSON-RPC message with an invalid id is rejected with -32600 and HTTP 400", async () => {
+  const res = await post({ jsonrpc: "2.0", id: { nested: true }, method: "ping" });
+  assert.equal(res.status, 400);
+  const json = await res.json();
+  assert.equal(json.error.code, -32600);
+});
+
 test("an unknown method yields -32601 method not found", async () => {
   const { json } = await rpc({ jsonrpc: "2.0", id: 1, method: "does/notExist" });
   assert.equal(json.error.code, -32601);
@@ -310,15 +331,15 @@ test("tools/call without a name yields -32602 invalid params", async () => {
   assert.equal(json.error.code, -32602);
 });
 
-test("tools/call for an unknown tool returns an isError result", async () => {
+test("tools/call for an unknown tool yields -32602 invalid params", async () => {
   const { json } = await rpc({
     jsonrpc: "2.0",
     id: 1,
     method: "tools/call",
     params: { name: "delete_everything", arguments: {} },
   });
-  assert.equal(json.result.isError, true);
-  assert.match(toolText(json), /Unknown tool/);
+  assert.equal(json.error.code, -32602);
+  assert.match(json.error.message, /Unknown tool/);
 });
 
 test("search_docs without a query returns an isError result", async () => {
@@ -406,6 +427,12 @@ test("a supported MCP-Protocol-Version header is accepted", async () => {
 
 test("an oversized request body yields HTTP 413", async () => {
   const huge = "A".repeat(300_000);
+  const res = await post({ jsonrpc: "2.0", id: 1, method: "ping", params: { huge } });
+  assert.equal(res.status, 413);
+});
+
+test("an oversized multibyte request body is measured in bytes", async () => {
+  const huge = "é".repeat(150_000);
   const res = await post({ jsonrpc: "2.0", id: 1, method: "ping", params: { huge } });
   assert.equal(res.status, 413);
 });
