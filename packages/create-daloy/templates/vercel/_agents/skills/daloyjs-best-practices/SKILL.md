@@ -2,20 +2,21 @@
 name: daloyjs-best-practices
 description: >-
   Best practices for building, testing, and hardening this DaloyJS REST API on
-  Vercel Edge. Use when adding or changing HTTP routes, Zod schemas,
-  middleware, or error handling; regenerating the OpenAPI spec or the typed
-  Hey API client; keeping the catch-all Edge entrypoint and Web-Standard
-  runtime constraints; or working on auth, rate limits, secrets, and the
+  Vercel (Node.js runtime). Use when adding or changing HTTP routes, Zod
+  schemas, middleware, or error handling; regenerating the OpenAPI spec or the
+  typed Hey API client; keeping the catch-all Vercel Functions entrypoint and
+  Web-Standard handler; or working on auth, rate limits, secrets, and the
   project's quality gates.
 license: MIT
 ---
 
-# SKILL.md — DaloyJS best practices (Vercel Edge)
+# SKILL.md — DaloyJS best practices (Vercel, Node.js runtime)
 
 Operational guidance and best practices for AI coding agents working in this
-DaloyJS **Vercel Edge** project. This is the project's **single source of
-truth** for how to add routes, write tests, ship secure defaults, and run
-the quality gates. Read this in full before making non-trivial changes.
+DaloyJS **Vercel** project on the **Node.js runtime** (Fluid Compute). This is
+the project's **single source of truth** for how to add routes, write tests,
+ship secure defaults, and run the quality gates. Read this in full before
+making non-trivial changes.
 
 ## When to use this skill
 
@@ -24,18 +25,21 @@ Use this skill when you need to:
 - Add, modify, or remove HTTP routes in this project.
 - Adjust middleware, validation, or error handling.
 - Run tests or typecheck the project.
-- Deploy or troubleshoot the Edge runtime entrypoint.
+- Deploy or troubleshoot the Vercel Functions entrypoint.
 - Harden the API (auth, CORS, rate limits, secrets, dependency hygiene).
 
 Do **not** use this skill for tasks unrelated to the API itself.
 
 ## Core principles
 
-DaloyJS is a **contract-first** framework. On Vercel Edge, additionally:
+DaloyJS is a **contract-first** framework. On Vercel, additionally:
 
-1. **Stay on the Edge runtime.** Only Web Standards APIs (no `node:`
-   modules, no `fs`, no `Buffer`). If a feature requires Node APIs, the
-   user must switch to a Node template.
+1. **Node.js runtime by default.** The full Node API is available
+   (`node:*`, `Buffer`, `fs`), but prefer Web Standards (`Request` /
+   `Response`, `fetch`, Web Crypto) so the same app can also run on the
+   Edge runtime or another adapter unchanged. Opt into Edge only when you
+   need it (`export const runtime = "edge"` + `toWebHandler(app)`), and
+   then drop `node:` modules.
 2. **The route definition is the contract.** Method, path, request
    schemas, and response schemas live in one place (`app.route({...})`).
 3. **Zod schemas validate at every boundary.**
@@ -43,16 +47,17 @@ DaloyJS is a **contract-first** framework. On Vercel Edge, additionally:
 5. **Secure by default.** `requestId()`, `secureHeaders()`, and
    `rateLimit()` are registered before route definitions. Note the
    in-memory rate limiter resets per instance — for high-traffic
-   deployments, prefer Vercel's native rate-limiting (e.g.
-   `@vercel/edge` + KV) or an external store.
+   deployments, back it with an external shared store (e.g. Upstash
+   Redis).
 6. **One catch-all entrypoint.** `api/[...path].ts` owns all routing so
    DaloyJS can generate a unified OpenAPI spec.
 
 ## Project shape
 
-- `api/[...path].ts` — the Edge entrypoint. Builds the `App`, registers
-  routes/middleware, and exports `default toWebHandler(app)` plus
-  `export const config = { runtime: "edge" }`.
+- `api/[...path].ts` — the Vercel Functions entrypoint. Builds the `App`,
+  registers routes/middleware, and exports `default toFetchHandler(app)`
+  (Node.js Functions expect a default export with a `fetch` method; Node.js
+  is the default runtime, so no `runtime` export is needed).
 - `vercel.json` — Vercel build/runtime configuration.
 - `tests/` — test files (`*.test.ts`).
 
@@ -82,9 +87,9 @@ definitions:
 Customize via `docs: { openapiPath, openapiYamlPath, path, ui }`. Set
 `openapiYamlPath: false` to disable just the YAML route, `docs: "auto"` to
 mount only outside production, or `docs: false` to disable all three.
-On Vercel Edge the YAML serializer is pure-string (no Node deps) and
-adds <1KB to the bundle. For hand-rolled mounting, `openapiToYAML` is
-exported from `@daloyjs/core/openapi`.
+On Vercel the YAML serializer is pure-string (no extra deps) and adds
+<1KB to the bundle. For hand-rolled mounting, `openapiToYAML` is exported
+from `@daloyjs/core/openapi`.
 
 ## Workflow: add a new route
 
@@ -151,7 +156,7 @@ Add CORS only when needed, with an explicit `origin` allowlist.
 
 ## Testing best practices
 
-Tests use in-process `app.request(...)` — no port, no Edge runtime
+Tests use in-process `app.request(...)` — no port, no Vercel runtime
 needed for unit tests.
 
 ```ts
@@ -159,10 +164,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import handler from "../api/[...path].ts";
 
-// Either import the underlying app, or test via the Edge handler's
-// fetch interface by passing a Web Request.
+// Either import the underlying app, or test via the handler's fetch
+// method (the default export is the Vercel `{ fetch }` object) by
+// passing a Web Request.
 test("GET /healthz returns ok", async () => {
-  const res = await handler(new Request("http://local/healthz"));
+  const res = await handler.fetch(new Request("http://local/healthz"));
   assert.equal(res.status, 200);
 });
 ```
@@ -180,23 +186,25 @@ Aim for **100% line and function coverage** on the routes you add.
   production traffic, back rate-limiting with Vercel KV or another
   shared store so limits apply across instances.
 - Never log secrets — filter `authorization`, `cookie`, etc.
-- Read secrets from `process.env` (available on Edge). Validate via Zod
-  at module load.
+- Read secrets from `process.env` (available on Node.js Functions).
+  Validate via Zod at module load.
 - For auth, verify JWT signatures with the Web Crypto API
-  (`crypto.subtle`). Never trust the `alg` header from the token.
+  (`crypto.subtle`, available on both Node.js and Edge). Never trust the
+  `alg` header from the token.
 - Validate redirects against an allowlist.
 - Set `bodyLimitBytes` and `requestTimeoutMs` on `new App({...})` to
   mitigate DoS.
-- Edge functions have small bundle and CPU limits; be cautious about
-  adding heavy dependencies. Inspect bundle size during deploy.
-- Pin Vercel project settings (regions, runtime version) explicitly in
-  `vercel.json` rather than relying on dashboard defaults.
+- Serverless functions still have bundle-size and cold-start costs; be
+  cautious about adding heavy dependencies. Inspect bundle size during
+  deploy.
+- Pin Vercel project settings (regions, memory, maxDuration) explicitly
+  in `vercel.json` rather than relying on dashboard defaults.
 
 ## Logging & observability
 
 - Use `ctx.log` — it carries the request id.
-- `console.log` on Edge shows up in Vercel's runtime logs; the framework
-  logger emits structured JSON for log aggregators.
+- `console.log` shows up in Vercel's runtime logs; the framework logger
+  emits structured JSON for log aggregators.
 
 ## Configuration & secrets
 
@@ -209,13 +217,14 @@ Aim for **100% line and function coverage** on the routes you add.
   handles routing. Do not split routes into multiple Vercel API files
   unless the user explicitly asks (it disables shared middleware and a
   unified OpenAPI).
-- Use `toWebHandler(app)` from `@daloyjs/core/vercel` for Edge — never
-  hand-roll a `fetch(req)` adapter. For Vercel's recommended Node.js
-  runtime, remove the Edge config and export `default toFetchHandler(app)`.
+- Use `toFetchHandler(app)` from `@daloyjs/core/vercel` for Node.js
+  Functions — never hand-roll a `fetch(req)` adapter. If you opt into the
+  Edge runtime, use `toWebHandler(app)` with `export const runtime = "edge"`.
 - Do not import `@daloyjs/core/node`, `@daloyjs/core/bun`, etc. — only
   `@daloyjs/core` and `@daloyjs/core/vercel`.
-- Avoid Node-only APIs (`Buffer`, `fs`, full `process` API). If a
-  feature needs Node, switch to a Node-runtime template.
+- Node APIs (`Buffer`, `fs`, full `process`) are available on the Node.js
+  runtime, but keep handlers Web-Standard where practical so the app can
+  also run on the Edge runtime unchanged.
 - Do not weaken response literal types (`as const`).
 - Do not return errors as `{ status: 4xx, body }`. Throw a typed error.
 - Do not add runtime dependencies without checking the hardened `.npmrc` (installs wait 24h after publish by default).

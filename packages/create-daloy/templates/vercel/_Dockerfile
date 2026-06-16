@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1.7
-# Containerized local-dev / CI environment for a DaloyJS Vercel Edge API.
+# Containerized local-dev / CI environment for a DaloyJS Vercel API.
 #
 # Production deploys go through `vercel deploy` to Vercel's managed
-# Edge runtime — **this Dockerfile is not a production runtime**. Ship
+# Node.js runtime — **this Dockerfile is not a production runtime**. Ship
 # the function to Vercel; use this image for:
 #   - Reproducible local dev (devcontainers, GitHub Codespaces).
 #   - CI smoke tests that exercise the handler against `vercel dev`

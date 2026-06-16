@@ -75,15 +75,20 @@ test("node-basic health route preserves literal true type", async () => {
   );
 });
 
-test("vercel-edge health route preserves literal true type", async () => {
+test("vercel template preserves the literal true type on the Node.js handler", async () => {
   const source = await readFile(
-    path.join(pkgRoot, "templates/vercel-edge/api/[...path].ts"),
+    path.join(pkgRoot, "templates/vercel/api/[...path].ts"),
     "utf8",
   );
   assert.match(
     source,
-    /body:\s*\{ ok: true as const, runtime: "vercel-edge" as const \}/,
+    /body:\s*\{ ok: true as const, runtime: "vercel" as const \}/,
   );
+  // The template targets Vercel's Node.js runtime: it exports the `{ fetch }`
+  // shape via toFetchHandler and must NOT pin the deprecated Edge runtime.
+  assert.match(source, /export default toFetchHandler\(app\)/);
+  assert.doesNotMatch(source, /runtime:\s*"edge"/);
+  assert.doesNotMatch(source, /export\s+const\s+config\s*=/);
 });
 
 test("node-basic template opts into the auto-mounted /docs and /openapi.json", async () => {
@@ -172,20 +177,20 @@ test("node-basic separates buildApp() from server boot so codegen has no side ef
   assert.equal(pkg.scripts.start, "node dist/index.js");
 });
 
-test("vercel-edge template opts into the auto-mounted /docs and /openapi.json", async () => {
+test("vercel template opts into the auto-mounted /docs and /openapi.json", async () => {
   const source = await readFile(
-    path.join(pkgRoot, "templates/vercel-edge/api/[...path].ts"),
+    path.join(pkgRoot, "templates/vercel/api/[...path].ts"),
     "utf8",
   );
   assert.match(source, /docs:\s*true/);
   assert.match(source, /openapi:\s*\{/);
-  assert.match(source, /info:\s*\{\s*title:\s*"My Daloy Edge API"/);
+  assert.match(source, /info:\s*\{\s*title:\s*"My Daloy Vercel API"/);
 });
 
 test("every template ships a hardened _Dockerfile and _dockerignore", async () => {
   const templates = [
     "node-basic",
-    "vercel-edge",
+    "vercel",
     "cloudflare-worker",
     "bun-basic",
     "deno-basic",
@@ -297,7 +302,7 @@ test("every template ships a hardened _Dockerfile and _dockerignore", async () =
 test("pnpm templates ship hardened supply-chain .npmrc defaults", async () => {
   const templates = [
     "node-basic",
-    "vercel-edge",
+    "vercel",
     "cloudflare-worker",
     "bun-basic",
   ];
@@ -349,7 +354,7 @@ test("pnpm templates ship a local SCA `audit` script", async () => {
   // editor's task runner.
   const templates = [
     "node-basic",
-    "vercel-edge",
+    "vercel",
     "cloudflare-worker",
     "bun-basic",
   ];
@@ -372,7 +377,7 @@ test("pnpm templates ship a local SCA `audit` script", async () => {
 test("pnpm templates ship workspace-level supply-chain defaults", async () => {
   const templates = [
     "node-basic",
-    "vercel-edge",
+    "vercel",
     "cloudflare-worker",
     "bun-basic",
   ];
@@ -448,7 +453,7 @@ test("non-pnpm scaffolds do not keep pnpm-specific .npmrc or pnpm-workspace.yaml
           path.join(pkgRoot, "bin/create-daloy.mjs"),
           projectName,
           "--template",
-          "vercel-edge",
+          "vercel",
           "--package-manager",
           "npm",
           "--no-install",
@@ -1338,7 +1343,7 @@ test("--with-ci scaffolds provider-specific deploy starters for edge adapters", 
     const cases = [
       {
         projectName: "vercel-deploy",
-        template: "vercel-edge",
+        template: "vercel",
         packageManager: "npm",
         expected: [/npx vercel deploy --prod --yes --token/, /VERCEL_TOKEN/, /VERCEL_PROJECT_ID/],
       },
@@ -1585,6 +1590,46 @@ test("--list-templates includes the new bun-basic and deno-basic options", async
   });
   assert.match(out, /bun-basic/);
   assert.match(out, /deno-basic/);
+});
+
+test("deprecated --template vercel-edge alias resolves to the vercel template", async () => {
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "create-daloy-"));
+  const projectName = "vercel-alias";
+  try {
+    const { code, stderr } = await new Promise((resolve) => {
+      let err = "";
+      const proc = spawn(
+        process.execPath,
+        [
+          path.join(pkgRoot, "bin/create-daloy.mjs"),
+          projectName,
+          "--template",
+          "vercel-edge",
+          "--package-manager",
+          "npm",
+          "--no-install",
+          "--no-git",
+          "--yes",
+        ],
+        { cwd: tmpDir, stdio: ["ignore", "ignore", "pipe"] },
+      );
+      proc.stderr.on("data", (chunk) => (err += chunk.toString()));
+      proc.on("exit", (c) => resolve({ code: c ?? 1, stderr: err }));
+      proc.on("error", () => resolve({ code: 1, stderr: err }));
+    });
+    assert.equal(code, 0);
+    // A one-line deprecation notice is printed to stderr.
+    assert.match(stderr, /vercel-edge.*deprecated/i);
+    // The scaffolded project is the Node.js-runtime `vercel` template.
+    const handler = await readFile(
+      path.join(tmpDir, projectName, "api/[...path].ts"),
+      "utf8",
+    );
+    assert.match(handler, /export default toFetchHandler\(app\)/);
+    assert.match(handler, /runtime: "vercel" as const/);
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true });
+  }
 });
 
 test("--help documents the create flow across package managers", async () => {
@@ -1936,7 +1981,7 @@ test("every template ships AGENTS.md and SKILL.md helper files for AI coding age
   // it as `_agents/...` so npm pack does not drop the dotfolder on publish.
   const templates = [
     "node-basic",
-    "vercel-edge",
+    "vercel",
     "cloudflare-worker",
     "bun-basic",
     "deno-basic",
@@ -2011,7 +2056,7 @@ test("scaffolded projects include AGENTS.md and SKILL.md at the conventional pat
   // copier renames `_agents/` → `.agents/`.
   const templates = [
     "node-basic",
-    "vercel-edge",
+    "vercel",
     "cloudflare-worker",
     "bun-basic",
     "deno-basic",
@@ -2068,7 +2113,7 @@ test("every template ships _vscode/mcp.json wiring the DaloyJS docs MCP server",
   // server from VS Code (and compatible editors) with no manual setup.
   const templates = [
     "node-basic",
-    "vercel-edge",
+    "vercel",
     "cloudflare-worker",
     "bun-basic",
     "deno-basic",
@@ -2108,7 +2153,7 @@ test("scaffolded projects include .vscode/mcp.json at the conventional path", as
   // the copier).
   const templates = [
     "node-basic",
-    "vercel-edge",
+    "vercel",
     "cloudflare-worker",
     "bun-basic",
     "deno-basic",

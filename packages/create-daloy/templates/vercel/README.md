@@ -1,6 +1,6 @@
 # my-daloy-vercel-api
 
-A [DaloyJS](https://daloyjs.dev) Vercel Edge API starter.
+A [DaloyJS](https://daloyjs.dev) Vercel API starter on the Node.js runtime.
 
 ## Develop
 
@@ -26,7 +26,7 @@ curl http://localhost:3000/books/1
 - OpenAPI 3.1 JSON: <http://localhost:3000/openapi.json>
 - OpenAPI 3.1 YAML: <http://localhost:3000/openapi.yaml>
 
-After deploying, the same routes serve `/docs`, `/openapi.json`, and `/openapi.yaml` from your Vercel Edge URL.
+After deploying, the same routes serve `/docs`, `/openapi.json`, and `/openapi.yaml` from your Vercel deployment URL.
 To brand Scalar, change `docs: true` in `api/[...path].ts` to `docs: { scalar: { theme, customCss } }`.
 
 <!-- daloy-minimal:strip-end docs -->
@@ -40,19 +40,23 @@ pnpm deploy
 The API entry lives at `api/[...path].ts` and uses `@daloyjs/core/vercel`:
 
 ```ts
-export const config = { runtime: "edge" };
-export default toWebHandler(app);
-```
-
-This starter defaults to Vercel's Edge runtime for compatibility with the
-`vercel-edge` template name. Vercel now recommends Node.js for new projects;
-for Node.js Functions, remove the `config` export and use the official default
-`{ fetch }` shape instead:
-
-```ts
 import { toFetchHandler } from "@daloyjs/core/vercel";
 
+// Node.js is the default runtime — no `runtime` export needed.
 export default toFetchHandler(app);
+```
+
+This starter targets Vercel's Node.js runtime (on Fluid Compute), which Vercel
+now recommends for standalone functions. Node.js Functions expect a default
+export with a `fetch` method, which is exactly what `toFetchHandler(app)`
+returns. If you specifically need the Edge runtime, add the `runtime` export and
+switch to the bare web handler:
+
+```ts
+import { toWebHandler } from "@daloyjs/core/vercel";
+
+export const runtime = "edge";
+export default toWebHandler(app);
 ```
 
 That catch-all API route lets DaloyJS own routing while Vercel handles the runtime.
@@ -70,7 +74,7 @@ Vercel bundles the `api/` functions at deploy time and resolves `.ts` directly, 
 ## What's included
 
 - `@daloyjs/core/vercel` with starter security middleware: `secureHeaders` and `requestId`.
-- Smaller edge-friendly body and timeout limits in the generated app.
+- Smaller serverless-friendly body and timeout limits in the generated app.
 <!-- daloy-minimal:strip-start books -->
 - A health route and a contract-first `/books/:id` route with Zod validation.
   <!-- daloy-minimal:strip-end books -->

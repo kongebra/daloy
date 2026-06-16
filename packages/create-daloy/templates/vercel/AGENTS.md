@@ -1,9 +1,9 @@
 # AGENTS.md
 
-A [DaloyJS](https://daloyjs.dev) REST API deployed to **Vercel Edge**. **Contract-first**: routes are defined with Zod schemas and OpenAPI 3.1 is generated from them. When `docs: true` is set in `new App({...})`, three routes are auto-mounted: `GET /openapi.json`, `GET /openapi.yaml`, and `GET /docs` (Scalar UI).
+A [DaloyJS](https://daloyjs.dev) REST API deployed to **Vercel** on the **Node.js runtime** (Vercel's recommended runtime for standalone functions, running on Fluid Compute). **Contract-first**: routes are defined with Zod schemas and OpenAPI 3.1 is generated from them. When `docs: true` is set in `new App({...})`, three routes are auto-mounted: `GET /openapi.json`, `GET /openapi.yaml`, and `GET /docs` (Scalar UI).
 
 - Package manager: pnpm (use `pnpm` unless the project's `package.json` was rewritten for npm/yarn/bun).
-- Runtime: Vercel Edge (Web Standard `Request`/`Response`).
+- Runtime: Vercel Node.js Functions on Fluid Compute (Web Standard `Request`/`Response`).
 
 ## Commands
 
@@ -15,7 +15,7 @@ A [DaloyJS](https://daloyjs.dev) REST API deployed to **Vercel Edge**. **Contrac
 
 ## Project shape
 
-- `api/[...path].ts` — Vercel Edge entrypoint. Builds the `App`, registers routes/middleware, and exports `default toWebHandler(app)` plus `export const config = { runtime: "edge" }`. **Keep it a catch-all** so DaloyJS owns routing. For Vercel's recommended Node.js runtime, remove the Edge config and export `default toFetchHandler(app)` from `@daloyjs/core/vercel`.
+- `api/[...path].ts` — Vercel Node.js Functions entrypoint. Builds the `App`, registers routes/middleware, and exports `default toFetchHandler(app)` from `@daloyjs/core/vercel` (Node.js Functions expect a default export with a `fetch` method; Node.js is the default runtime, so no `runtime` export is needed). **Keep it a catch-all** so DaloyJS owns routing. If you specifically need the Edge runtime, add `export const runtime = "edge"` and switch to `default toWebHandler(app)`.
 - `vercel.json` — Vercel build/runtime configuration.
 - `tests/` — test files.
 
@@ -36,7 +36,7 @@ You import the file you see. Vercel bundles the `api/` functions at deploy time 
 3. Preserve literal types in responses: `status: 200 as const`, `z.literal(...)` on discriminator fields.
 4. Throw typed errors (`NotFoundError`, `BadRequestError`, etc.) from `@daloyjs/core`.
 5. Keep `requestId()`, `secureHeaders()`, and `rateLimit()` enabled. For production traffic, back rate-limiting with Vercel KV or another shared store (the in-memory limiter resets per instance).
-6. Stay on the Edge runtime: only Web Standards APIs. No `node:` modules, no `fs`, no `Buffer`. If a feature requires Node, switch to a Node-runtime template.
+6. On the Node.js runtime the full Node API is available (`node:*`, `Buffer`, `fs`), but prefer Web Standards (`Request`/`Response`, `fetch`, Web Crypto) so the same app can also run on the Edge runtime or another adapter unchanged. If you opt into the Edge runtime, drop `node:` modules entirely.
 7. The catch-all `api/[...path].ts` must remain a catch-all so DaloyJS handles routing.
 8. Every new route ships with a test that covers a happy path and at least one unhappy path.
 
@@ -48,7 +48,7 @@ Per Supabase + Aikido on [secure-by-default development](https://www.aikido.dev/
 - Keep Zod `.strict()` on top-level request objects; do not switch to `.passthrough()`. Keep `responses[N].body` schemas tight; never widen to `z.any()` to let a privileged field escape.
 - Every protected route attaches an auth `beforeHandle` and ships an unhappy-path test proving an unauthenticated request returns `401` (and wrong scope returns `403`) — the HTTP-boundary equivalent of Supabase's pgTAP policy tests.
 - JWT verifiers keep an explicit `algorithms` allowlist; never trust the token's `alg` header, never allow `none`, always check `exp` / `nbf`.
-- Credential / HMAC comparisons use `crypto.subtle.timingSafeEqual`, never `===`. Throw typed errors from `@daloyjs/core` so problem+json redacts in prod; never return raw stack traces.
+- Credential / HMAC comparisons use a constant-time comparison (the framework's `timingSafeEqual`), never `===`. Throw typed errors from `@daloyjs/core` so problem+json redacts in prod; never return raw stack traces.
 - Keep `api/[...path].ts` a catch-all so DaloyJS owns routing — do not split into per-path files that bypass the middleware chain.
 - `.env`, `.env.local`, secrets, private keys: never commit. Use `vercel env` for production secrets.
 

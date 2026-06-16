@@ -22,7 +22,7 @@ bun  create daloy           my-api
 The CLI is interactive when arguments are missing. It will ask you for:
 
 - A project directory name (defaults to `my-daloy-app`)
-- A template (`node-basic`, `vercel-edge`, `cloudflare-worker`, `bun-basic`, or `deno-basic`)
+- A template (`node-basic`, `vercel`, `cloudflare-worker`, `bun-basic`, or `deno-basic`)
 - A package manager (`pnpm`, `npm`, `yarn`, or `bun`) — not asked for the
   `deno-basic` runtime template
 - Whether to install dependencies
@@ -50,7 +50,7 @@ pnpm create daloy@latest my-api \
 
 | Flag | Description |
 | --- | --- |
-| `--template <name>` | `node-basic` (default), `vercel-edge`, `cloudflare-worker`, `bun-basic`, or `deno-basic`. |
+| `--template <name>` | `node-basic` (default), `vercel`, `cloudflare-worker`, `bun-basic`, or `deno-basic`. (`vercel-edge` is a deprecated alias for `vercel`.) |
 | `--package-manager <pm>` | `pnpm` (default), `npm`, `yarn`, or `bun`. Ignored for `deno-basic`. |
 | `--list-templates` | Print available templates with descriptions. |
 | `--install` / `--no-install` | Install dependencies after scaffolding. Defaults to **Y** for npm/yarn/bun and **N** for pnpm so you can review the hardened `.npmrc` / `pnpm-workspace.yaml` and aren't blocked by the 24h `minimumReleaseAge` embargo on the first run. |
@@ -88,16 +88,19 @@ A minimal Cloudflare Worker bootstrap using `@daloyjs/core/cloudflare` with:
 - `secureHeaders` and `requestId` enabled by default, with smaller edge-friendly body and timeout limits.
 - A Zod-validated `/healthz` route and contract-first `/books/:id` route exposed via `toFetchHandler(app)`.
 
-### `vercel-edge`
+### `vercel`
 
-A Vercel Edge API bootstrap using `@daloyjs/core/vercel` with:
+A Vercel API bootstrap on the **Node.js runtime** (Vercel's recommended runtime
+for standalone functions, on Fluid Compute) using `@daloyjs/core/vercel` with:
 
 - `api/[...path].ts` catch-all routing so DaloyJS owns the API surface.
-- `export const config = { runtime: "edge" }` ready for Vercel Edge.
-- Node.js migration notes using Vercel's default `{ fetch }` export shape.
+- `export default toFetchHandler(app)` — the `{ fetch }` shape Vercel Node.js Functions expect (no `runtime` export needed; Node.js is the default).
+- Notes for opting into the Edge runtime (`export const runtime = "edge"` + `toWebHandler(app)`) if you specifically need it.
 - `vercel dev` / `vercel deploy` scripts.
-- `secureHeaders` and `requestId` enabled by default, with smaller edge-friendly body and timeout limits.
+- `secureHeaders` and `requestId` enabled by default, with smaller serverless-friendly body and timeout limits.
 - A health route and bookstore route mirroring the Node starter.
+
+> The previous template name `vercel-edge` still works as a deprecated alias for `vercel`.
 
 ### `bun-basic`
 

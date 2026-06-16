@@ -74,7 +74,7 @@ bun  create daloy           my-api`}
       <ul>
         <li>
           <code>--template &lt;name&gt;</code>: <code>node-basic</code>{" "}
-          (default), <code>vercel-edge</code>, <code>cloudflare-worker</code>,{" "}
+          (default), <code>vercel</code>, <code>cloudflare-worker</code>,{" "}
           <code>bun-basic</code>, or <code>deno-basic</code>.
         </li>
         <li>
@@ -160,15 +160,18 @@ bun  create daloy           my-api`}
       </p>
 
       <h3>
-        <code>vercel-edge</code>
+        <code>vercel</code>
       </h3>
       <p>
-        A Vercel Edge API using <code>@daloyjs/core/vercel</code> with a
-        catch-all <code>api/[...path].ts</code> route, <code>vercel dev</code> /{" "}
+        A Vercel API on the Node.js runtime (Vercel&apos;s recommended runtime
+        for standalone functions) using <code>@daloyjs/core/vercel</code> with a
+        catch-all <code>api/[...path].ts</code> route exporting{" "}
+        <code>toFetchHandler(app)</code>, <code>vercel dev</code> /{" "}
         <code>vercel deploy</code> scripts, <code>secureHeaders</code> +{" "}
-        <code>requestId</code> enabled by default, smaller edge-friendly body
-        and timeout limits, and the same health and bookstore examples as the
-        Node starter.
+        <code>requestId</code> enabled by default, smaller serverless-friendly
+        body and timeout limits, and the same health and bookstore examples as
+        the Node starter. (The old <code>vercel-edge</code> name still works as a
+        deprecated alias.)
       </p>
       <p>
         The Vercel template also ships <code>/docs</code> (Scalar API reference)
@@ -297,8 +300,9 @@ bun  create daloy           my-api`}
           Docker, Fly.io, Railway, Render, or any VM/container host.
         </li>
         <li>
-          Choose <code>vercel-edge</code> when Vercel is your deployment target
-          and you want an Edge API route from the first commit.
+          Choose <code>vercel</code> when Vercel is your deployment target and
+          you want a catch-all Vercel Functions API route (Node.js runtime) from
+          the first commit.
         </li>
         <li>
           Choose <code>cloudflare-worker</code> only when your deployment target

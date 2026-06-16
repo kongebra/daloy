@@ -120,7 +120,7 @@ export const SCANNED_PACKAGE_JSONS: readonly string[] = [
   "packages/create-daloy/templates/bun-basic/package.json",
   "packages/create-daloy/templates/cloudflare-worker/package.json",
   "packages/create-daloy/templates/node-basic/package.json",
-  "packages/create-daloy/templates/vercel-edge/package.json",
+  "packages/create-daloy/templates/vercel/package.json",
 ];
 
 interface PackageJsonLike {

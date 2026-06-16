@@ -1,11 +1,15 @@
 import { z } from "zod";
 import { App, NotFoundError, requestId, secureHeaders } from "@daloyjs/core";
-import { toWebHandler } from "@daloyjs/core/vercel";
+import { toFetchHandler } from "@daloyjs/core/vercel";
 
-// This template defaults to Vercel's Edge runtime for compatibility with the
-// existing `vercel-edge` starter. For Vercel's recommended Node.js runtime,
-// remove this config and export `toFetchHandler(app)` from @daloyjs/core/vercel.
-export const config = { runtime: "edge" };
+// This template targets Vercel's Node.js runtime — the runtime Vercel now
+// recommends for standalone functions (it runs on Fluid Compute, with the
+// performance of the edge network but full Node API support). Node.js is the
+// default runtime, so no `runtime` export is needed. Vercel Node.js Functions
+// in `/api` expect a default export with a `fetch` method, which is exactly
+// what `toFetchHandler(app)` returns. If you specifically need the Edge runtime
+// instead, add `export const runtime = "edge"` and switch the default export to
+// `toWebHandler(app)` from "@daloyjs/core/vercel".
 
 const app = new App({
   bodyLimitBytes: 256 * 1024,
@@ -17,7 +21,7 @@ const app = new App({
   //   GET /openapi.yaml — OpenAPI 3.1 spec (YAML, served inline as text/yaml)
   //   GET /docs         — Scalar API reference UI that loads the spec
   openapi: {
-    info: { title: "My Daloy Edge API", version: "0.0.1" },
+    info: { title: "My Daloy Vercel API", version: "0.0.1" },
   },
   docs: true,
   // daloy-minimal:strip-end docs
@@ -34,12 +38,12 @@ app.route({
   responses: {
     200: {
       description: "Service is healthy",
-      body: z.object({ ok: z.literal(true), runtime: z.literal("vercel-edge") }),
+      body: z.object({ ok: z.literal(true), runtime: z.literal("vercel") }),
     },
   },
   handler: async () => ({
     status: 200,
-    body: { ok: true as const, runtime: "vercel-edge" as const },
+    body: { ok: true as const, runtime: "vercel" as const },
   }),
 });
 
@@ -67,4 +71,4 @@ app.route({
 });
 // daloy-minimal:strip-end books
 
-export default toWebHandler(app);
+export default toFetchHandler(app);

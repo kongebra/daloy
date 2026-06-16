@@ -42,13 +42,14 @@ export default function Page() {
 
       <h2>Scaffold</h2>
       <p>
-        The current Vercel starter creates an Edge Function REST API. If you
-        prefer the Node.js runtime, use the <code>toFetchHandler</code>{" "}
-        entrypoint shown below.
+        The Vercel starter scaffolds a standalone REST API on the Node.js
+        runtime (the <code>toFetchHandler</code> entrypoint shown below), which
+        Vercel now recommends for standalone functions. The old{" "}
+        <code>vercel-edge</code> template name still works as a deprecated alias.
       </p>
       <CodeBlock
         language="bash"
-        code={`pnpm create daloy@latest my-api --template vercel-edge
+        code={`pnpm create daloy@latest my-api --template vercel
 cd my-api
 pnpm vercel dev`}
       />

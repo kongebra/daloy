@@ -23,9 +23,9 @@ const TEMPLATE_OPTIONS = [
     description: "Traditional REST API with secure defaults and Hey API codegen",
   },
   {
-    value: "vercel-edge",
-    title: "Vercel Edge",
-    description: "Catch-all Vercel Edge route with Node.js migration notes",
+    value: "vercel",
+    title: "Vercel",
+    description: "Catch-all Vercel Functions REST API on the Node.js runtime (Fluid Compute)",
   },
   {
     value: "cloudflare-worker",
@@ -53,6 +53,15 @@ const PACKAGE_MANAGER_OPTIONS = [
 
 const TEMPLATES = TEMPLATE_OPTIONS.map((option) => option.value);
 const PACKAGE_MANAGERS = PACKAGE_MANAGER_OPTIONS.map((option) => option.value);
+
+// Deprecated template names kept as aliases so existing
+// `--template <old>` commands (and published docs/blog posts) keep working.
+// Each maps to its current canonical template value.
+const TEMPLATE_ALIASES = new Map([
+  // `vercel-edge` shipped before Vercel deprecated standalone Edge Functions;
+  // the template now targets the recommended Node.js runtime as `vercel`.
+  ["vercel-edge", "vercel"],
+]);
 
 const RENAME_ON_COPY = new Map([
   ["_gitignore", ".gitignore"],
@@ -977,7 +986,7 @@ function cloudflareDeploySteps(packageManager) {
 }
 
 function renderDeployConfig({ template, packageManager, needsBunRuntime }) {
-  if (template === "vercel-edge") {
+  if (template === "vercel") {
     return {
       header: vercelDeployHeader(),
       jobName: "Deploy to Vercel",
@@ -1673,6 +1682,12 @@ async function main() {
     let template = opts.template;
     if (!template) {
       template = rl ? await askChoice(rl, "Choose a starter template:", TEMPLATE_OPTIONS, "node-basic") : "node-basic";
+    }
+    // Resolve deprecated template aliases (e.g. `vercel-edge` -> `vercel`).
+    if (TEMPLATE_ALIASES.has(template)) {
+      const canonical = TEMPLATE_ALIASES.get(template);
+      logWarn(`Template "${template}" is deprecated; using "${canonical}" instead.`);
+      template = canonical;
     }
     if (!TEMPLATES.includes(template)) {
       logError(`Unknown template "${template}". Available: ${TEMPLATES.join(", ")}`);
