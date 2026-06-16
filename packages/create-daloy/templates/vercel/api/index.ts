@@ -21,6 +21,13 @@ const app = new App({
   bodyLimitBytes: 256 * 1024,
   requestTimeoutMs: 5_000,
   production: process.env.NODE_ENV === "production",
+  // Reverse-proxy posture. On Vercel, every request reaches the function
+  // through Vercel's edge, which sets `x-forwarded-for`. The app must declare
+  // that trusted hop, otherwise DaloyJS refuses the spoofable header and
+  // returns 500 in production. Vercel is exactly one edge hop, so the default
+  // is 1; override TRUST_PROXY_HOPS only if you put another proxy in front
+  // (e.g. set it to 2 behind Cloudflare -> Vercel).
+  behindProxy: { hops: Number(process.env.TRUST_PROXY_HOPS ?? "1") },
   // daloy-minimal:strip-start docs
   // Auto-mounted docs (when `docs: true`):
   //   GET /openapi.json — OpenAPI 3.1 spec (JSON)

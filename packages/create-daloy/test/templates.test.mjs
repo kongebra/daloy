@@ -89,6 +89,11 @@ test("vercel template preserves the literal true type on the Node.js handler", a
   assert.match(source, /export default toFetchHandler\(app\)/);
   assert.doesNotMatch(source, /runtime:\s*"edge"/);
   assert.doesNotMatch(source, /export\s+const\s+config\s*=/);
+  // Vercel always proxies through its edge (sends x-forwarded-for), so the app
+  // must declare the proxy posture or it 500s in production. The template
+  // defaults to one trusted hop (Vercel's edge), overridable via env.
+  assert.match(source, /behindProxy:\s*\{\s*hops:\s*Number\(/);
+  assert.match(source, /TRUST_PROXY_HOPS/);
 });
 
 test("node-basic template opts into the auto-mounted /docs and /openapi.json", async () => {
