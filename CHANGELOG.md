@@ -12,6 +12,42 @@ For the forward-looking plan and the full thematic release log, see
 > `create-daloy` are published together — a new core release always ships a
 > matching scaffolder so generated projects pin the latest peer.
 
+## [0.38.3] — 2026-06-16
+
+`@daloyjs/core` has no runtime changes; this is a lockstep bump alongside the
+`create-daloy` Vercel-template fixes below, so a freshly scaffolded Vercel
+project deploys cleanly.
+
+### Fixed
+
+- **The `vercel` template now deploys cleanly on Vercel out of the box.** Two
+  issues made a freshly scaffolded Vercel project error on deploy:
+  - **Root routing.** Vercel maps `api/<file>` to `/api/<file>`, but a DaloyJS
+    app routes at the root, so the old `api/[...path].ts` only answered
+    `/api/*` and the deployed root domain returned a Vercel 404. The template
+    now ships a single `api/index.ts` plus a `vercel.json` rewrite
+    (`/(.*)` → `/api`) — the canonical Vercel "framework owns routing"
+    pattern — so the app's routes (`/healthz`, `/docs`, …) are served at the
+    site root.
+  - **Proxy posture.** Vercel always proxies through its edge and sets
+    `x-forwarded-for`, so DaloyJS's production boot guard returned 500 on every
+    request. The template now sets
+    `behindProxy: { hops: Number(process.env.TRUST_PROXY_HOPS ?? "1") }`
+    (Vercel is one trusted edge hop; override the env var if another proxy sits
+    in front).
+
+### Security
+
+- Pin transitive, dev-only dependencies to clear OSV advisories via pnpm
+  overrides: `esbuild` >= 0.28.1 (GHSA-gv7w-rqvm-qjhr, GHSA-g7r4-m6w7-qqqr) and
+  `js-yaml` >= 4.2.0 (GHSA-h67p-54hq-rp68). Both are build-time only and not
+  part of the published `@daloyjs/core` surface.
+
+### Documentation
+
+- Refreshed the Vercel adapter, scaffolder, and deployment docs to the single
+  `api/index.ts` + rewrite pattern.
+
 ## [0.38.2] — 2026-06-16
 
 `@daloyjs/core` has no runtime changes in this release; it is a lockstep version
@@ -1042,7 +1078,8 @@ scaffolded projects pin the latest peer.
   publish with provenance, `pnpm create daloy` scaffolder (`node-basic`,
   `vercel-edge`, `cloudflare-worker`), docs metadata + ORM guides.
 
-[Unreleased]: https://github.com/daloyjs/daloy/compare/v0.38.2...HEAD
+[Unreleased]: https://github.com/daloyjs/daloy/compare/v0.38.3...HEAD
+[0.38.3]: https://github.com/daloyjs/daloy/compare/v0.38.2...v0.38.3
 [0.38.2]: https://github.com/daloyjs/daloy/compare/v0.38.1...v0.38.2
 [0.38.1]: https://github.com/daloyjs/daloy/compare/v0.38.0...v0.38.1
 [0.38.0]: https://github.com/daloyjs/daloy/compare/v0.37.0...v0.38.0

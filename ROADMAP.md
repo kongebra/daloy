@@ -22,7 +22,7 @@ Source of truth for what's shipped, what's next, and the order we plan to ship i
 
 ## Shipped — `0.1.x` foundation
 
-Published to npm as **`@daloyjs/core`** (latest: `0.38.1`).
+Published to npm as **`@daloyjs/core`** (latest: `0.38.3`).
 
 ### Core framework
 
