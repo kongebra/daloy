@@ -1441,6 +1441,11 @@ test("bun-basic template ships secure defaults and a Bun adapter entry", async (
   );
   assert.match(indexFile, /from\s+"@daloyjs\/core\/bun"/);
   assert.match(indexFile, /\bserve\s*\(\s*app\b/);
+  // Regression guard: Bun auto-starts a server from any module whose default
+  // export has a `fetch` method, which collides with the explicit serve() call
+  // on the same port (EADDRINUSE) and crashes on startup. The Bun entrypoint
+  // must never re-export the app as a default export.
+  assert.doesNotMatch(indexFile, /export\s+default\b/);
 
   const pkg = JSON.parse(
     await readFile(

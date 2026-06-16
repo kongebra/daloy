@@ -23,4 +23,7 @@ const links: StartupBannerLink[] = [
 
 printStartupBanner({ name: "DaloyJS API", url, runtime: "Bun", links });
 
-export default app;
+// NOTE: This module intentionally has no default export. Bun auto-starts a
+// server from any module whose default-exported object has a `fetch` method,
+// which would collide with the explicit `serve()` call above on the same port
+// (EADDRINUSE) and crash on startup (Railway's "Uncaught exception" loop).
