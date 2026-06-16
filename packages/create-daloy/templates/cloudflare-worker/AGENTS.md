@@ -1,6 +1,6 @@
 # AGENTS.md
 
-A [DaloyJS](https://daloyjs.dev) REST API deployed to **Cloudflare Workers**. **Contract-first**: routes are defined with Zod schemas and OpenAPI 3.1 is generated from them. This starter omits `docs: true` to keep the Worker bundle small — enable it explicitly via `new App({ docs: true })` to auto-mount `GET /openapi.json`, `GET /openapi.yaml`, and `GET /docs` (Scalar UI).
+A [DaloyJS](https://daloyjs.dev) REST API deployed to **Cloudflare Workers**. **Contract-first**: routes are defined with Zod schemas and OpenAPI 3.1 is generated from them. `docs: true` is set in `new App({...})`, so `GET /openapi.json`, `GET /openapi.yaml`, and `GET /docs` (Scalar UI) are auto-mounted. DaloyJS is dependency-free and the Scalar UI loads from a CDN, so this adds negligible Worker bundle size; drop `docs` (and the `openapi` block) if you want the smallest possible bundle.
 
 - Package manager: pnpm (use `pnpm` unless the project's `package.json` was rewritten for npm/yarn/bun).
 - Runtime: Cloudflare Workers (Web Standard `Request`/`Response`).

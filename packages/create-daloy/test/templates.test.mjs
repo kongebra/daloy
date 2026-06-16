@@ -218,6 +218,19 @@ test("vercel template routes all paths to a single api/index.ts via a rewrite", 
   );
 });
 
+test("cloudflare-worker template configures the proxy posture and docs", async () => {
+  // Cloudflare Workers always run behind Cloudflare's edge (sets
+  // x-forwarded-for), so without a declared proxy posture the production boot
+  // guard returns 500 on every request. The template declares one trusted edge
+  // hop, and enables docs for parity with the other templates.
+  const source = await readFile(
+    path.join(pkgRoot, "templates/cloudflare-worker/src/index.ts"),
+    "utf8",
+  );
+  assert.match(source, /behindProxy:\s*\{\s*hops:\s*1\s*\}/);
+  assert.match(source, /docs:\s*true/);
+});
+
 test("every template ships a hardened _Dockerfile and _dockerignore", async () => {
   const templates = [
     "node-basic",

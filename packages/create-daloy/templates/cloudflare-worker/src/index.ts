@@ -6,6 +6,22 @@ const app = new App({
   bodyLimitBytes: 256 * 1024,
   requestTimeoutMs: 5_000,
   production: true,
+  // Cloudflare Workers always run behind Cloudflare's edge, which sets
+  // X-Forwarded-For. Declare that single trusted hop so DaloyJS reads the real
+  // client IP instead of refusing the (otherwise spoofable) header and
+  // returning 500 in production. Increase the hop count if you put an
+  // additional proxy in front of the Worker.
+  behindProxy: { hops: 1 },
+  // daloy-minimal:strip-start docs
+  // Auto-mounted docs (since `docs: true`): GET /openapi.json, /openapi.yaml,
+  // and /docs (Scalar UI). DaloyJS is dependency-free and the Scalar UI loads
+  // from a CDN, so this adds negligible Worker bundle size. Drop `docs` (and
+  // this `openapi` block) if you want the smallest possible bundle.
+  openapi: {
+    info: { title: "My Daloy Cloudflare API", version: "0.0.1" },
+  },
+  docs: true,
+  // daloy-minimal:strip-end docs
 });
 
 app.use(requestId());

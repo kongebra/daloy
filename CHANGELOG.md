@@ -35,6 +35,13 @@ project deploys cleanly.
     `behindProxy: { hops: Number(process.env.TRUST_PROXY_HOPS ?? "1") }`
     (Vercel is one trusted edge hop; override the env var if another proxy sits
     in front).
+- **The `cloudflare-worker` template no longer 500s on deploy.** Cloudflare
+  Workers always run behind Cloudflare's edge (which sets `x-forwarded-for`), so
+  the same unconfigured-proxy boot guard returned 500 on every request. The
+  template now sets `behindProxy: { hops: 1 }` (Cloudflare is one trusted edge
+  hop). It also now enables `docs: true` for parity with the other templates, so
+  `/docs`, `/openapi.json`, and `/openapi.yaml` are served (the Scalar UI loads
+  from a CDN, so the Worker bundle cost is negligible).
 
 ### Security
 
