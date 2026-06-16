@@ -7,7 +7,7 @@ A [DaloyJS](https://daloyjs.dev) REST API deployed to **Vercel** on the **Node.j
 
 ## Commands
 
-- `pnpm dev` — local Vercel dev server on http://localhost:3000
+- `pnpm dev` — local Node dev server (`src/dev.ts`) on http://localhost:3000 (no `vercel dev` / login needed; serves the same app the Vercel Function runs)
 - `pnpm typecheck` — `tsc --noEmit`
 - `pnpm test` — run test suite
 - `pnpm deploy` — deploy to Vercel
@@ -17,6 +17,7 @@ A [DaloyJS](https://daloyjs.dev) REST API deployed to **Vercel** on the **Node.j
 
 - `api/index.ts` — the single Vercel Node.js Functions entrypoint. Builds the `App`, registers routes/middleware, and exports `default toFetchHandler(app)` from `@daloyjs/core/vercel` (Node.js Functions expect a default export with a `fetch` method; Node.js is the default runtime, so no `runtime` export is needed). `vercel.json` rewrites every path (`/(.*)` → `/api`) to this one function, so DaloyJS owns all routing and the app's routes are served at the site root (`/healthz`, `/docs`, …), not under `/api/*`. If you specifically need the Edge runtime, add `export const runtime = "edge"` and switch to `default toWebHandler(app)`.
 - `vercel.json` — Vercel config. The `rewrites` rule routing all paths to `/api` is **required** for root routing; do not remove it. (`functions` sets memory / maxDuration.)
+- `src/dev.ts` — local Node dev server (`pnpm dev`). Imports the `app` exported from `api/index.ts` and serves it via `@daloyjs/core/node` at the root, so you get fast local iteration without `vercel dev`. Dev-only; it is not under `api/`, so Vercel never deploys it.
 - `tests/` — test files.
 
 ## Imports

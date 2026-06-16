@@ -42,6 +42,12 @@ project deploys cleanly.
   hop). It also now enables `docs: true` for parity with the other templates, so
   `/docs`, `/openapi.json`, and `/openapi.yaml` are served (the Scalar UI loads
   from a CDN, so the Worker bundle cost is negligible).
+- **The `vercel` template's `pnpm dev` no longer recurses.** It previously
+  aliased `vercel dev`, which Vercel rejects (`vercel dev must not recursively
+  invoke itself`) because it re-reads that script as its dev command. `pnpm dev`
+  now runs a local Node dev server (`src/dev.ts`) that serves the same app over
+  `@daloyjs/core/node` at the site root — fast iteration with no `vercel dev` or
+  Vercel login.
 
 ### Security
 

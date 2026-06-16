@@ -17,7 +17,9 @@ import { toFetchHandler } from "@daloyjs/core/vercel";
 // Do not split this into per-path files — keep one entry so the middleware
 // chain and the generated OpenAPI spec stay unified.
 
-const app = new App({
+// Exported so the local dev server (`src/dev.ts`, run by `pnpm dev`) can serve
+// the same app over a plain Node listener. Vercel uses the default export below.
+export const app = new App({
   bodyLimitBytes: 256 * 1024,
   requestTimeoutMs: 5_000,
   production: process.env.NODE_ENV === "production",

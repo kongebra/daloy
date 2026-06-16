@@ -60,13 +60,17 @@ DaloyJS is a **contract-first** framework. On Vercel, additionally:
   registers routes/middleware, and exports `default toFetchHandler(app)`
   (Node.js Functions expect a default export with a `fetch` method; Node.js
   is the default runtime, so no `runtime` export is needed).
-- `vercel.json` — Vercel build/runtime configuration.
+- `vercel.json` — Vercel config. The `rewrites` rule (`/(.*)` → `/api`) is
+  required so DaloyJS routes at the site root; do not remove it.
+- `src/dev.ts` — local Node dev server (`pnpm dev`). Serves the `app`
+  exported from `api/index.ts` via `@daloyjs/core/node`; dev-only, never
+  deployed (it lives outside `api/`).
 - `tests/` — test files (`*.test.ts`).
 
 ## Commands cheat-sheet
 
 ```bash
-pnpm dev          # local Vercel dev server on http://localhost:3000
+pnpm dev          # local Node dev server (src/dev.ts) on http://localhost:3000
 pnpm typecheck    # tsc --noEmit
 pnpm test         # run test suite
 pnpm deploy       # deploy to Vercel
