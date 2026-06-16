@@ -472,14 +472,14 @@ What this does **not** cover: a consumer who depends on a different low-level pa
 
 `create-daloy` scaffolded container templates close most of this gap with free, open-source controls. Detailed mapping to Aikido x Root.io's hardening guide and Aikido's container-scanning guide is in [`website/app/docs/security`](website/app/docs/security). Highlights:
 
-- **`_Dockerfile`** uses `NODE_IMAGE` build-arg for digest pinning (`node:24-alpine@sha256:…`), two-stage build, `pnpm install --frozen-lockfile --ignore-scripts`, runner adds only `tini`, runs as non-root UID 1001, `STOPSIGNAL SIGTERM`, `HEALTHCHECK` against `/readyz`.
+- **`_Dockerfile`** uses `NODE_IMAGE` build-arg for digest pinning (`node:24-alpine@sha256:…`), two-stage build, `pnpm install --frozen-lockfile --ignore-scripts`, runner adds only `tini`, runs as non-root UID 1001, `STOPSIGNAL SIGTERM`, `HEALTHCHECK` against `/healthz`.
 - **`container-scan.yml`** runs hadolint, Trivy filesystem (`scanners: vuln,secret,misconfig`, IaC misconfigurations in Terraform / Kubernetes / Helm / Dockerfile / CloudFormation), and Trivy image (`severity: HIGH,CRITICAL`, blocking on CRITICAL, `ignore-unfixed: true` for signal quality) on every PR, every push to `main`, and weekly cron.
 - **Pin check** annotates unpinned `FROM` lines as PR warnings (skips `scratch` and ARG-templated images).
 - **`docker` Dependabot ecosystem** opens digest-bump PRs.
 - **Scaffolded `SECURITY.md`** prescribes runtime hardening: `--read-only`, `--cap-drop=ALL`, `--security-opt=no-new-privileges:true`, `--security-opt=seccomp=default`, `--pids-limit`, memory/CPU limits, `--tmpfs /tmp:noexec,nosuid`. Kubernetes equivalents (`runAsNonRoot`, `readOnlyRootFilesystem`, `allowPrivilegeEscalation: false`, `capabilities: { drop: ["ALL"] }`, `automountServiceAccountToken: false`) are documented in the same file.
 - **`_dockerignore`** excludes `.env*` (except `.env.example`), `.git`, `node_modules`, `coverage`, `dist`, `*.log`.
 
-Platform templates (`cloudflare-worker`, `vercel-edge`, `deno-basic`) deliberately ship without a `Dockerfile` and ride the platform's own runtime hardening.
+Every scaffolded template ships the hardened `_Dockerfile` and `_dockerignore` above (with a runtime-appropriate base image via the `NODE_IMAGE` / `BUN_IMAGE` / `DENO_IMAGE` build-arg); the create-daloy test suite enforces this for all of them. For the serverless / edge platform templates (`vercel`, `cloudflare-worker`), production still rides the platform's managed runtime (`vercel deploy`, `wrangler deploy`), and their `Dockerfile` targets reproducible local development, CI, and self-hosting rather than the production runtime.
 
 ### Vibe-coder checklist (Aikido)
 
