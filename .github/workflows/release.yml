@@ -488,9 +488,18 @@ jobs:
           #   *.actions.githubusercontent.com — the GitHub OIDC token endpoint
           #     ($ACTIONS_ID_TOKEN_REQUEST_URL lives on a dynamic subdomain),
           #     which JSR exchanges for a single-use publish credential.
-          # If a future runner image serves the OIDC token or the Deno binary
-          # from a new host and the publish is blocked, widen this allowlist —
-          # do NOT drop to audit.
+          #   fulcio.sigstore.dev /
+          #   rekor.sigstore.dev /
+          #   tuf-repo-cdn.sigstore.dev       — Sigstore public-good infra that
+          #     `jsr publish` contacts to attach a provenance attestation to the
+          #     published version: fulcio mints the short-lived signing cert,
+          #     rekor records the transparency-log entry, tuf-repo-cdn serves the
+          #     trust-root metadata. These are REQUIRED — without them `jsr
+          #     publish` creates the version and THEN fails signing provenance
+          #     ("Connection refused" to fulcio), leaving a published-but-red run.
+          # If a future runner image serves the OIDC token, the Deno binary, or a
+          # Sigstore host from a new address and the publish is blocked, widen this
+          # allowlist — do NOT drop to audit.
           egress-policy: block
           allowed-endpoints: >
             api.github.com:443
@@ -502,6 +511,9 @@ jobs:
             api.jsr.io:443
             jsr.io:443
             registry.npmjs.org:443
+            fulcio.sigstore.dev:443
+            rekor.sigstore.dev:443
+            tuf-repo-cdn.sigstore.dev:443
           disable-sudo: true
 
       - name: Checkout
