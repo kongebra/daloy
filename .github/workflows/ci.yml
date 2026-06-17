@@ -164,6 +164,9 @@ jobs:
       - name: Test
         run: pnpm test
 
+      - name: Red-team security regression gate (adversarial attack suite — every advertised guard must still reject its attack)
+        run: pnpm test:red-team
+
       - name: Coverage
         run: pnpm coverage
 
