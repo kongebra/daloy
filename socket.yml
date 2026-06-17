@@ -1,0 +1,18 @@
+# Socket.dev configuration — https://docs.socket.dev/docs/socket-yml
+# Must live at the repo root. `version` is required and must be 2.
+version: 2
+
+# Per-alert overrides. `issueRules` maps a Socket issue slug
+# (https://socket.dev/npm/issue) to true (alert) or false (ignore).
+# Omitted slugs fall back to the org/dashboard defaults.
+issueRules:
+  # "Network access" (https://socket.dev/alerts/networkAccess) is an expected
+  # capability for @daloyjs/core, not a supply-chain risk. The framework
+  # intentionally touches the network through:
+  #   - fetchGuard()      (src/fetch-guard.ts)      SSRF-hardened outbound fetch
+  #   - resilientFetch()  (src/fetch-resilience.ts) timeout/retry/circuit breaker
+  #   - createWebhookSender() (src/webhook-delivery.ts) signed webhook delivery
+  #   - JWKS fetching     (src/jwk.ts)              remote key-set retrieval
+  # The package ships zero runtime dependencies and no install/lifecycle
+  # scripts, so this acknowledged capability should not count against the score.
+  networkAccess: false
