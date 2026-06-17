@@ -1,5 +1,17 @@
 # Socket.dev configuration — https://docs.socket.dev/docs/socket-yml
 # Must live at the repo root. `version` is required and must be 2.
+#
+# SCOPE (important): socket.yml configures the Socket GitHub App for THIS
+# repository's pull requests and dependency scans only. It does NOT change the
+# public package report at https://socket.dev/npm/package/@daloyjs/core — that
+# page is computed from Socket's own static analysis of the published npm
+# tarball (socket.yml is not even shipped in the tarball), so the "Network
+# access" capability marker shown there is expected and is NOT cleared by the
+# `networkAccess: false` rule below. (`issueRules` is also deprecated upstream.)
+# The "Network access" alert is a factual capability marker, not a vulnerability:
+# any HTTP framework makes outbound requests. The real cross-ecosystem trust
+# signal is provenance — @daloyjs/core (npm) and @daloyjs/daloy (JSR) both
+# publish with SLSA / Sigstore provenance attestations.
 version: 2
 
 # Per-alert overrides. `issueRules` maps a Socket issue slug

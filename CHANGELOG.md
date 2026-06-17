@@ -12,6 +12,25 @@ For the forward-looking plan and the full thematic release log, see
 > `create-daloy` are published together — a new core release always ships a
 > matching scaffolder so generated projects pin the latest peer.
 
+## [0.39.1] — 2026-06-17
+
+`@daloyjs/core` has no runtime changes; this is a lockstep re-release whose only
+purpose is to ship the **JSR** package [`@daloyjs/daloy`](https://jsr.io/@daloyjs/daloy)
+with a **Sigstore provenance attestation**.
+
+### Security
+
+- **The JSR build now ships with a provenance attestation.** `@daloyjs/daloy@0.39.0`
+  published to JSR but *without* provenance: the `publish-jsr` CI job's hardened
+  egress allowlist was missing the Sigstore hosts (`fulcio.sigstore.dev`,
+  `rekor.sigstore.dev`, `tuf-repo-cdn.sigstore.dev`), so `jsr publish` created the
+  version and then failed attaching its attestation. The allowlist is fixed, so
+  `0.39.1` is published to JSR with verifiable provenance — matching the npm
+  packages, which already shipped `0.39.0` with an SLSA provenance attestation.
+
+`create-daloy` is a lockstep `0.39.1` bump: every template now pins
+`@daloyjs/core@^0.39.1` (`jsr:@daloyjs/daloy@^0.39.1` for the Deno template).
+
 ## [0.39.0] — 2026-06-17
 
 ### Added
@@ -1134,6 +1153,7 @@ scaffolded projects pin the latest peer.
   `vercel-edge`, `cloudflare-worker`), docs metadata + ORM guides.
 
 [Unreleased]: https://github.com/daloyjs/daloy/compare/v0.38.3...HEAD
+[0.39.1]: https://github.com/daloyjs/daloy/compare/v0.39.0...v0.39.1
 [0.39.0]: https://github.com/daloyjs/daloy/compare/v0.38.3...v0.39.0
 [0.38.3]: https://github.com/daloyjs/daloy/compare/v0.38.2...v0.38.3
 [0.38.2]: https://github.com/daloyjs/daloy/compare/v0.38.1...v0.38.2

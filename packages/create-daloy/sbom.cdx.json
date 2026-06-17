@@ -1,25 +1,25 @@
 {
   "bomFormat": "CycloneDX",
   "specVersion": "1.5",
-  "serialNumber": "urn:uuid:942e660f-ccdf-5d36-9daf-4a1038401a1c",
+  "serialNumber": "urn:uuid:3b37fd17-f87e-5861-b836-bc2973e6d0cd",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-06-17T17:39:24.231Z",
+    "timestamp": "2026-06-17T18:25:32.018Z",
     "tools": [
       {
         "vendor": "DaloyJS",
         "name": "daloy-generate-sbom",
-        "version": "0.39.0"
+        "version": "0.39.1"
       }
     ],
     "authors": [],
     "component": {
       "type": "library",
-      "bom-ref": "pkg:npm/create-daloy@0.39.0",
+      "bom-ref": "pkg:npm/create-daloy@0.39.1",
       "name": "create-daloy",
-      "version": "0.39.0",
+      "version": "0.39.1",
       "description": "Scaffold a new DaloyJS project. Run with `pnpm create daloy`, `npm create daloy@latest`, `yarn create daloy`, or `bun create daloy`.",
-      "purl": "pkg:npm/create-daloy@0.39.0",
+      "purl": "pkg:npm/create-daloy@0.39.1",
       "licenses": [
         {
           "license": {
@@ -42,9 +42,9 @@
         }
       ],
       "swid": {
-        "tagId": "swidtag-create-daloy-0.39.0",
+        "tagId": "swidtag-create-daloy-0.39.1",
         "name": "create-daloy",
-        "version": "0.39.0",
+        "version": "0.39.1",
         "tagVersion": 0,
         "patch": false
       }
@@ -53,7 +53,7 @@
   "components": [],
   "dependencies": [
     {
-      "ref": "pkg:npm/create-daloy@0.39.0",
+      "ref": "pkg:npm/create-daloy@0.39.1",
       "dependsOn": []
     }
   ]
