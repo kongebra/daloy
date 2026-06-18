@@ -247,7 +247,7 @@ async function genEs256Pair(): Promise<CryptoKeyPair> {
 
 async function publicJwkFor(pair: CryptoKeyPair, kid: string, alg: string): Promise<JsonWebKey> {
   const jwk = (await crypto.subtle.exportKey("jwk", pair.publicKey)) as JsonWebKey;
-  return { ...jwk, kid, alg, use: "sig" };
+  return { ...jwk, kid, alg, use: "sig" } as JsonWebKey;
 }
 
 async function privateJwkFor(pair: CryptoKeyPair): Promise<JsonWebKey> {

@@ -209,8 +209,12 @@ export interface IdempotencyOptions {
 export class MemoryIdempotencyStore implements IdempotencyStore {
   private readonly map = new Map<string, IdempotencyRecord>();
 
-  /** @inheritDoc */
-  reserve(key: string, record: IdempotencyRecord): IdempotencyRecord | null {
+  /**
+   * @inheritDoc
+   * `_ttlMs` is part of the {@link IdempotencyStore} contract but unused here:
+   * the in-memory store derives expiry from `record.expiresAt`.
+   */
+  reserve(key: string, record: IdempotencyRecord, _ttlMs?: number): IdempotencyRecord | null {
     const existing = this.read(key);
     if (existing) return existing;
     this.map.set(key, record);
@@ -219,7 +223,7 @@ export class MemoryIdempotencyStore implements IdempotencyStore {
   }
 
   /** @inheritDoc */
-  complete(key: string, record: IdempotencyRecord): void {
+  complete(key: string, record: IdempotencyRecord, _ttlMs?: number): void {
     this.map.set(key, record);
   }
 

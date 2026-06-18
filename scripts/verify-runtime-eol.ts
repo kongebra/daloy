@@ -98,7 +98,7 @@ export function parseEnginesNodeMajor(spec: string | undefined): number | null {
   if (typeof spec !== "string") return null;
   const match = spec.match(/(\d+)/);
   if (!match) return null;
-  const n = Number.parseInt(match[1], 10);
+  const n = Number.parseInt(match[1]!, 10);
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
@@ -111,7 +111,7 @@ export function parseWorkflowNodeMajors(yaml: string): readonly number[] {
   const re = /node-version:\s*['"]?(\d+)(?:\.\d+)*['"]?/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(yaml)) !== null) {
-    const n = Number.parseInt(m[1], 10);
+    const n = Number.parseInt(m[1]!, 10);
     if (Number.isFinite(n) && n > 0) result.push(n);
   }
   return result;

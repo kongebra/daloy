@@ -791,7 +791,7 @@ test("internal: true returns 404 via public fetch and works via inject", async (
     responses: { 204: { description: "started" } },
     handler: () => {
       ran++;
-      return { status: 204 as const };
+      return { status: 204 as const, body: undefined };
     },
   });
   const publicRes = await app.fetch(
@@ -813,7 +813,7 @@ test("internal: true does not leak via 405 / Allow header", async () => {
     path: "/__admin/reindex",
     internal: true,
     responses: { 204: { description: "started" } },
-    handler: () => ({ status: 204 as const }),
+    handler: () => ({ status: 204 as const, body: undefined }),
   });
   const res = await app.fetch(
     new Request("http://x/__admin/reindex", { method: "DELETE" }),
@@ -847,7 +847,7 @@ test("internal: true is excluded from OpenAPI unless explicitly included", () =>
     path: "/__admin/reindex",
     internal: true,
     responses: { 204: { description: "started" } },
-    handler: () => ({ status: 204 as const }),
+    handler: () => ({ status: 204 as const, body: undefined }),
   });
   const publicDoc = generateOpenAPI(app, { info: { title: "Test", version: "1.0.0" } });
   assert.deepEqual(Object.keys(publicDoc.paths as Record<string, unknown>), ["/public"]);

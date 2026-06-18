@@ -927,7 +927,7 @@ test("Node adapter auto-pongs in response to a client PING frame", async () => {
     const pongFrame: Buffer[] = [];
     await new Promise<void>((resolve, reject) => {
       socket.on("data", (chunk) => {
-        pongFrame.push(chunk);
+        pongFrame.push(chunk as Buffer);
         if (Buffer.concat(pongFrame)[0] === 0x8a) resolve();
       });
       socket.on("error", reject);

@@ -34,7 +34,7 @@ test("hooks run in order and afterHandle can transform handler output", async ()
   const events: string[] = [];
   const app = new App({ logger: false });
   app.use({
-    onRequest: () => events.push("global:onRequest"),
+    onRequest: () => { events.push("global:onRequest"); },
     beforeHandle: (ctx) => {
       events.push("global:before");
       ctx.set.headers.set("x-global", "1");
@@ -53,7 +53,7 @@ test("hooks run in order and afterHandle can transform handler output", async ()
     operationId: "hooks",
     responses: { 200: { description: "ok", body: z.object({ ok: z.boolean(), global: z.boolean(), route: z.boolean() }) as any } },
     hooks: {
-      beforeHandle: () => events.push("route:before"),
+      beforeHandle: () => { events.push("route:before"); },
       afterHandle: (_ctx, value: any) => {
         events.push("route:after");
         return { ...value, body: { ...value.body, route: true } };
@@ -189,11 +189,11 @@ test("onClose hooks registered by apps and plugins run once during shutdown", as
   const events: string[] = [];
   const app = new App({ logger: false });
 
-  app.onClose(() => events.push("root"));
+  app.onClose(() => { events.push("root"); });
   app.register({
     name: "cleanup-plugin",
     register(child) {
-      child.onClose(async () => events.push("plugin"));
+      child.onClose(async () => { events.push("plugin"); });
       child.route({
         method: "GET",
         path: "/ok",

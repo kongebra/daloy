@@ -204,8 +204,12 @@ export class MemoryResponseCacheStore implements ResponseCacheStore {
     return entry;
   }
 
-  /** @inheritDoc */
-  set(key: string, entry: CachedResponse): void {
+  /**
+   * @inheritDoc
+   * `_ttlMs` is part of the {@link ResponseCacheStore} contract but unused
+   * here: the in-memory store derives freshness from `entry.freshUntil`.
+   */
+  set(key: string, entry: CachedResponse, _ttlMs?: number): void {
     this.map.set(key, entry);
     if (this.map.size > 10_000) this.prune();
   }

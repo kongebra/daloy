@@ -10,8 +10,9 @@
   // This config gives the editor a project that owns the test files with the
   // same strict options as the root plus Node types, so those false positives
   // disappear and real type errors (e.g. Zod v4 `z.record(key, value)` arity)
-  // show up where you can see them. It is not part of `pnpm typecheck`; run it
-  // explicitly with `tsc -p tests/tsconfig.json --noEmit` to gate tests in CI.
+  // show up where you can see them. It IS part of `pnpm typecheck` (and the
+  // `typecheck:tests` script), so test/script type errors now fail CI instead
+  // of only surfacing in the editor.
   "extends": "../tsconfig.json",
   "compilerOptions": {
     "noEmit": true,

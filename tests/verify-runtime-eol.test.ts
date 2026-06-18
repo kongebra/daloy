@@ -68,9 +68,9 @@ test("evaluateFindings flags already-EOL majors", () => {
   ]);
   const findings = evaluateFindings(grouped, FEED, new Date("2026-05-24T00:00:00Z"));
   assert.equal(findings.length, 1);
-  assert.equal(findings[0].major, 18);
-  assert.equal(findings[0].severity, "eol");
-  assert.deepEqual(findings[0].sources, [".github/workflows/legacy.yml"]);
+  assert.equal(findings[0]!.major, 18);
+  assert.equal(findings[0]!.severity, "eol");
+  assert.deepEqual(findings[0]!.sources, [".github/workflows/legacy.yml"]);
 });
 
 test("evaluateFindings emits a warning when within warnDays of EOL", () => {
@@ -78,8 +78,8 @@ test("evaluateFindings emits a warning when within warnDays of EOL", () => {
   const grouped = new Map<number, readonly string[]>([[22, ["package.json"]]]);
   const findings = evaluateFindings(grouped, FEED, new Date("2026-05-24T00:00:00Z"));
   assert.equal(findings.length, 1);
-  assert.equal(findings[0].severity, "warn");
-  assert.ok(findings[0].daysUntilEol > 0 && findings[0].daysUntilEol <= 90);
+  assert.equal(findings[0]!.severity, "warn");
+  assert.ok(findings[0]!.daysUntilEol > 0 && findings[0]!.daysUntilEol <= 90);
 });
 
 test("evaluateFindings ignores supported majors and unknown majors", () => {

@@ -21,7 +21,7 @@ function scriptedFetch(steps: Step[]): { fn: typeof fetch } {
     const i = calls++;
     const step = steps[Math.min(i, steps.length - 1)];
     const req = input instanceof Request ? input : new Request(input as RequestInfo, init);
-    return step(req, init?.signal ?? undefined);
+    return step!(req, init?.signal ?? undefined);
   }) as unknown as typeof fetch;
   return { fn };
 }

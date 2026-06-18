@@ -708,7 +708,7 @@ test("lambda adapter preserves a set-cookie header without Headers.getSetCookie"
         value: previousGetSetCookie,
       });
     } else {
-      delete headersPrototype.getSetCookie;
+      delete (headersPrototype as { getSetCookie?: unknown }).getSetCookie;
     }
   }
 });

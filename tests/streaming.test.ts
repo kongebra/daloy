@@ -116,7 +116,7 @@ test("sseStream aborts via AbortSignal and releases the iterator", async () => {
           },
         } as AsyncIterator<unknown>;
       },
-    },
+    } as any,
     { signal: ctrl.signal }
   );
   const reader = stream.getReader();
@@ -357,7 +357,7 @@ test("sseStream cleanup tolerates iterator.return throwing", async () => {
         },
       } as AsyncIterator<unknown>;
     },
-  });
+  } as any);
   const reader = stream.getReader();
   await reader.read();
   await reader.cancel(); // must not throw

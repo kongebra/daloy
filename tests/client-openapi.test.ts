@@ -22,7 +22,7 @@ test("typed client replaces params, appends array query values, merges headers, 
 
   let seenUrl = "";
   let seenInit: RequestInit | undefined;
-  const client = createClient(app, {
+  const client: any = createClient(app, {
     baseUrl: "https://api.example.com/base/",
     headers: { authorization: "Bearer token" },
     fetch: async (url, init) => {
@@ -70,7 +70,7 @@ test("typed client sets scalar query values and skips undefined ones", async () 
   });
 
   let seenUrl = "";
-  const client = createClient(app, {
+  const client: any = createClient(app, {
     baseUrl: "https://api.example.com",
     fetch: async (url) => {
       seenUrl = String(url);
@@ -102,7 +102,7 @@ test("typed client preserves non-JSON response bodies as text", async () => {
     responses: { 200: { description: "ok" } },
     handler: async () => ({ status: 200 as const, body: undefined }),
   });
-  const client = createClient(app, {
+  const client: any = createClient(app, {
     baseUrl: "https://api.example.com",
     fetch: async () => new Response("hello", { status: 200, headers: { "content-type": "text/plain" } }),
   });
@@ -122,7 +122,7 @@ test("typed client preserves malformed JSON response bodies as text", async () =
     responses: { 200: { description: "ok" } },
     handler: async () => ({ status: 200 as const, body: undefined }),
   });
-  const client = createClient(app, {
+  const client: any = createClient(app, {
     baseUrl: "https://api.example.com",
     fetch: async () => new Response("{not-json", {
       status: 200,
@@ -144,7 +144,7 @@ test("typed client rejects when fetch fails", async () => {
     responses: { 200: { description: "ok" } },
     handler: async () => ({ status: 200 as const, body: undefined }),
   });
-  const client = createClient(app, {
+  const client: any = createClient(app, {
     baseUrl: "https://api.example.com",
     fetch: async () => {
       throw new Error("network down");
@@ -163,7 +163,7 @@ test("typed client omits routes missing operationId", () => {
     handler: async () => ({ status: 200 as const, body: undefined }),
   });
 
-  const client = createClient(app, { baseUrl: "https://api.example.com" });
+  const client: any = createClient(app, { baseUrl: "https://api.example.com" });
   assert.deepEqual(Object.keys(client), []);
 });
 

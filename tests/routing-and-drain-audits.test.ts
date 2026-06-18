@@ -216,7 +216,7 @@ test("routing-hardening: responses produced while draining carry `Connection: cl
     "Non-draining responses must NOT advertise `Connection: close`.",
   );
   // Start the drain - close() flips the `draining` flag immediately.
-  const closing = app.close({ timeoutMs: 100 });
+  const closing = app.close(100);
   const during = await app.fetch(new Request("http://x/ping"));
   await closing;
   assert.equal(

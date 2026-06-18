@@ -2990,14 +2990,19 @@ export class App<
             body: undefined,
             state: { ...this.decorations, requestId, log },
             set: { headers: new Headers() },
-          } as BaseContext<any, any>;
+            // Cast through `unknown`: this is a deliberately minimal bootstrap
+            // context for the cold 404 path (no user state populated yet), so
+            // it must compile even when a consumer augments `AppState`.
+          } as unknown as BaseContext<any, any>;
           ctx.set.headers.set("x-request-id", requestId);
         }
         if (allowed.length > 0) {
           if (method === "OPTIONS") {
             // Synthesize a preflight: let global hooks (e.g. CORS) intercept;
             // otherwise return 204 with Allow header.
-            const synthCtx: BaseContext<any, any> = {
+            // Cast through `unknown` so the synthetic preflight context still
+            // compiles when a consumer augments `AppState` (no user state here).
+            const synthCtx = {
               request,
               params: {},
               query: {},
@@ -3005,7 +3010,7 @@ export class App<
               body: undefined,
               state: { ...this.decorations, requestId, log },
               set: { headers: new Headers() },
-            };
+            } as unknown as BaseContext<any, any>;
             const preflightHooks = mergeHooks([
               this.options.hooks ?? {},
               ...this.groupHooks,

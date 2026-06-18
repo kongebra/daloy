@@ -56,6 +56,7 @@
  */
 
 import { readdir, readFile, stat } from "node:fs/promises";
+import type { Dirent } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -96,7 +97,7 @@ const SKIP_DIRECTORIES: ReadonlySet<string> = new Set([
  */
 async function* walkFiles(root: string, depth = 0): AsyncGenerator<string> {
   if (depth > 12) return;
-  let entries: Awaited<ReturnType<typeof readdir>>;
+  let entries: Dirent<string>[];
   try {
     entries = await readdir(root, { withFileTypes: true });
   } catch {

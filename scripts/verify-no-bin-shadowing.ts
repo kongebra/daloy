@@ -52,6 +52,7 @@
  */
 
 import { readdir, readFile, stat } from "node:fs/promises";
+import type { Dirent } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -190,7 +191,7 @@ async function* walkManifests(
   depth = 0,
 ): AsyncGenerator<string> {
   if (depth > 8) return;
-  let entries: Awaited<ReturnType<typeof readdir>>;
+  let entries: Dirent<string>[];
   try {
     entries = await readdir(root, { withFileTypes: true });
   } catch {
@@ -257,7 +258,7 @@ const PUBLISHED_MANIFESTS: readonly string[] = [
 async function findTemplateManifests(): Promise<readonly string[]> {
   const root = new URL("../packages/create-daloy/templates/", import.meta.url);
   const out: string[] = [];
-  let entries: Awaited<ReturnType<typeof readdir>>;
+  let entries: Dirent<string>[];
   try {
     entries = await readdir(root, { withFileTypes: true });
   } catch {

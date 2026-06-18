@@ -282,6 +282,8 @@ describe("defineDependency", () => {
       resolve: () => 1,
     });
     const ctx = { state: {}, request: new Request("http://t/") } as any;
-    await assert.rejects(dep.beforeHandle!(ctx));
+    await assert.rejects(async () => {
+      await dep.beforeHandle!(ctx);
+    });
   });
 });

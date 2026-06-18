@@ -22,7 +22,7 @@ function scriptedTransport(steps: Step[]): {
     const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
     requests.push({ url, init: init ?? {} });
     const step = steps[Math.min(i++, steps.length - 1)];
-    return step(url, init ?? {});
+    return step!(url, init ?? {});
   }) as unknown as typeof fetch;
   return { fetch: fn, requests };
 }

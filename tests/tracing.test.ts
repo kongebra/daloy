@@ -149,7 +149,7 @@ test("otelTracing exposes the active span on ctx.state under the configured key"
     responses: { 200: { description: "ok" } },
     handler: ({ state }) => {
       seen.hadSpan = (state as Record<string, unknown>).span !== undefined;
-      return { status: 200 as const };
+      return { status: 200 as const, body: undefined };
     },
   });
   await app.request("/h");
@@ -180,7 +180,7 @@ test("otelTracing escalates 5xx responses to ERROR status without an exception",
     path: "/svc",
     operationId: "svc",
     responses: { 503: { description: "down" } },
-    handler: () => ({ status: 503 as const }),
+    handler: () => ({ status: 503 as const, body: undefined }),
   });
   const res = await app.request("/svc");
   assert.equal(res.status, 503);
@@ -211,7 +211,7 @@ test("otelTracing traces method-not-allowed responses through the error response
     path: "/only-get",
     operationId: "onlyGet",
     responses: { 200: { description: "ok" } },
-    handler: () => ({ status: 200 as const }),
+    handler: () => ({ status: 200 as const, body: undefined }),
   });
   const res = await app.request("/only-get", { method: "POST" });
   assert.equal(res.status, 405);
@@ -245,7 +245,7 @@ test("otelTracing supports custom spanName, attribute extractors, parent context
     path: "/c",
     operationId: "c",
     responses: { 200: { description: "ok" } },
-    handler: () => ({ status: 200 as const }),
+    handler: () => ({ status: 200 as const, body: undefined }),
   });
   const res = await app.request("/c");
   assert.equal(res.status, 200);
@@ -278,7 +278,7 @@ test("otelTracing falls back to setAttribute when setAttributes is not implement
     path: "/x",
     operationId: "x",
     responses: { 200: { description: "ok" } },
-    handler: () => ({ status: 200 as const }),
+    handler: () => ({ status: 200 as const, body: undefined }),
   });
   await app.request("/x");
   assert.equal(recorded.attrs["http.response.status_code"], 200);
