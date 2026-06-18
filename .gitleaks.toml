@@ -71,3 +71,27 @@ paths = [
 regexes = [
   '''whsec_test_0123456789abcdef0123456789abcdef''',
 ]
+
+[[allowlists]]
+description = "Allow the intentionally fake 32-char HMAC/JWT secret fixture (SECRET32) in the red-team attack suite."
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "match"
+paths = [
+  '''(?:^|/)tests/red-team-attacks-2\.test\.ts$''',
+]
+regexes = [
+  '''0123456789abcdef0123456789abcdef''',
+]
+
+[[allowlists]]
+description = "Allow the intentionally fake webhook signing-secret fixture in the red-team attack suite."
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "match"
+paths = [
+  '''(?:^|/)tests/red-team-attacks\.test\.ts$''',
+]
+regexes = [
+  '''whsec_0123456789abcdef0123456789abcdef''',
+]
