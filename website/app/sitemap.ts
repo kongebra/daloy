@@ -13,6 +13,11 @@ const STATIC_PATHS: Array<{
   { path: "/", changeFrequency: "weekly", priority: 1.0 },
   { path: "/blog", changeFrequency: "weekly", priority: 0.8 },
   {
+    path: "/blog/daloyjs-2027-vibe-coding-apocalypse-express-alternative",
+    changeFrequency: "monthly",
+    priority: 0.7,
+  },
+  {
     path: "/blog/why-daloyjs-is-the-rest-api-framework-you-should-use-today",
     changeFrequency: "monthly",
     priority: 0.7,
