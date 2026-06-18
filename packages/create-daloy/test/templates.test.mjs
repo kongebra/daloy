@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtemp, readFile, rm, access, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, access, mkdir, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
@@ -229,6 +229,38 @@ test("cloudflare-worker template configures the proxy posture and docs", async (
   );
   assert.match(source, /behindProxy:\s*\{\s*hops:\s*1\s*\}/);
   assert.match(source, /docs:\s*true/);
+});
+
+test("every template ships at least one runnable example test", async () => {
+  // A scaffolded project's `test` task must find something to run — a template
+  // that ships a `test` script but no test file makes `pnpm test` /
+  // `deno task test` fail on the very first run. Each template ships at least
+  // one happy + unhappy example test under tests/.
+  const cases = [
+    { template: "node-basic", match: /\.test\.ts$/ },
+    { template: "bun-basic", match: /\.test\.ts$/ },
+    { template: "vercel", match: /\.test\.ts$/ },
+    { template: "cloudflare-worker", match: /\.test\.ts$/ },
+    // Deno's test runner discovers files by the `_test.ts` suffix.
+    { template: "deno-basic", match: /_test\.ts$/ },
+  ];
+  for (const { template, match } of cases) {
+    const dir = path.join(pkgRoot, "templates", template, "tests");
+    const entries = await readdir(dir).catch(() => []);
+    const testFiles = entries.filter((f) => match.test(f));
+    assert.ok(
+      testFiles.length > 0,
+      `${template} must ship at least one ${match} file under tests/ — its test script would otherwise find nothing to run`,
+    );
+    // Each example test must cover an unhappy path, not just the happy one.
+    const bodies = await Promise.all(
+      testFiles.map((f) => readFile(path.join(dir, f), "utf8")),
+    );
+    assert.ok(
+      bodies.some((b) => /404/.test(b)),
+      `${template} example tests must include an unhappy-path (e.g. 404) assertion`,
+    );
+  }
 });
 
 test("every template ships a hardened _Dockerfile and _dockerignore", async () => {
