@@ -7,7 +7,13 @@ export const metadata = buildMetadata({
   description:
     "Write fast, in-process tests for DaloyJS handlers and generate contract tests from your OpenAPI spec to guarantee server and client stay in sync.",
   path: "/docs/testing",
-  keywords: ["DaloyJS testing", "contract testing", "OpenAPI contract tests", "TypeScript API testing"],
+  keywords: [
+    "DaloyJS testing",
+    "contract testing",
+    "OpenAPI contract tests",
+    "TypeScript API testing",
+    "pre-push git hook",
+  ],
   type: "article",
 });
 
@@ -92,6 +98,40 @@ console.log(\`\${report.checked} routes - all clean\`);`} />
     "test:contract": "node --import tsx/esm scripts/contract.ts"
   }
 }`} />
+      <p>
+        Or skip the script and let the CLI do it. <code>daloy inspect --check &lt;entry&gt;</code> loads your app, runs
+        the same checks, and exits non-zero on any error-level issue, so it drops straight into a CI step. The entry
+        must export your <code>App</code> as the default export or a named <code>app</code> export.
+      </p>
+      <CodeBlock language="bash" code={`daloy inspect --check src/app.ts`} />
+      <p>
+        Every <code>create-daloy</code> template already ships this gate: a <code>tests/contract.test.ts</code>{" "}
+        (<code>tests/contract_test.ts</code> on Deno) that asserts <code>report.ok</code> for the real app and proves
+        the gate rejects a broken contract. It runs as part of the project&apos;s <code>test</code> task, so a missing
+        operationId or a mismatched example fails CI from the first commit.
+      </p>
+
+      <h2>Gate it locally with a pre-push hook</h2>
+      <p>
+        A contract check is an authoring-time concern, so it belongs on your machine, never on the
+        production request path. A <code>pre-push</code> git hook is the cleanest home for it: it is
+        localhost-only by construction (it cannot run in production), adds no server boot cost, and fires
+        right before code leaves your machine, with CI as the backstop.
+      </p>
+      <p>
+        Every <code>create-daloy</code> template ships this hook under <code>.githooks/pre-push</code>, wired to
+        a <code>hooks:install</code> script. Enabling it is one command per clone: it points{" "}
+        <code>core.hooksPath</code> at the committed hook, so the whole team shares the same gate. The hook
+        skips gracefully when tooling is missing (it never blocks a push over an uninstalled dependency), and
+        you can always bypass it once with <code>git push --no-verify</code>.
+      </p>
+      <CodeBlock language="bash" code={`# Enable the contract gate for this clone (points core.hooksPath at .githooks)
+npm run hooks:install     # or: pnpm/yarn run hooks:install · bun run hooks:install · deno task hooks:install
+
+# From then on, every \`git push\` runs the contract check first:
+#   .githooks/pre-push  ->  daloy inspect --check src/build-app.ts
+# Need to push past it once:
+git push --no-verify`} />
     </>
   );
 }

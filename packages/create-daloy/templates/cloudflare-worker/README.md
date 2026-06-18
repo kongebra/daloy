@@ -17,6 +17,20 @@ pnpm deploy
 
 `@daloyjs/core/cloudflare` exposes `toFetchHandler(app)`, so the same `App` you would use on Node also runs on Workers.
 
+## Contract gate
+
+Check that your OpenAPI contract is internally consistent (operationIds present and unique, response examples matching their schemas, no dead routes). It ships as `tests/contract.test.ts` (run under `pnpm test`) and as a focused script:
+
+```bash
+pnpm contract        # daloy inspect --check src/index.ts
+```
+
+For a localhost-only gate that runs before code leaves your machine, enable the bundled pre-push hook (opt-in; bypass once with `git push --no-verify`):
+
+```bash
+pnpm hooks:install   # points core.hooksPath at .githooks
+```
+
 ## What's included
 
 - `@daloyjs/core/cloudflare` with starter security middleware: `secureHeaders` and `requestId`.

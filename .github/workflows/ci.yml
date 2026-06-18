@@ -158,6 +158,9 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Contract-check the example app (daloy inspect --check)
+        run: node bin/daloy.mjs inspect --check examples/app.ts
+
       - name: Generate CycloneDX 1.5 + SPDX 2.3 SBOMs (Aikido SBOM-standards gate)
         run: pnpm gen:sbom
 

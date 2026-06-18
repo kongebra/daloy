@@ -11,10 +11,12 @@
     "start": "bun src/index.ts",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
+    "contract": "bun test tests/contract.test.ts",
     "gen:openapi": "bun run scripts/dump-openapi.ts",
     "gen:client": "openapi-ts",
     "gen": "pnpm gen:openapi && pnpm gen:client",
-    "audit": "pnpm audit --prod"
+    "audit": "pnpm audit --prod",
+    "hooks:install": "git config core.hooksPath .githooks"
   },
   "dependencies": {
     "@daloyjs/core": "^0.40.0",

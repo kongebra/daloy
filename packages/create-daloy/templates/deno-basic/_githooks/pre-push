@@ -1,0 +1,16 @@
+#!/bin/sh
+# daloyjs-pre-push-contract-hook v1
+#
+# Localhost-only contract gate. Rejects a push whose OpenAPI contract has
+# error-level issues: missing or duplicate operationIds, response examples that
+# don't match their schema, accidental body schemas on safe methods, or routes
+# with no declared responses. Catches the class of drift the type-checker can't
+# see before it leaves your machine, with CI as the backstop.
+#
+# Enable once per clone:  deno task hooks:install   (sets core.hooksPath here)
+# Bypass once:            git push --no-verify
+if ! command -v deno >/dev/null 2>&1; then
+  echo "pre-push: deno not found on PATH. Skipping contract gate." >&2
+  exit 0
+fi
+exec deno test --allow-net --allow-env tests/contract_test.ts

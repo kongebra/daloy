@@ -44,6 +44,20 @@ bun run gen:client
 bun test
 ```
 
+## Contract gate
+
+Check that your OpenAPI contract is internally consistent (operationIds present and unique, response examples matching their schemas, no dead routes). It ships as `tests/contract.test.ts` (run under `bun test`) and as a focused script:
+
+```bash
+bun run contract     # bun test tests/contract.test.ts
+```
+
+For a localhost-only gate that runs before code leaves your machine, enable the bundled pre-push hook (opt-in; bypass once with `git push --no-verify`):
+
+```bash
+bun run hooks:install   # points core.hooksPath at .githooks
+```
+
 ## Imports
 
 This project uses TypeScript with `"moduleResolution": "Bundler"` and `"allowImportingTsExtensions": true`. Relative imports use the **`.ts` extension** directly:

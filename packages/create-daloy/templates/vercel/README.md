@@ -31,6 +31,20 @@ To brand Scalar, change `docs: true` in `api/index.ts` to `docs: { scalar: { the
 
 <!-- daloy-minimal:strip-end docs -->
 
+## Contract gate
+
+Check that your OpenAPI contract is internally consistent (operationIds present and unique, response examples matching their schemas, no dead routes). It ships as `tests/contract.test.ts` (run under `pnpm test`) and as a focused script:
+
+```bash
+pnpm contract        # daloy inspect --check api/index.ts
+```
+
+For a localhost-only gate that runs before code leaves your machine, enable the bundled pre-push hook (opt-in; bypass once with `git push --no-verify`):
+
+```bash
+pnpm hooks:install   # points core.hooksPath at .githooks
+```
+
 ## Deploy
 
 ```bash

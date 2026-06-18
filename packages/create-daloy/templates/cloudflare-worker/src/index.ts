@@ -68,4 +68,9 @@ app.route({
 });
 // daloy-minimal:strip-end books
 
+// Cloudflare invokes the default export's `fetch`. The `app` instance is also
+// exported (a no-op for the Worker runtime) so `tests/contract.test.ts` can
+// contract-check the route table in-process without booting the handler.
+export { app };
+
 export default toFetchHandler(app);

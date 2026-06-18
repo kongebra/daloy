@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtemp, readFile, readdir, rm, access, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, access, mkdir, writeFile, stat } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
@@ -260,6 +260,153 @@ test("every template ships at least one runnable example test", async () => {
       bodies.some((b) => /404/.test(b)),
       `${template} example tests must include an unhappy-path (e.g. 404) assertion`,
     );
+  }
+});
+
+test("every template ships a contract-gate test wired to runContractTests", async () => {
+  // Scaffolded projects gate their OpenAPI contract under their own `test`
+  // task: a missing/duplicate operationId, a response example that doesn't
+  // match its schema, or a route with no responses fails CI before it can ship
+  // a misleading spec or generate a wrong client. Deno discovers tests by the
+  // `_test.ts` suffix; every other runtime uses `.test.ts`.
+  const cases = [
+    { template: "node-basic", file: "tests/contract.test.ts" },
+    { template: "bun-basic", file: "tests/contract.test.ts" },
+    { template: "vercel", file: "tests/contract.test.ts" },
+    { template: "cloudflare-worker", file: "tests/contract.test.ts" },
+    { template: "deno-basic", file: "tests/contract_test.ts" },
+  ];
+  for (const { template, file } of cases) {
+    const body = await readFile(path.join(pkgRoot, "templates", template, file), "utf8");
+    assert.match(
+      body,
+      /from "@daloyjs\/core\/contract"/,
+      `${template} contract test must import the contract runner from @daloyjs/core/contract`,
+    );
+    assert.match(
+      body,
+      /runContractTests\(/,
+      `${template} contract test must invoke runContractTests`,
+    );
+    // Happy path asserts ok===true; the unhappy path asserts ok===false against
+    // a deliberately broken app, proving the gate can actually fail. Match all
+    // three assertion styles the templates use: node/vercel/cloudflare
+    // (`assert.equal`), deno (`assertEquals`), and bun (`expect(...).toBe`).
+    assert.match(
+      body,
+      /(assert(?:Equals|\.equal)\(\s*report\.ok,\s*true|expect\(report\.ok\)\.toBe\(true\))/,
+      `${template} contract test must assert the real app's contract is ok`,
+    );
+    assert.match(
+      body,
+      /(assert(?:Equals|\.equal)\(\s*report\.ok,\s*false|expect\(report\.ok\)\.toBe\(false\))/,
+      `${template} contract test must include an unhappy path proving the gate rejects a broken contract`,
+    );
+  }
+});
+
+test("cloudflare-worker exports its App instance so the contract test can load it", async () => {
+  // The Worker entry exports `default toFetchHandler(app)`; the contract test
+  // needs the underlying `app`, so the entry must also export it by name.
+  const body = await readFile(
+    path.join(pkgRoot, "templates/cloudflare-worker/src/index.ts"),
+    "utf8",
+  );
+  assert.match(body, /export\s*\{\s*app\s*\}/, "cloudflare-worker must export its App instance");
+});
+
+test("deno-basic maps the @daloyjs/core/contract subpath in its import map", async () => {
+  // Deno resolves bare specifiers through deno.json `imports`; the contract
+  // subpath isn't reachable without an explicit entry.
+  const deno = JSON.parse(
+    await readFile(path.join(pkgRoot, "templates/deno-basic/deno.json"), "utf8"),
+  );
+  assert.ok(
+    deno.imports["@daloyjs/core/contract"],
+    "deno.json must map @daloyjs/core/contract for the contract test",
+  );
+});
+
+test("every template ships an opt-in pre-push contract-gate hook", async () => {
+  // The hook is the localhost-only gate: `core.hooksPath` points at `.githooks`
+  // once the user runs `hooks:install`, and the pre-push hook runs the contract
+  // check before the push leaves the machine. It must skip gracefully (exit 0)
+  // when tooling is absent — a missing dependency must never block a push.
+  const cases = [
+    { template: "node-basic", contains: "inspect --check src/build-app.ts" },
+    { template: "vercel", contains: "inspect --check api/index.ts" },
+    { template: "cloudflare-worker", contains: "inspect --check src/index.ts" },
+    { template: "bun-basic", contains: "bun test tests/contract.test.ts" },
+    { template: "deno-basic", contains: "deno test --allow-net --allow-env tests/contract_test.ts" },
+  ];
+  for (const { template, contains } of cases) {
+    const hookPath = path.join(pkgRoot, "templates", template, "_githooks/pre-push");
+    const hook = await readFile(hookPath, "utf8");
+    assert.match(
+      hook,
+      /daloyjs-pre-push-contract-hook v1/,
+      `${template} pre-push hook must carry the version sentinel`,
+    );
+    assert.ok(hook.includes(contains), `${template} pre-push hook must run: ${contains}`);
+    assert.match(
+      hook,
+      /exit 0/,
+      `${template} pre-push hook must skip gracefully (exit 0) when tooling is missing`,
+    );
+    // The template hook is the source of executability for the scaffold copy.
+    const mode = (await stat(hookPath)).mode;
+    assert.ok((mode & 0o111) !== 0, `${template} pre-push hook template must be executable`);
+  }
+});
+
+test("every template exposes contract + hooks:install via its task runner", async () => {
+  for (const t of ["node-basic", "bun-basic", "vercel", "cloudflare-worker"]) {
+    const pkg = JSON.parse(await readFile(path.join(pkgRoot, "templates", t, "package.json"), "utf8"));
+    assert.ok(pkg.scripts.contract, `${t} must expose a "contract" script`);
+    assert.equal(
+      pkg.scripts["hooks:install"],
+      "git config core.hooksPath .githooks",
+      `${t} "hooks:install" must point core.hooksPath at .githooks`,
+    );
+  }
+  const deno = JSON.parse(await readFile(path.join(pkgRoot, "templates/deno-basic/deno.json"), "utf8"));
+  assert.ok(deno.tasks.contract, "deno-basic must expose a contract task");
+  assert.equal(deno.tasks["hooks:install"], "git config core.hooksPath .githooks");
+});
+
+test("scaffolded projects keep the pre-push hook executable", async () => {
+  // copyTemplate preserves the source file mode, so `.githooks/pre-push` must
+  // arrive executable in the scaffold — otherwise `core.hooksPath` silently
+  // skips it and the contract gate never runs.
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "create-daloy-"));
+  const projectName = "hook-exec";
+  try {
+    const exitCode = await new Promise((resolve) => {
+      const proc = spawn(
+        process.execPath,
+        [
+          path.join(pkgRoot, "bin/create-daloy.mjs"),
+          projectName,
+          "--template",
+          "node-basic",
+          "--package-manager",
+          "pnpm",
+          "--no-install",
+          "--no-git",
+          "--yes",
+        ],
+        { cwd: tmpDir, stdio: "ignore" },
+      );
+      proc.on("exit", (code) => resolve(code ?? 1));
+      proc.on("error", () => resolve(1));
+    });
+    assert.equal(exitCode, 0);
+    const hookPath = path.join(tmpDir, projectName, ".githooks/pre-push");
+    await access(hookPath);
+    const mode = (await stat(hookPath)).mode;
+    assert.ok((mode & 0o111) !== 0, "scaffolded .githooks/pre-push must be executable");
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true });
   }
 });
 

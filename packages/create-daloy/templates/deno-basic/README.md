@@ -47,6 +47,20 @@ first-class Deno entry point.
 deno task test
 ```
 
+## Contract gate
+
+Check that your OpenAPI contract is internally consistent (operationIds present and unique, response examples matching their schemas, no dead routes). It ships as `tests/contract_test.ts` (run under `deno task test`) and as a focused task:
+
+```bash
+deno task contract        # deno test --allow-net --allow-env tests/contract_test.ts
+```
+
+For a localhost-only gate that runs before code leaves your machine, enable the bundled pre-push hook (opt-in; bypass once with `git push --no-verify`):
+
+```bash
+deno task hooks:install   # points core.hooksPath at .githooks
+```
+
 ## What's included
 
 - `@daloyjs/core` (loaded via `jsr:` specifiers in `deno.json`).

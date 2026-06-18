@@ -4,7 +4,7 @@
 
 import { spawn } from "node:child_process";
 import { existsSync, openSync } from "node:fs";
-import { mkdir, readdir, readFile, writeFile, copyFile, rm } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile, copyFile, rm, stat, chmod } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { ReadStream as TtyReadStream } from "node:tty";
@@ -79,6 +79,10 @@ const RENAME_ON_COPY = new Map([
   // Templates author this as `_vscode/` so npm pack does not drop the
   // dotfolder during publish.
   ["_vscode", ".vscode"],
+  // Directory: holds the opt-in `pre-push` contract gate. `core.hooksPath`
+  // points here once the user runs the `hooks:install` script. Authored as
+  // `_githooks/` so npm pack does not drop the dotfolder during publish.
+  ["_githooks", ".githooks"],
 ]);
 
 // Templates that target a runtime instead of an npm package manager.
@@ -499,6 +503,12 @@ async function copyTemplate(src, dest) {
       await copyTemplate(from, to);
     } else if (entry.isFile()) {
       await copyFile(from, to);
+      // Preserve the source file's mode so executable templates (e.g.
+      // `.githooks/pre-push`, the localhost contract gate) stay executable in
+      // the scaffold. `fs.copyFile` does not guarantee mode preservation on
+      // every platform (notably Linux `copy_file_range`), so set it explicitly.
+      const { mode } = await stat(from);
+      await chmod(to, mode);
     }
   }
 }
@@ -549,6 +559,8 @@ function rewritePackageManagerText(raw, packageManager) {
     .replace(/\bpnpm deploy\b/g, `${packageManager} run deploy`)
     .replace(/\bpnpm dev\b/g, `${packageManager} run dev`)
     .replace(/\bpnpm gen\b/g, `${packageManager} run gen`)
+    .replace(/\bpnpm contract\b/g, `${packageManager} run contract`)
+    .replace(/\bpnpm hooks:install\b/g, `${packageManager} run hooks:install`)
     .replace(/\bpnpm test\b/g, `${packageManager} test`)
     .replace(/\bpnpm audit\b/g, `${packageManager} audit`)
     .replace(

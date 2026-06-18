@@ -8,7 +8,9 @@
     "deploy": "vercel deploy",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx/esm --test tests/**/*.test.ts",
-    "audit": "pnpm audit --prod"
+    "contract": "daloy inspect --check api/index.ts",
+    "audit": "pnpm audit --prod",
+    "hooks:install": "git config core.hooksPath .githooks"
   },
   "dependencies": {
     "@daloyjs/core": "^0.40.0",

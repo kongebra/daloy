@@ -39,6 +39,20 @@ pnpm gen
 # → generated/client/  (typed Hey API client)
 ```
 
+## Contract gate
+
+Check that your OpenAPI contract is internally consistent (operationIds present and unique, response examples matching their schemas, no dead routes):
+
+```bash
+pnpm contract        # daloy inspect --check src/build-app.ts
+```
+
+It also runs as `tests/contract.test.ts` under `pnpm test`. For a localhost-only gate that runs before code leaves your machine, enable the bundled pre-push hook (opt-in; bypass once with `git push --no-verify`):
+
+```bash
+pnpm hooks:install   # points core.hooksPath at .githooks
+```
+
 ## Build
 
 ```bash

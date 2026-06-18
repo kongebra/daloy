@@ -12,10 +12,12 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx/esm --test tests/**/*.test.ts",
+    "contract": "daloy inspect --check src/build-app.ts",
     "gen:openapi": "node --import tsx/esm scripts/dump-openapi.ts",
     "gen:client": "openapi-ts",
     "gen": "pnpm gen:openapi && pnpm gen:client",
-    "audit": "pnpm audit --prod"
+    "audit": "pnpm audit --prod",
+    "hooks:install": "git config core.hooksPath .githooks"
   },
   "dependencies": {
     "@daloyjs/core": "^0.40.0",
