@@ -17,6 +17,7 @@ import {
   CardHeader,
   CardTitle,
 } from "../components/ui/card";
+import { BenchmarkCharts } from "../components/benchmark-charts";
 import { CodeBlock } from "../components/code-block";
 import { ContractFlowVisual } from "../components/contract-flow-visual";
 import { FlowHeroScene } from "../components/flow-hero-scene";
@@ -499,6 +500,26 @@ export default function HomePage() {
               </tbody>
             </table>
           </div>
+        </div>
+      </section>
+
+      {/* Benchmarks */}
+      <section className="border-b">
+        <div className="mx-auto max-w-5xl px-6 py-16">
+          <div className="mb-10 text-center">
+            <p className="text-xs font-semibold tracking-[0.22em] text-muted-foreground uppercase">
+              Benchmarks
+            </p>
+            <h2 className="mt-3 text-3xl font-bold tracking-tight">
+              The numbers, with the asterisks attached
+            </h2>
+            <p className="mx-auto mt-3 max-w-2xl leading-8 text-muted-foreground">
+              DaloyJS ships security on by default, so a fair comparison has to
+              say so out loud. These charts come straight from the repo&apos;s
+              own benchmark suite, and the caveats are part of the chart.
+            </p>
+          </div>
+          <BenchmarkCharts />
         </div>
       </section>
 
