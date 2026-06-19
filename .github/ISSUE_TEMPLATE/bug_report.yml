@@ -1,0 +1,143 @@
+name: 🐛 Bug report
+description: Report incorrect or unexpected behavior in @daloyjs/core or create-daloy.
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. DaloyJS is **contributions-closed** (no external PRs) — a clear, runnable reproduction in this issue is the most valuable thing you can give us.
+
+        > [!IMPORTANT]
+        > **This issue may be triaged or fixed by an AI coding agent.** Write it so an agent with *no prior context* can act:
+        > - exact versions (fill the fields below — don't write "latest"),
+        > - a **runnable** minimal reproduction,
+        > - the **full** error text and stack trace pasted as text in the code box (not a screenshot — agents can't read images),
+        > - a crisp **expected vs. actual** statement.
+        >
+        > The fastest way to a minimal repro is `pnpm create daloy@latest`, then trim it down to the smallest app that still shows the bug.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight checklist
+      options:
+        - label: This is a bug, not a security vulnerability. (Vulnerabilities go through [private reporting](https://github.com/daloyjs/daloy/security/advisories/new), never a public issue.)
+          required: true
+        - label: I searched [existing issues](https://github.com/daloyjs/daloy/issues?q=is%3Aissue) and this is not a duplicate.
+          required: true
+        - label: I reproduced this on the latest published `@daloyjs/core` version.
+          required: true
+
+  - type: input
+    id: core-version
+    attributes:
+      label: "@daloyjs/core version"
+      description: Output of `npm ls @daloyjs/core` (or the version pinned in your lockfile). Not "latest".
+      placeholder: 0.42.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: runtime
+    attributes:
+      label: Runtime / adapter
+      description: Which runtime did you observe this on? Pick "Multiple" if it reproduces across several.
+      options:
+        - Node.js (node adapter)
+        - Bun
+        - Deno
+        - Cloudflare Workers
+        - Vercel Edge
+        - Multiple runtimes
+        - Other / not sure
+    validations:
+      required: true
+
+  - type: input
+    id: runtime-version
+    attributes:
+      label: Runtime version
+      description: "e.g. `node -v`, `bun -v`, `deno --version`, or the Workers / Vercel platform you deployed to."
+      placeholder: "Node v24.4.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: package
+    attributes:
+      label: Affected package
+      options:
+        - "@daloyjs/core"
+        - create-daloy (scaffolder)
+        - Generated client / OpenAPI (`pnpm gen`)
+        - Docs / website (daloyjs.dev)
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened? (actual behavior)
+      description: Describe the bug, including any incorrect status codes, response bodies, or thrown errors.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproduction
+      description: >-
+        A self-contained snippet or a link to a minimal repo. It must run as-is.
+        Include the route definition / schema / middleware AND the exact request
+        (method, path, headers, body) that triggers the bug.
+      render: typescript
+      placeholder: |
+        import { App } from "@daloyjs/core";
+
+        const app = new App();
+        app.route({
+          method: "POST",
+          path: "/widgets",
+          // ...minimal schema + handler that shows the bug
+        });
+
+        // Request that triggers it:
+        // curl -X POST localhost:3000/widgets -H 'content-type: application/json' -d '{...}'
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error output / logs / stack trace
+      description: Paste the FULL error and stack trace as text. Do not truncate it, and do not screenshot it.
+      render: shell
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: >-
+        Paste `npx daloy doctor` if available, plus OS and package manager. Note
+        any reverse proxy / CDN / edge platform sitting in front of the app.
+      render: text
+      placeholder: |
+        OS: macOS 15.5 (arm64)
+        Package manager: pnpm 11.x
+        daloy doctor: <output>
+        Behind: Cloudflare / nginx / none
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Anything else — last known good version if this is a regression, workarounds tried, related issues.

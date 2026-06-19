@@ -1,0 +1,27 @@
+# DaloyJS issue routing.
+#
+# DaloyJS is public and MIT-licensed but *contributions-closed*: it does not
+# accept pull requests from non-maintainers (see CONTRIBUTING.md). A clear,
+# reproducible Issue is the highest-signal contribution you can make. The forms
+# in this directory are written so a human triager OR an AI coding agent can act
+# on the report with no prior context — structured fields, required versions,
+# and a runnable reproduction.
+blank_issues_enabled: false
+contact_links:
+  - name: 🔒 Report a security vulnerability (private — do NOT open a public issue)
+    url: https://github.com/daloyjs/daloy/security/advisories/new
+    about: >-
+      Suspected vulnerabilities go through GitHub private vulnerability
+      reporting, never a public issue. See SECURITY.md for what to include and
+      the CVSS-keyed patch SLA.
+  - name: 💬 Questions, ideas & roadmap discussion
+    url: https://github.com/daloyjs/daloy/discussions
+    about: >-
+      Open-ended questions, design discussion, and roadmap ideas. If Discussions
+      are disabled, open a Feature request issue instead.
+  - name: 📖 Why DaloyJS does not accept pull requests
+    url: https://github.com/daloyjs/daloy/blob/main/CONTRIBUTING.md
+    about: >-
+      External PRs are closed automatically — this is policy, not a judgment on
+      your change. A minimal reproduction in an Issue lets the maintainers fix
+      the root cause, which is more useful than a patch.

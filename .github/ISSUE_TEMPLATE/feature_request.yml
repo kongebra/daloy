@@ -1,0 +1,64 @@
+name: ✨ Feature request / design proposal
+description: Propose a new capability or API for @daloyjs/core or create-daloy.
+title: "[Feature]: "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        DaloyJS is **opinionated, security-first, and contributions-closed** (no external PRs). Feature requests are welcome as issues — describe the *problem* and the API you'd want so a maintainer (or an AI coding agent) can evaluate and implement it with no prior context.
+
+        Before filing, please skim [ROADMAP.md](https://github.com/daloyjs/daloy/blob/main/ROADMAP.md) and the [design principles in AGENTS.md](https://github.com/daloyjs/daloy/blob/main/AGENTS.md#design-principles).
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight checklist
+      options:
+        - label: I searched existing issues and the roadmap, and this is not already proposed.
+          required: true
+        - label: This does not weaken any secure-by-default guardrail (body limits, header sanitization, JWT algorithm allowlists, `timingSafeEqual`, SSRF defaults, schema `.strict()`, etc.). If it touches a security default, I've described how the default stays safe for everyone.
+          required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / use case
+      description: What are you trying to do, and where does the framework get in the way today? Give a concrete scenario, not just "it would be nice if".
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed API / behavior
+      description: Show the API you'd want to write. Sketching the call site as TypeScript helps a lot.
+      render: typescript
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Existing middleware, userland workarounds, or how other frameworks solve this.
+
+  - type: dropdown
+    id: principle
+    attributes:
+      label: Which design principle does this serve?
+      description: See AGENTS.md → Design principles.
+      options:
+        - OpenAPI / contract-first ergonomics
+        - Serverless / edge fit
+        - Node ops & docs maturity
+        - TS-first DX / typed client codegen
+        - Supply-chain / security hardening
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context

@@ -1,0 +1,44 @@
+name: 📖 Documentation issue
+description: Report something wrong, missing, or unclear in the docs or on daloyjs.dev.
+title: "[Docs]: "
+labels: ["documentation", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for improving the docs. DaloyJS is **contributions-closed** (no external PRs, including doc-typo PRs) — so describe the problem here and a maintainer (or an AI coding agent) will fix the source under [`website/app/docs`](https://github.com/daloyjs/daloy/tree/main/website/app/docs).
+
+  - type: input
+    id: location
+    attributes:
+      label: Page URL or file path
+      description: The daloyjs.dev URL, or the path under `website/app/docs` / `README.md`.
+      placeholder: https://daloyjs.dev/docs/security/csrf
+    validations:
+      required: true
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Type of issue
+      options:
+        - Incorrect / outdated information
+        - Missing information
+        - Unclear / confusing wording
+        - Broken link or example
+        - Typo / formatting
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is wrong, and what should it say?
+      description: Quote the current text if you can, then describe the correct version.
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
