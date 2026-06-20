@@ -1,6 +1,6 @@
 {
   "name": "@daloyjs/core",
-  "version": "0.43.0",
+  "version": "0.44.0",
   "description": "DaloyJS is a runtime-portable, contract-first TypeScript web framework with built-in OpenAPI (Hey API), typed client generation, large-scale maintainability, and security-first defaults. Hono-grade portability, Elysia-grade DX, FastAPI-grade docs, Fastify-grade ops — distributed via pnpm.",
   "type": "module",
   "publishConfig": {
@@ -242,6 +242,7 @@
     "bench": "node --import tsx bench/router.bench.ts",
     "test": "node --import tsx --test tests/**/*.test.ts",
     "test:red-team": "node --import tsx --test tests/red-team-attacks.test.ts tests/red-team-attacks-2.test.ts tests/red-team-attacks-3.test.ts tests/red-team-attacks-4.test.ts tests/red-team-attacks-5.test.ts tests/red-team-attacks-6.test.ts tests/red-team-attacks-7.test.ts tests/red-team-attacks-8.test.ts tests/red-team-attacks-9.test.ts tests/red-team-attacks-10.test.ts",
+    "red-team:live": "node --import tsx red-team-live/run.ts",
     "coverage": "node --import tsx --test --experimental-test-coverage --test-coverage-include='src/**' --test-coverage-lines=90 --test-coverage-functions=90 tests/**/*.test.ts",
     "coverage:branches": "tsc -p tsconfig.coverage.json && node --test --experimental-test-coverage --test-coverage-include='dist-coverage/src/**' --test-coverage-branches=92 dist-coverage/tests/**/*.test.js",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.typetest.json && tsc -p tests/tsconfig.json --noEmit",

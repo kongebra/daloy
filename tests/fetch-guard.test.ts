@@ -1,5 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { createServer } from "node:http";
+import { once } from "node:events";
 import {
   fetchGuard,
   SsrfBlockedError,
@@ -347,4 +349,192 @@ test("fetchGuard: DNS failures surface as dns-resolution-failed", async () => {
     () => guarded("http://nonexistent.example.test/"),
     (err: unknown) => err instanceof SsrfBlockedError && err.reason === "dns-resolution-failed",
   );
+});
+
+// Regression: alternative IPv4 literal encodings (decimal / hex / octal / short
+// form) are a classic SSRF deny-list evasion. The WHATWG `URL` parser
+// canonicalizes them to dotted-quad BEFORE the guard inspects `url.hostname`,
+// so the literal check catches them deterministically — independent of whatever
+// the DNS resolver would do. These tests pin that behavior so a future refactor
+// (e.g. reading a raw host string instead of `url.hostname`) cannot silently
+// reopen the bypass. The resolver here would approve anything as a public IP;
+// the request must still be blocked at the literal layer, never reaching fetch.
+test("fetchGuard: re-encoded internal IPs (decimal/hex/octal/short) are normalized and blocked", async () => {
+  const { fn, calls } = recordingFetch();
+  const guarded = fetchGuard({ fetch: fn, resolve: allowAllResolver("8.8.8.8") });
+  const encodedInternal = [
+    "http://2130706433/", // decimal 127.0.0.1
+    "http://0x7f000001/", // hex 127.0.0.1
+    "http://0177.0.0.1/", // octal first octet -> 127.0.0.1
+    "http://127.1/", // short form -> 127.0.0.1
+    "http://0/", // 0.0.0.0
+    "http://2852039166/", // decimal 169.254.169.254 (AWS IMDS)
+    "http://0xa9fea9fe/", // hex 169.254.169.254
+  ];
+  for (const u of encodedInternal) {
+    await assert.rejects(
+      () => guarded(u),
+      (err: unknown) => err instanceof SsrfBlockedError && err.reason === "address-not-allowed",
+      `re-encoded internal IP must be blocked: ${u}`,
+    );
+  }
+  assert.equal(calls.length, 0, "no encoded-internal request ever reached the underlying fetch");
+});
+
+test("fetchGuard: numeric-host normalization is not over-broad — a real public host still passes", async () => {
+  const { fn, calls } = recordingFetch();
+  const guarded = fetchGuard({ fetch: fn, resolve: allowAllResolver("93.184.216.34") });
+  const res = await guarded("http://example.com/");
+  assert.equal(res.status, 200);
+  assert.equal(calls.length, 1, "a legitimate public host is fetched exactly once");
+});
+
+// ---------------------------------------------------------------------------
+// pinDns: close the DNS-rebinding window for http: by pinning the socket to
+// the validated IP. These spin up a real node:http server and use a stub
+// resolver, so the hostnames below intentionally do NOT exist in real DNS —
+// a successful response therefore proves the socket connected to the validated
+// IP (127.0.0.1) rather than re-resolving the hostname at connect time.
+// ---------------------------------------------------------------------------
+
+async function startEchoServer() {
+  const received: Array<{ host?: string; method?: string; url?: string; body: string }> = [];
+  const server = createServer((req, res) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (c) => chunks.push(c as Buffer));
+    req.on("end", () => {
+      received.push({ host: req.headers.host, method: req.method, url: req.url, body: Buffer.concat(chunks).toString() });
+      if (req.url === "/redir") {
+        res.writeHead(302, { location: "/landing" });
+        res.end();
+        return;
+      }
+      if (req.url === "/empty") {
+        res.writeHead(204);
+        res.end();
+        return;
+      }
+      if (req.url === "/cookies") {
+        // Multi-valued response header — exercises the array-header copy path.
+        res.writeHead(200, { "set-cookie": ["a=1", "b=2"] });
+        res.end(JSON.stringify({ ok: true }));
+        return;
+      }
+      if (req.method === "HEAD") {
+        res.writeHead(200, { "x-marker": "head" });
+        res.end();
+        return;
+      }
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true, host: req.headers.host }));
+    });
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const port = (server.address() as { port: number }).port;
+  return { server, port, received };
+}
+
+test("fetchGuard({ pinDns }): http socket is pinned to the validated IP with the original Host preserved", async () => {
+  const { server, port, received } = await startEchoServer();
+  try {
+    const guard = fetchGuard({ pinDns: true, allowLoopback: true, resolve: async () => ["127.0.0.1"] });
+    // `internal.svc.invalid` does not resolve in real DNS; success means the
+    // socket used the validated IP, i.e. the rebinding window is closed.
+    const res = await guard(`http://internal.svc.invalid:${port}/data`);
+    assert.equal(res.status, 200);
+    const json = (await res.json()) as { ok: boolean; host: string };
+    assert.equal(json.ok, true);
+    assert.equal(json.host, `internal.svc.invalid:${port}`, "Host header carries the original authority, not the raw IP");
+    assert.equal(received[0]?.url, "/data");
+  } finally {
+    server.close();
+  }
+});
+
+test("fetchGuard({ pinDns }): the deny check is never weakened — a host resolving to metadata is still blocked", async () => {
+  const guard = fetchGuard({ pinDns: true, resolve: async () => ["169.254.169.254"] });
+  await assert.rejects(
+    () => guard("http://rebind.invalid/"),
+    (e: unknown) => e instanceof SsrfBlockedError && e.reason === "address-not-allowed",
+  );
+});
+
+test("fetchGuard({ pinDns }): POST method + body are forwarded over the pinned socket", async () => {
+  const { server, port, received } = await startEchoServer();
+  try {
+    const guard = fetchGuard({ pinDns: true, allowLoopback: true, resolve: async () => ["127.0.0.1"] });
+    const res = await guard(`http://api.invalid:${port}/submit`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ x: 1 }),
+    });
+    assert.equal(res.status, 200);
+    assert.equal(received[0]?.method, "POST");
+    assert.equal(received[0]?.body, '{"x":1}');
+  } finally {
+    server.close();
+  }
+});
+
+test("fetchGuard({ pinDns }): a pinned http redirect is followed with re-validation at each hop", async () => {
+  const { server, port, received } = await startEchoServer();
+  try {
+    const guard = fetchGuard({ pinDns: true, allowLoopback: true, resolve: async () => ["127.0.0.1"] });
+    const res = await guard(`http://site.invalid:${port}/redir`);
+    assert.equal(res.status, 200);
+    assert.deepEqual(received.map((r) => r.url), ["/redir", "/landing"]);
+  } finally {
+    server.close();
+  }
+});
+
+test("fetchGuard({ pinDns }): a HEAD request yields a null-body response", async () => {
+  const { server, port } = await startEchoServer();
+  try {
+    const guard = fetchGuard({ pinDns: true, allowLoopback: true, resolve: async () => ["127.0.0.1"] });
+    const res = await guard(`http://h.invalid:${port}/`, { method: "HEAD" });
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get("x-marker"), "head");
+    assert.equal(await res.text(), "");
+  } finally {
+    server.close();
+  }
+});
+
+test("fetchGuard({ pinDns }): a literal-IP host is not pin-rewritten but is still served", async () => {
+  const { server, port } = await startEchoServer();
+  try {
+    const guard = fetchGuard({ pinDns: true, allowLoopback: true });
+    const res = await guard(`http://127.0.0.1:${port}/x`);
+    assert.equal(res.status, 200);
+  } finally {
+    server.close();
+  }
+});
+
+test("fetchGuard({ pinDns }): https is intentionally NOT pinned — it uses the provided fetch", async () => {
+  const { fn, calls } = recordingFetch();
+  const guard = fetchGuard({ pinDns: true, fetch: fn, resolve: async () => ["93.184.216.34"] });
+  const res = await guard("https://example.com/");
+  assert.equal(res.status, 200);
+  assert.equal(calls.length, 1, "the https path falls through to options.fetch, not the node:http pin");
+});
+
+test("fetchGuard({ pinDns }): a 204 yields a null body, and multi-valued response headers survive", async () => {
+  const { server, port } = await startEchoServer();
+  try {
+    const guard = fetchGuard({ pinDns: true, allowLoopback: true, resolve: async () => ["127.0.0.1"] });
+    const empty = await guard(`http://e.invalid:${port}/empty`);
+    assert.equal(empty.status, 204);
+    assert.equal(await empty.text(), "", "204 carries no body");
+
+    const cookies = await guard(`http://c.invalid:${port}/cookies`);
+    assert.equal(cookies.status, 200);
+    // Both Set-Cookie values must be preserved through the pinned dispatch.
+    const setCookies = cookies.headers.getSetCookie();
+    assert.deepEqual(setCookies.sort(), ["a=1", "b=2"]);
+  } finally {
+    server.close();
+  }
 });

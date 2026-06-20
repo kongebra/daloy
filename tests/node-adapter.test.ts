@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { once } from "node:events";
-import type { AddressInfo } from "node:net";
+import { connect, type AddressInfo } from "node:net";
 import { z } from "zod";
 import { App } from "../src/index.js";
 import { serve as serveNode } from "../src/adapters/node.js";
@@ -263,4 +263,87 @@ test("node adapter: double close() is a no-op", async () => {
   const { handle } = await startServer(app);
   await handle.close();
   await handle.close();
+});
+
+/**
+ * Open a raw socket, send partial request headers that never terminate, and
+ * report how long until the server reaps the stalled connection. `trickle`
+ * keeps dribbling header bytes (the evasive slowloris variant); otherwise the
+ * socket goes idle after the partial preamble.
+ */
+function slowlorisReapMs(port: number, opts: { trickle: boolean; deadlineMs: number }): Promise<number | null> {
+  return new Promise((resolve) => {
+    const sock = connect(port, "127.0.0.1");
+    const t0 = Date.now();
+    let timer: ReturnType<typeof setInterval> | undefined;
+    let done = false;
+    const finish = (reaped: boolean) => {
+      if (done) return;
+      done = true;
+      if (timer) clearInterval(timer);
+      try {
+        sock.destroy();
+      } catch {
+        /* ignore */
+      }
+      resolve(reaped ? Date.now() - t0 : null);
+    };
+    sock.on("connect", () => {
+      sock.write("GET /hello HTTP/1.1\r\nHost: t\r\n"); // never sends the terminating blank line
+      if (opts.trickle) {
+        let i = 0;
+        timer = setInterval(() => {
+          try {
+            sock.write(`X-Drip-${i++}: keep\r\n`);
+          } catch {
+            /* socket gone */
+          }
+        }, 200);
+      }
+    });
+    // The server hanging up on us (close/end) or replying 408 = reaped.
+    sock.on("close", () => finish(true));
+    sock.on("end", () => finish(true));
+    sock.on("data", () => finish(true));
+    sock.on("error", () => finish(true));
+    setTimeout(() => finish(false), opts.deadlineMs);
+  });
+}
+
+test("node adapter: a stalled (idle) slowloris connection is reaped near the configured timeout", async () => {
+  const app = buildEchoApp();
+  // Short timeout → the adapter must tune connectionsCheckingInterval so the
+  // timeout is actually enforced. Without that fix, Node's default 30s checker
+  // leaves the socket open for ~30s and this assertion times out.
+  const { handle, port } = await startServer(app, { connectionTimeoutMs: 800 });
+  try {
+    const ms = await slowlorisReapMs(port, { trickle: false, deadlineMs: 6000 });
+    assert.ok(ms !== null, "the idle stalled connection must be reaped, not held open");
+    assert.ok(ms! < 5000, `reaped in ${ms}ms — well under the default 30s checker interval`);
+  } finally {
+    await handle.close();
+  }
+});
+
+test("node adapter: connectionTimeoutMs: 0 disables the request/header timeouts", async () => {
+  const app = buildEchoApp();
+  const { handle } = await startServer(app, { connectionTimeoutMs: 0 });
+  try {
+    assert.equal(handle.server.requestTimeout, 0, "requestTimeout disabled");
+    assert.equal(handle.server.headersTimeout, 0, "headersTimeout disabled");
+  } finally {
+    await handle.close();
+  }
+});
+
+test("node adapter: an active-trickle slowloris (bytes dribbled forever) is still reaped", async () => {
+  const app = buildEchoApp();
+  const { handle, port } = await startServer(app, { connectionTimeoutMs: 800 });
+  try {
+    const ms = await slowlorisReapMs(port, { trickle: true, deadlineMs: 6000 });
+    assert.ok(ms !== null, "trickling bytes must not let the connection evade the header timeout");
+    assert.ok(ms! < 5000, `trickle slowloris reaped in ${ms}ms`);
+  } finally {
+    await handle.close();
+  }
 });

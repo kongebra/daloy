@@ -12,6 +12,46 @@ For the forward-looking plan and the full thematic release log, see
 > `create-daloy` are published together — a new core release always ships a
 > matching scaffolder so generated projects pin the latest peer.
 
+## [0.44.0] — 2026-06-21
+
+A security-hardening release driven by a live black-box red-team engagement
+against a running server: a slowloris fix in the Node adapter and an opt-in
+SSRF DNS-pinning knob that closes the documented rebinding window for `http:`.
+
+### Added
+
+- **`fetchGuard({ pinDns: true })` — DNS-rebinding (TOCTOU) protection for
+  `http:`.** The SSRF guard validates a hostname's resolved address and then,
+  by default, hands the original `Request` to `fetch`, which re-resolves the
+  hostname at connect time — the documented residual rebinding window. With
+  `pinDns: true`, `http:` requests are dispatched through Node's built-in
+  `node:http` with the socket **pinned to the validated IP** and the original
+  `Host` header preserved (so virtual-host routing still works), so an
+  attacker's TTL=0 rebind to `127.0.0.1` / `169.254.169.254` can no longer take
+  effect between validation and connect. Scope: `http:` only (the prime
+  metadata vector), Node only, opt-in (default `false` — zero behavior change
+  for existing callers); `https:` retains the documented caveat. Covered by new
+  tests in [`tests/fetch-guard.test.ts`](tests/fetch-guard.test.ts) and a
+  regression that proves re-encoded internal IPs (decimal/hex/octal/short form)
+  are normalized and blocked.
+
+### Security
+
+- **The Node adapter now enforces `connectionTimeoutMs` promptly (slowloris
+  fix).** `serve()` derived `headersTimeout` / `requestTimeout` from
+  `connectionTimeoutMs`, but left Node's `connectionsCheckingInterval` at its
+  30-second default — so Node only *checked* for timed-out connections every
+  30s. A client that stalled (or trickled its request headers a byte at a time)
+  held a socket open until the next sweep, far past the configured timeout. The
+  adapter now lowers `connectionsCheckingInterval` to a fraction of
+  `connectionTimeoutMs` (bounded to 1–5s), so a stalled connection is reaped
+  with `408` close to its deadline. `connectionTimeoutMs: 0` still disables the
+  timeouts entirely. This is a setup-time change only (no per-request hot-path
+  cost) and the `connectionTimeoutMs` contract is unchanged. New regression
+  tests in [`tests/node-adapter.test.ts`](tests/node-adapter.test.ts) cover the
+  idle and active-trickle slowloris variants and the disable path. A live
+  attack harness, `pnpm red-team:live`, reproduces the engagement end-to-end.
+
 ## [0.43.0] — 2026-06-20
 
 A maintenance release focused on **scaffolder onboarding** and **runtime
@@ -1343,7 +1383,8 @@ scaffolded projects pin the latest peer.
   publish with provenance, `pnpm create daloy` scaffolder (`node-basic`,
   `vercel-edge`, `cloudflare-worker`), docs metadata + ORM guides.
 
-[Unreleased]: https://github.com/daloyjs/daloy/compare/v0.41.0...HEAD
+[Unreleased]: https://github.com/daloyjs/daloy/compare/v0.44.0...HEAD
+[0.44.0]: https://github.com/daloyjs/daloy/compare/v0.43.0...v0.44.0
 [0.43.0]: https://github.com/daloyjs/daloy/compare/v0.42.0...v0.43.0
 [0.42.0]: https://github.com/daloyjs/daloy/compare/v0.41.0...v0.42.0
 [0.41.0]: https://github.com/daloyjs/daloy/compare/v0.40.0...v0.41.0

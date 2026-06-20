@@ -116,7 +116,14 @@ await close();`}
       <ul>
         <li>
           <code>requestTimeout</code>, <code>headersTimeout</code>, and{" "}
-          <code>keepAliveTimeout</code> set to safe production values.
+          <code>keepAliveTimeout</code> set to safe production values. Both
+          request timeouts derive from <code>connectionTimeoutMs</code>, and the
+          adapter also lowers Node&apos;s connection-check interval to a fraction
+          of that value so a slowloris (a client that stalls or trickles its
+          request headers to hold a socket open) is reaped close to the deadline
+          with a <code>408</code>, instead of surviving until Node&apos;s default
+          30&nbsp;second sweep. Set <code>connectionTimeoutMs: 0</code> to
+          disable the timeouts entirely.
         </li>
         <li>
           SIGTERM / SIGINT handlers that call <code>server.close()</code>{" "}

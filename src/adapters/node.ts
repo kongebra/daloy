@@ -42,7 +42,17 @@ import {
 export interface NodeServerOptions {
   port?: number;
   hostname?: string;
-  /** Connection-level timeout in ms. Default: 30000. */
+  /**
+   * Connection-level timeout in ms, applied to BOTH `headersTimeout` and
+   * `requestTimeout`. A client that has not finished sending its request
+   * headers (or whole request) within this window is hung up on with `408`.
+   * This is the slowloris / slow-header defense: the adapter also lowers
+   * Node's `connectionsCheckingInterval` to a fraction of this value so the
+   * timeout is actually *enforced* near when it elapses, rather than only at
+   * Node's default 30s sweep (which would let a stalled or byte-trickling
+   * connection hold a socket open far past the configured timeout). Set `0`
+   * to disable timeouts entirely. Default: 30000.
+   */
   connectionTimeoutMs?: number;
   /** Drain timeout for graceful shutdown. Default: 10000. */
   shutdownTimeoutMs?: number;
@@ -105,7 +115,26 @@ export function serve(app: App, opts: NodeServerOptions = {}): NodeServerHandle 
     typeof opts.bufferedBodyMaxBytes === "number" && opts.bufferedBodyMaxBytes >= 0
       ? opts.bufferedBodyMaxBytes
       : DEFAULT_BUFFERED_BODY_MAX_BYTES;
-  const server = createServer({ maxHeaderSize: opts.maxHeaderBytes ?? 16 * 1024 }, (req, res) => {
+  const connectionTimeoutMs = opts.connectionTimeoutMs ?? 30_000;
+  // Node only *enforces* `headersTimeout` / `requestTimeout` when its periodic
+  // connection checker runs, and that checker's default interval is 30s. With
+  // the default interval a slowloris that never completes its headers — idle
+  // OR trickling a byte at a time — survives until the next 30s sweep, far
+  // past the configured timeout, holding a socket open the whole time. Polling
+  // at a fraction of the timeout (bounded to [1s, 5s]) makes the configured
+  // timeout actually honored, so a stalled connection is reaped with `408`
+  // close to when it should be. Skipped only when timeouts are disabled
+  // (`connectionTimeoutMs: 0`), where there is nothing to reap.
+  const connectionsCheckingInterval =
+    connectionTimeoutMs > 0
+      ? Math.max(1_000, Math.min(5_000, Math.floor(connectionTimeoutMs / 2)))
+      : undefined;
+  const server = createServer(
+    {
+      maxHeaderSize: opts.maxHeaderBytes ?? 16 * 1024,
+      ...(connectionsCheckingInterval !== undefined ? { connectionsCheckingInterval } : {}),
+    },
+    (req, res) => {
     // GET/HEAD: no body work, dispatch directly. Keep this first so the GET
     // hot path doesn't pay for any of the buffering bookkeeping below.
     const method = req.method;
@@ -129,8 +158,8 @@ export function serve(app: App, opts: NodeServerOptions = {}): NodeServerHandle 
     dispatchToApp(app, req, res, trustProxy, undefined);
   });
 
-  server.requestTimeout = opts.connectionTimeoutMs ?? 30_000;
-  server.headersTimeout = opts.connectionTimeoutMs ?? 30_000;
+  server.requestTimeout = connectionTimeoutMs;
+  server.headersTimeout = connectionTimeoutMs;
   server.keepAliveTimeout = 5_000;
   // Native parser-level header-count cap. Drops header-count floods (the
   // "HTTP/2 Bomb" amplification dimension) before they become a Request.

@@ -290,6 +290,54 @@ The in-scope classes above are not merely asserted by unit tests — they are co
 
 Waves 9–10 also record the framework's honest limitations rather than papering over them: the conservative signature WAF is evadable by double-encoding and comment-split keywords (the typed schema contract is the real backstop — see § Out of scope, "Insecure handler code"), and the XXE / SOAP / WSDL family is **structurally inapplicable** because the framework speaks JSON only and rejects every non-JSON content type with `415`, leaving no XML parser to attack.
 
+### Live black-box engagement (over-the-wire, not in-process)
+
+The waves above exercise the framework through its in-memory dispatch
+(`app.request()`). [`red-team-live/`](red-team-live) goes one level further: it
+boots a **real server on a real TCP port** via the Node adapter's `serve()`,
+then attacks it from a **separate attacker process** the way a bug-bounty hunter
+would — `fetch()` over the wire for application-layer attacks and raw `net`
+sockets for the wire-level classes the in-memory path can never model (request
+smuggling, slowloris, header floods, malformed framing, the WebSocket upgrade
+handshake). Because the target is its own process, a crash surfaces as
+connection-refused — a real DoS finding — instead of taking the harness down.
+Run it with `pnpm red-team:live`; it exits non-zero on any `VULNERABLE` finding.
+The current engagement fires **60 probes** and the framework holds every one.
+
+This is the layer that found and closed the one real defect of the campaign:
+the Node adapter set `headersTimeout`/`requestTimeout` from `connectionTimeoutMs`
+but left Node's `connectionsCheckingInterval` at its 30 s default, so a slowloris
+survived far past the configured timeout. Fixed in
+[`src/adapters/node.ts`](src/adapters/node.ts) (regression tests in
+[`tests/node-adapter.test.ts`](tests/node-adapter.test.ts)).
+
+**Coverage split — what is proven live vs. in-process.** Every in-scope class
+that is reachable black-box over a socket is fired live; the remainder is
+verified in-process because it has no HTTP surface to attack:
+
+| Verified live over the wire (`red-team-live/`) | Verified in-process (no socket surface) |
+|---|---|
+| Auth bypass, JWT forgery (`alg:none` / bad-sig / scope escalation), privilege escalation, credential brute force | JWT expiry / `nbf` / issuer-audience / tampered-payload rejection (forging a *validly signed* token needs the server secret) |
+| SSRF (metadata / loopback / private / `file:`), open redirect | `timingSafeEqual`, signed-value / HMAC primitives, WebSocket frame parse/encode, pagination cursor decode (pure library functions) |
+| Injection (SQLi / XSS / cmdi / NoSQL), WAF, CSRF, CORS (simple + preflight) | Refuse-to-boot guards, weak-secret rejection, cookie-attribute asserts (throw at construction) |
+| Prototype pollution, mass assignment, response over-exposure (API3) | Nested/array response-stripping depth, WAF multi-encoding evasion nuance |
+| Smuggling (dup `CL`, `TE`+`CL`), reserved-internal-header, CRLF splitting, TRACE/XST | Docs-HTML XSS escaping (`scalarHtml` / `redocHtml`) |
+| Header floods, oversized body, **slowloris**, rapid-connect/reset churn | HTTP Message Signatures verify, secret-rotation arrays |
+| Method-override, HPP, content-type confusion, stack-bomb / hash-flood JSON | |
+| Decompression bombs, idempotency replay + cross-tenant, concurrency shedding | |
+| bot-guard / geo-block / auto-ban, basic-auth enumeration, spoofed mTLS (XFCC) | |
+| CSWSH handshake, multipart magic-byte / size abuse, `except()` path-confusion | |
+| Request-id entropy, clickjacking / HSTS posture, framework fingerprinting | |
+
+Two findings during the live run were **false positives from the test target,
+not the framework** — and both were a secure default catching sloppy app code:
+returning an undeclared status code (caught by the response-contract guard,
+OWASP API9) and trusting `X-Forwarded-For` in production without declaring a
+proxy (refused by default; the IP-based middleware fail *closed* rather than
+trust a spoofable header). Documented residual limitations (the DNS-rebinding
+TOCTOU window in `fetchGuard`, requiring an operator egress firewall or a pinned
+dispatcher) are spelled out at their source rather than hidden.
+
 ### Out of scope (the framework will NOT defend)
 
 - **Network-layer DoS** (SYN floods, amplification). Place DaloyJS behind a reverse proxy / WAF / DDoS service.
