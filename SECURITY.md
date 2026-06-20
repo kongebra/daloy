@@ -271,6 +271,25 @@ DaloyJS ships first-party middleware for the surface the "API security tools" ma
 #### Cloud metadata SSRF (Capital One 2019, Pandoc [CVE-2025-51591](https://www.aikido.dev/blog/top-cloud-security-vulnerabilities))
 `fetchGuard()` default-denies AWS/Azure/DO `169.254.169.254`, GCP `metadata.google.internal`, Alibaba `100.100.100.200`, Oracle `192.0.0.192`, loopback, RFC1918, link-local, unique-local, CGNAT, IANA-reserved, multicast, and non-http(s) schemes. Redirects follow manually with re-validation at every hop; IPv4-mapped IPv6 is recursively re-checked. Regression in [`tests/fetch-guard.test.ts`](tests/fetch-guard.test.ts). IMDSv2-only is still required on the underlying compute (operator concern).
 
+### Red-team verification (adversarial test suite)
+
+The in-scope classes above are not merely asserted by unit tests — they are continuously **attacked**. A ten-wave red-team suite plays the external assessor against the framework inside the test harness, organized around the [Doyensec Web Application & API methodology](https://www.doyensec.com/services/web-applications-and-apis.html) (the OWASP WSTG categories Doyensec co-authors). In every wave the **secure outcome is the passing outcome**, so a regression that re-opens a defense turns the suite red. Run the waves on their own with `pnpm test:red-team` — wired as a dedicated gate in [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
+
+| Wave | Focus | File |
+|------|-------|------|
+| 1 | Core controls — prototype pollution, DoS, smuggling, JWT, SSRF, open-redirect, NoSQL, WAF, CSRF, response over-exposure | [`red-team-attacks.test.ts`](tests/red-team-attacks.test.ts) |
+| 2 | Decompression bombs, session/cookie integrity, mTLS spoofing, HTTP Message Signatures, scopes, WebSocket protocol, idempotency replay | [`red-team-attacks-2.test.ts`](tests/red-team-attacks-2.test.ts) |
+| 3 | Access control — spoofed crawlers (bot-guard), geo-block, IP reputation, auto-ban | [`red-team-attacks-3.test.ts`](tests/red-team-attacks-3.test.ts) |
+| 4 | Auditor-grade cross-control logic — nested response stripping, JWT `jwk`/`jku` key-injection, method-override, path-confusion, ReDoS bounds | [`red-team-attacks-4.test.ts`](tests/red-team-attacks-4.test.ts) |
+| 5 | Cross-tenant cached-response disclosure (CWE-524) — idempotency + response-cache namespacing | [`red-team-attacks-5.test.ts`](tests/red-team-attacks-5.test.ts) |
+| 6 | Session fixation / cookie-tossing, BREACH, multipart DoS, single-encoded WAF decoding | [`red-team-attacks-6.test.ts`](tests/red-team-attacks-6.test.ts) |
+| 7 | Three-front offensive simulation — exfiltration, denial of service, RCE / persistence | [`red-team-attacks-7.test.ts`](tests/red-team-attacks-7.test.ts) |
+| 8 | OWASP WSTG pass — docs XSS, HTTP Parameter Pollution, verb tampering / Cross-Site Tracing, CORS origin matching | [`red-team-attacks-8.test.ts`](tests/red-team-attacks-8.test.ts) |
+| 9 | Doyensec live-service pass — framework fingerprinting, account enumeration, id entropy, session puzzling, XXE impossibility, log injection, clickjacking/HSTS, Host-header injection, CORS preflight disclosure | [`red-team-attacks-9.test.ts`](tests/red-team-attacks-9.test.ts) |
+| 10 | Deep-dive campaigns — WAF multi-encoding evasion + the typed-contract backstop, JWT algorithm matrix, constant-time comparison timing analysis | [`red-team-attacks-10.test.ts`](tests/red-team-attacks-10.test.ts) |
+
+Waves 9–10 also record the framework's honest limitations rather than papering over them: the conservative signature WAF is evadable by double-encoding and comment-split keywords (the typed schema contract is the real backstop — see § Out of scope, "Insecure handler code"), and the XXE / SOAP / WSDL family is **structurally inapplicable** because the framework speaks JSON only and rejects every non-JSON content type with `415`, leaving no XML parser to attack.
+
 ### Out of scope (the framework will NOT defend)
 
 - **Network-layer DoS** (SYN floods, amplification). Place DaloyJS behind a reverse proxy / WAF / DDoS service.
