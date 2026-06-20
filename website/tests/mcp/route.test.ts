@@ -222,6 +222,27 @@ test("get_doc accepts a /docs-prefixed route and a full URL", async () => {
   }
 });
 
+test("get_doc serves the full Express migration guide without truncation", async () => {
+  // The Express migration guide is the longest docs page. Agents querying the
+  // MCP must receive all of it, not a truncated first slice, so this guards
+  // MAX_DOC_BODY_CHARS against regressing below the longest page.
+  const { json } = await rpc({
+    jsonrpc: "2.0",
+    id: 4,
+    method: "tools/call",
+    params: { name: "get_doc", arguments: { path: "migrating/express" } },
+  });
+
+  assert.notEqual(json.result.isError, true);
+  const text = toolText(json);
+  assert.match(text, /Route: \/docs\/migrating\/express/);
+  // A phrase from a late section (the strangler-fig steps) proves the tail
+  // survived; the truncation marker proves it did not get cut short.
+  assert.match(text, /Repeat until Express is empty, then delete it\./);
+  assert.doesNotMatch(text, /\[truncated;/);
+  assert.ok(text.length > 20_000, `expected the full guide, got ${text.length} chars`);
+});
+
 test("list_docs enumerates the available pages", async () => {
   const { json } = await rpc({
     jsonrpc: "2.0",

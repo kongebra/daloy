@@ -57,8 +57,15 @@ const MAX_QUERY_LENGTH = 256;
 const DEFAULT_SEARCH_LIMIT = 8;
 /** Upper bound on search hits a caller may request. */
 const MAX_SEARCH_LIMIT = 25;
-/** Cap on the body text returned by `get_doc` to keep responses bounded. */
-const MAX_DOC_BODY_CHARS = 12_000;
+/**
+ * Cap on the body text returned by `get_doc`. Sized to serve the longest docs
+ * pages in full, including the deliberately exhaustive Express migration guide
+ * (the security compliance and API reference pages are the next largest), while
+ * still bounding any single response. Pages longer than this are truncated with
+ * a pointer to the full page URL. Raise this if a page legitimately grows past
+ * it rather than letting agents receive a half-page answer.
+ */
+const MAX_DOC_BODY_CHARS = 64_000;
 
 // JSON-RPC 2.0 error codes (https://www.jsonrpc.org/specification#error_object).
 const PARSE_ERROR = -32700;
