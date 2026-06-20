@@ -5,6 +5,17 @@ import { ThemeProvider as NextThemesProvider, useTheme } from "next-themes"
 
 const THEMES = ["light", "dark", "dim"] as const
 
+/**
+ * Resolve the next theme in the {@link THEMES} cycle.
+ *
+ * Cycles `light → dark → dim → light`, defaulting to the first theme when the
+ * supplied value is `undefined` or not a recognized theme. Shared by the
+ * keyboard hotkey and the single-button {@link ThemeSwitcher} so both advance
+ * the preference in the same order.
+ *
+ * @param theme - The currently active theme name, if any.
+ * @returns The next theme name in the cycle.
+ */
 function getNextTheme(theme: string | undefined) {
   const currentIndex = THEMES.indexOf((theme ?? "light") as (typeof THEMES)[number])
   const safeIndex = currentIndex === -1 ? 0 : currentIndex
@@ -77,4 +88,4 @@ function ThemeHotkey() {
   return null
 }
 
-export { THEMES, ThemeProvider }
+export { THEMES, ThemeProvider, getNextTheme }

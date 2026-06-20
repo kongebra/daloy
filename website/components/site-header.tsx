@@ -9,7 +9,7 @@ import {
   GithubLogoIcon,
   ListIcon,
   PackageIcon,
-  XIcon,
+  XLogoIcon,
 } from "@phosphor-icons/react/ssr";
 import { buttonVariants } from "./ui/button";
 import { LogoMark } from "./daloyjs-logo";
@@ -29,7 +29,7 @@ const socialLinks = [
   {
     href: "https://x.com/daloyjs",
     label: "X",
-    icon: XIcon,
+    icon: XLogoIcon,
   },
   {
     href: "https://substack.com/@daloyjs",
