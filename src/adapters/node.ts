@@ -142,6 +142,15 @@ export function serve(app: App, opts: NodeServerOptions = {}): NodeServerHandle 
       dispatchToApp(app, req, res, trustProxy, undefined);
       return;
     }
+    // Refuse Fetch-forbidden methods (CONNECT/TRACE/TRACK) before building a
+    // `Request` — `new Request` throws a `TypeError` for them, which would
+    // otherwise be caught and reported as a generic 500 instead of a clean,
+    // intentional method refusal. Placed after the GET/HEAD fast path so the
+    // hot path never pays for this check.
+    if (FETCH_FORBIDDEN_METHODS.has(method.toUpperCase())) {
+      writeMethodRefused(res);
+      return;
+    }
     // POST/PUT/PATCH/DELETE with a small known content-length: pre-buffer
     // bytes from the Node socket directly so the Request constructor gets a
     // Uint8Array body instead of `Readable.toWeb(req)`. This skips the
@@ -341,6 +350,48 @@ function attachClientCertificate(req: IncomingMessage, request: Request): void {
     const raw = sock.getPeerCertificate!(true);
     return normalizePeerCertificate(raw, sock.authorized === true);
   });
+}
+
+/**
+ * Methods the WHATWG Fetch standard forbids on a `Request` (`CONNECT`,
+ * `TRACE`, `TRACK`). `new Request(url, { method })` throws a `TypeError` for
+ * these, so the Node adapter refuses them *before* constructing a `Request` —
+ * otherwise that `TypeError` surfaces as a generic `500` instead of a
+ * deliberate method refusal. Refusing `TRACE`/`TRACK` also closes Cross-Site
+ * Tracing, and `CONNECT` has no meaning for an origin server, so a categorical
+ * refusal is the correct secure default. (`CONNECT` is normally routed to
+ * Node's `connect` event rather than the request listener; it is included here
+ * defensively for runtimes/proxies that surface it as a normal request.)
+ */
+const FETCH_FORBIDDEN_METHODS: ReadonlySet<string> = new Set([
+  "CONNECT",
+  "TRACE",
+  "TRACK",
+]);
+
+/**
+ * Refuse a Fetch-forbidden HTTP method with a spec-correct `501 Not
+ * Implemented`. `501` is more accurate than `405` here because the method is
+ * unsupported for *every* resource (not just the matched route), and unlike
+ * `405` it does not require an `Allow` header the adapter cannot compute before
+ * routing. Mirrors {@link writeAdapterError}'s RFC 9457 problem+json shape;
+ * `Connection: close` avoids reusing a socket whose (illegal) request body was
+ * never drained.
+ *
+ * @param res - The Node {@link ServerResponse} to write the refusal to.
+ */
+function writeMethodRefused(res: ServerResponse): void {
+  if (res.headersSent) return;
+  res.statusCode = 501;
+  res.setHeader("content-type", "application/problem+json");
+  res.setHeader("connection", "close");
+  res.end(
+    JSON.stringify({
+      type: "https://daloyjs.dev/errors/not-implemented",
+      title: "Not Implemented",
+      status: 501,
+    })
+  );
 }
 
 function writeAdapterError(res: ServerResponse, e: unknown): void {

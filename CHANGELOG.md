@@ -13,6 +13,47 @@ For the forward-looking plan and the full thematic release log, see
 > and `create-daloy` ship together, so every release publishes a matching
 > scaffolder and generated projects pin the latest peer.
 
+## [1.0.0-beta.1] - 2026-06-21
+
+The second **1.0.0 beta** — a small, security-leaning patch on top of
+`1.0.0-beta.0`. No breaking changes and no public API additions; projects on
+`^1.0.0-beta.0` upgrade with a version bump. `@daloyjs/core`, `create-daloy`,
+and the JSR package `@daloyjs/daloy` move to `1.0.0-beta.1` in lockstep, and
+every `create-daloy` template now pins `@daloyjs/core@^1.0.0-beta.1`.
+
+### Added
+
+- **Indeterminate-environment security warning.** When a production-only
+  refuse-to-boot guard (a wildcard `cors({ origin: "*" })`, a weak `session()`
+  secret) is bypassed *only* because the runtime environment is indeterminate
+  (no `env` option and no `NODE_ENV`, the default on edge runtimes such as
+  Cloudflare Workers / Deno Deploy / Vercel Edge), the framework now logs a
+  single once-per-process warning pointing at `app({ env: "production" })`.
+  Enforcement is unchanged and the runtime is deliberately not sniffed (which
+  would break portability); the warning only surfaces a previously silent skip,
+  and only when a risky config is actually present.
+
+### Fixed
+
+- **Node adapter: Fetch-forbidden methods (`TRACE` / `CONNECT` / `TRACK`) are
+  refused with `501 Not Implemented`** instead of surfacing a generic `500`.
+  The WHATWG `Request` constructor throws on these methods, so the adapter now
+  refuses them cleanly before constructing a `Request` (which also closes
+  Cross-Site Tracing). Other unsupported verbs continue to return `405`.
+- **`multipart/form-data` bodies are capped at `bodyLimitBytes` even without a
+  `Content-Length`.** Chunked or mislabeled multipart uploads were handed to the
+  platform `formData()` parser uncapped on runtimes without a socket-layer limit
+  (Workers / Deno / Vercel Edge); the actual bytes are now bounded before
+  parsing. Web-standard only (`Request` + `formData`), so it stays
+  runtime-portable.
+
+### Changed
+
+- **Version: `1.0.0-beta.0` → `1.0.0-beta.1`** across the lockstep packages
+  (`@daloyjs/core`, `create-daloy`, and JSR `@daloyjs/daloy`), with the
+  `create-daloy` templates, workshop, README status line, and website version
+  reference synced to `1.0.0-beta.1`.
+
 ## [1.0.0-beta.0] - 2026-06-21
 
 The first public **1.0.0 beta**. After the `0.x` preview line, the public API is
@@ -1412,7 +1453,8 @@ scaffolded projects pin the latest peer.
   publish with provenance, `pnpm create daloy` scaffolder (`node-basic`,
   `vercel-edge`, `cloudflare-worker`), docs metadata + ORM guides.
 
-[Unreleased]: https://github.com/daloyjs/daloy/compare/v1.0.0-beta.0...HEAD
+[Unreleased]: https://github.com/daloyjs/daloy/compare/v1.0.0-beta.1...HEAD
+[1.0.0-beta.1]: https://github.com/daloyjs/daloy/compare/v1.0.0-beta.0...v1.0.0-beta.1
 [1.0.0-beta.0]: https://github.com/daloyjs/daloy/compare/v0.44.0...v1.0.0-beta.0
 [0.44.0]: https://github.com/daloyjs/daloy/compare/v0.43.0...v0.44.0
 [0.43.0]: https://github.com/daloyjs/daloy/compare/v0.42.0...v0.43.0

@@ -544,3 +544,46 @@ test("fileField honors the format option", async () => {
     "byte"
   );
 });
+
+test("multipart body is capped at bodyLimitBytes even with no Content-Length (streamed upload)", async () => {
+  // Regression: the multipart branch used to trust Content-Length and then
+  // hand the body to the platform formData() parser. A chunked upload sends no
+  // Content-Length, so on runtimes without a socket-layer cap (Workers/Deno/
+  // Vercel Edge) the parser could buffer an unbounded body. The reader now caps
+  // the ACTUAL bytes against bodyLimitBytes before parsing.
+  const app = new App({ logger: false, bodyLimitBytes: 512 });
+  app.route({
+    method: "POST",
+    path: "/upload",
+    operationId: "uploadStreamCap",
+    request: { body: multipartObject({ file: fileField() }) },
+    responses: { 201: { description: "ok" } },
+    handler: async () => ({ status: 201, body: null }),
+  });
+
+  // Serialize a multipart body whose real size far exceeds the 512-byte cap,
+  // then replay it as a ReadableStream so the Request carries NO Content-Length.
+  const fd = buildMultipart([
+    { name: "file", value: new File(["A".repeat(4000)], "big.txt", { type: "text/plain" }) },
+  ]);
+  const probe = new Request("http://localhost/upload", { method: "POST", body: fd });
+  const contentType = probe.headers.get("content-type")!;
+  const wire = new Uint8Array(await probe.arrayBuffer());
+  assert.ok(wire.byteLength > 512, "fixture must exceed the cap");
+
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(wire);
+      controller.close();
+    },
+  });
+  const req = new Request("http://localhost/upload", {
+    method: "POST",
+    headers: { "content-type": contentType },
+    body: stream,
+    duplex: "half",
+  } as RequestInit);
+
+  const res = await app.fetch(req);
+  assert.equal(res.status, 413, "an oversize streamed multipart upload must be refused with 413");
+});

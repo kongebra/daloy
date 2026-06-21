@@ -4,6 +4,7 @@ export { findRoutesMissingResponseBodySchema } from "./app.js";
 export { _resetPackageJsonCacheForTests } from "./app.js";
 export { _resetCrashHandlersForTests } from "./app.js";
 export { _resetInsecureDefaultsLogForTests } from "./app.js";
+export { _resetIndeterminateEnvWarningForTests } from "./app.js";
 export type {
   AppOptions,
   AppOpenAPIOptions,

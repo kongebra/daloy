@@ -120,6 +120,19 @@ export function _resetInsecureDefaultsLogForTests(): void {
 }
 
 /**
+ * Once-per-process latch for the "production-only secure-default guard skipped
+ * because the runtime environment is indeterminate" warning (see
+ * {@link App.warnIndeterminateEnvSecurity}). Mirrors
+ * {@link insecureDefaultsLoggedThisProcess}: one heads-up per process, not one
+ * per `App` / per `.use()` call.
+ */
+let indeterminateEnvSecurityWarnedThisProcess = false;
+/** @internal Test-only helper to reset the indeterminate-env warning latch. */
+export function _resetIndeterminateEnvWarningForTests(): void {
+  indeterminateEnvSecurityWarnedThisProcess = false;
+}
+
+/**
  * Named security posture preset. Currently only one value is supported:
  *
  * - `"internal-service"` — relaxes the *topology-dependent* defaults that
@@ -1547,8 +1560,22 @@ export class App<
    */
   private assertSecureHookConfig(hooks: Hooks): void {
     if (this.options.secureDefaults === false) return;
-    if (!this.isProduction()) return;
     const record = hooks as Record<PropertyKey, unknown>;
+    if (!this.isProduction()) {
+      // The refusals below are production-only. When the environment is
+      // *indeterminate* (no explicit `env` / `production` option and no
+      // `NODE_ENV` — the common default on edge runtimes such as Workers /
+      // Deno Deploy / Vercel Edge), those refusals never fire, so a risky
+      // config could ship unguarded. Surface that once as a warning when such
+      // a config is actually present. Enforcement is unchanged — this only
+      // makes the silent skip observable. The runtime itself is deliberately
+      // NOT sniffed (that would couple the core to specific platforms and
+      // break runtime portability); we key only on "is the env signal absent?".
+      if (this.isEnvIndeterminate()) {
+        this.warnIndeterminateEnvSecurity(record);
+      }
+      return;
+    }
     if (record[CORS_WILDCARD_ORIGIN_MARKER] === true) {
       throw new Error(
         'cors({ origin: "*" }) refused in production: a wildcard CORS origin exposes every state-changing route cross-origin. ' +
@@ -1564,6 +1591,76 @@ export class App<
         }
       }
     }
+  }
+
+  /**
+   * Whether the resolved runtime environment is indeterminate: no explicit
+   * {@link AppOptions.env} / {@link AppOptions.production} was provided AND
+   * `process.env.NODE_ENV` is unset or empty. This is the common default on
+   * edge runtimes (Cloudflare Workers, Deno Deploy, Vercel Edge), which have no
+   * `NODE_ENV`. Deliberately does not sniff the runtime — it only reports
+   * whether the environment signal is absent — so it stays runtime-portable.
+   *
+   * @returns `true` when neither an explicit option nor `NODE_ENV` resolves the
+   * environment; `false` otherwise (including when `NODE_ENV` is `development` /
+   * `test`, which is a known, non-production answer).
+   */
+  private isEnvIndeterminate(): boolean {
+    if (
+      this.options.env !== undefined ||
+      this.options.production !== undefined
+    ) {
+      return false;
+    }
+    const nodeEnv =
+      typeof process !== "undefined" && typeof process.env !== "undefined"
+        ? process.env.NODE_ENV
+        : undefined;
+    return nodeEnv === undefined || nodeEnv === "";
+  }
+
+  /**
+   * Emit a single once-per-process warning when a production-only secure-default
+   * refusal (wildcard CORS origin, weak session secret) would not fire purely
+   * because the environment is indeterminate (see {@link isEnvIndeterminate}).
+   * Routed through the logger, so `logger: false` silences it. Only warns when a
+   * risky config is actually present, so a clean app stays quiet. Changes no
+   * enforcement; pure observability for the documented "set `env` on edge"
+   * requirement.
+   *
+   * @param record - The hook object, carrying the wildcard-CORS / session
+   * markers used by {@link assertSecureHookConfig}.
+   */
+  private warnIndeterminateEnvSecurity(
+    record: Record<PropertyKey, unknown>,
+  ): void {
+    if (indeterminateEnvSecurityWarnedThisProcess) return;
+    const risky: string[] = [];
+    if (record[CORS_WILDCARD_ORIGIN_MARKER] === true) {
+      risky.push('cors({ origin: "*" })');
+    }
+    if (record[SESSION_HOOK_MARKER] === true) {
+      const secrets = record[SESSION_SECRETS_MARKER];
+      if (Array.isArray(secrets)) {
+        const hasWeak = secrets.some((s) => {
+          try {
+            assertStrongSecret(s, "session");
+            return false;
+          } catch {
+            return true;
+          }
+        });
+        if (hasWeak) risky.push("a weak session secret");
+      }
+    }
+    if (risky.length === 0) return;
+    indeterminateEnvSecurityWarnedThisProcess = true;
+    this.log.warn(
+      { event: "secure_defaults.env_indeterminate", risky },
+      `DaloyJS: ${risky.join(" and ")} present, but the runtime environment is indeterminate ` +
+        `(no env option and no NODE_ENV). The production-only refuse-to-boot guard is therefore ` +
+        `inactive. If this is production (e.g. an edge runtime), set app({ env: "production" }).`,
+    );
   }
 
   private assertRouteAuthPayloadConfig(
@@ -4250,12 +4347,27 @@ async function readBody(
     return out;
   }
   if (ct.includes("multipart/form-data")) {
-    // Multipart: rely on platform parser, but enforce content-length first.
+    // Fast-fail on an honestly-declared oversize body.
     const cl = req.headers.get("content-length");
     if (cl && Number(cl) > limit) {
       throw new PayloadTooLargeError(limit);
     }
-    const fd = await req.formData();
+    // Then cap the ACTUAL bytes before handing them to the platform
+    // formData() parser. Content-Length is not a sufficient gate on its own: a
+    // chunked upload sends none, and a lying small value slips past the check —
+    // in both cases the platform parser would otherwise buffer the whole body
+    // in memory on runtimes whose adapter does not cap at the socket layer
+    // (Workers / Deno / Vercel Edge). `readBodyLimited` streams the body and
+    // throws `PayloadTooLargeError` the instant it exceeds `limit`; we then
+    // re-parse the bounded bytes with the standard `formData()` parser,
+    // preserving the multipart boundary via the original Content-Type. This is
+    // Web-standard only (`Request` + `formData`), so it stays runtime-portable.
+    const bytes = await readBodyLimited(req, limit);
+    const fd = await new Request(req.url, {
+      method: "POST",
+      headers: { "content-type": ct },
+      body: bytes as BodyInit,
+    }).formData();
     const out: Record<string, unknown> = {};
     let fields = 0;
     let files = 0;

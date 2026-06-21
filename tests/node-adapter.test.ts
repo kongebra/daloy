@@ -347,3 +347,84 @@ test("node adapter: an active-trickle slowloris (bytes dribbled forever) is stil
     await handle.close();
   }
 });
+
+/**
+ * Send a complete raw HTTP/1.1 request over a socket and resolve the full
+ * response text. Required for methods that `fetch`/undici refuse to send
+ * (`TRACE`/`TRACK` are Fetch-forbidden), which is exactly the path under test.
+ */
+function rawHttp(port: number, raw: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const sock = connect(port, "127.0.0.1");
+    let buf = "";
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      try {
+        sock.destroy();
+      } catch {
+        /* ignore */
+      }
+      resolve(buf);
+    };
+    sock.on("connect", () => sock.write(raw));
+    sock.on("data", (d) => {
+      buf += d.toString("utf8");
+    });
+    sock.on("close", finish);
+    sock.on("end", finish);
+    sock.on("error", (e) => {
+      if (!done) {
+        done = true;
+        reject(e);
+      }
+    });
+    setTimeout(finish, 3000);
+  });
+}
+
+test("node adapter: Fetch-forbidden methods (TRACE/TRACK) are refused with 501, never a 500", async () => {
+  // Regression: `new Request(url, { method: "TRACE" })` throws a TypeError
+  // ("'TRACE' HTTP method is unsupported"), which previously surfaced as a
+  // generic 500. The adapter now refuses these methods with a clean 501 before
+  // constructing a Request. TRACE/TRACK cannot be sent via fetch (undici
+  // forbids them too), so this drives the server over a raw socket.
+  const app = buildEchoApp();
+  const { handle, port } = await startServer(app);
+  try {
+    // TRACE is a recognized HTTP method (in Node's http.METHODS), so Node
+    // parses it and routes it to the request listener, where `new Request`
+    // would throw. The adapter must turn that into a clean 501.
+    const trace = await rawHttp(
+      port,
+      "TRACE /hello HTTP/1.1\r\nHost: t\r\nConnection: close\r\n\r\n",
+    );
+    const traceStatus = trace.split("\r\n")[0] ?? "";
+    assert.match(
+      traceStatus,
+      /^HTTP\/1\.1 501\b/,
+      `TRACE must be refused with 501 Not Implemented, got: ${traceStatus}`,
+    );
+    assert.doesNotMatch(traceStatus, /\b500\b/, "TRACE must not surface as a 500");
+    assert.match(trace, /application\/problem\+json/, "TRACE refusal should be problem+json");
+
+    // TRACK is not in Node's http.METHODS, so Node's parser rejects it with a
+    // 400 before it ever reaches the listener. Either way it must be a clean
+    // refusal, never a 500 (the adapter's forbidden-method set covers it for
+    // any runtime that does surface it as a normal request).
+    const track = await rawHttp(
+      port,
+      "TRACK /hello HTTP/1.1\r\nHost: t\r\nConnection: close\r\n\r\n",
+    );
+    const trackStatus = track.split("\r\n")[0] ?? "";
+    assert.match(
+      trackStatus,
+      /^HTTP\/1\.1 (400|501)\b/,
+      `TRACK must be a clean refusal (400 or 501), got: ${trackStatus}`,
+    );
+    assert.doesNotMatch(trackStatus, /\b500\b/, "TRACK must not surface as a 500");
+  } finally {
+    await handle.close();
+  }
+});

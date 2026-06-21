@@ -2,8 +2,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   App,
+  cors,
   secureHeaders,
   _resetInsecureDefaultsLogForTests,
+  _resetIndeterminateEnvWarningForTests,
 } from "../src/index.js";
 import { createJwtSigner, createJwtVerifier } from "../src/jwt.js";
 
@@ -224,4 +226,83 @@ test("secureHeaders refuses frameOptions: false + CSP directives with empty fram
 
 test("secureHeaders default construction (no overrides) is allowed", () => {
   assert.doesNotThrow(() => secureHeaders());
+});
+
+// ============================================================
+// Indeterminate-environment warning (agnostic-safe heads-up that the
+// production-only refuse-to-boot guards are inactive on edge runtimes where
+// NODE_ENV is unset). Warning-only: no API or enforcement change.
+// ============================================================
+
+function captureLogger() {
+  const records: Array<{ level: string; obj: any; msg: string }> = [];
+  const logger = {
+    level: "trace" as const,
+    trace() {},
+    debug() {},
+    info() {},
+    warn(obj: unknown, msg: string) {
+      records.push({ level: "warn", obj, msg });
+    },
+    error() {},
+    fatal() {},
+    child() {
+      return logger;
+    },
+  };
+  const envWarns = () =>
+    records.filter(
+      (r) => (r.obj as { event?: string })?.event === "secure_defaults.env_indeterminate",
+    );
+  return { logger, records, envWarns };
+}
+
+function withNoNodeEnv(fn: () => void): void {
+  const saved = process.env.NODE_ENV;
+  delete process.env.NODE_ENV;
+  try {
+    fn();
+  } finally {
+    if (saved === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = saved;
+  }
+}
+
+test("indeterminate env + wildcard CORS warns once (constructs, does not throw)", () => {
+  _resetIndeterminateEnvWarningForTests();
+  withNoNodeEnv(() => {
+    const { logger, envWarns } = captureLogger();
+    // No env option + no NODE_ENV => indeterminate. The production guard would
+    // refuse a wildcard CORS origin; here it must construct but warn instead.
+    const app = new App({ logger });
+    assert.doesNotThrow(() => app.use(cors({ origin: "*" })));
+    assert.equal(envWarns().length, 1, "should warn exactly once");
+    assert.match(envWarns()[0]!.msg, /indeterminate/);
+    assert.match(envWarns()[0]!.msg, /env: "production"/);
+
+    // Once-per-process: a second risky app must not re-warn.
+    const app2 = new App({ logger });
+    app2.use(cors({ origin: "*" }));
+    assert.equal(envWarns().length, 1, "once-per-process");
+  });
+});
+
+test("explicit env: development + wildcard CORS does NOT warn (env is known)", () => {
+  _resetIndeterminateEnvWarningForTests();
+  withNoNodeEnv(() => {
+    const { logger, envWarns } = captureLogger();
+    const app = new App({ logger, env: "development" });
+    app.use(cors({ origin: "*" }));
+    assert.equal(envWarns().length, 0);
+  });
+});
+
+test("indeterminate env + safe CORS allowlist does NOT warn (no risky config)", () => {
+  _resetIndeterminateEnvWarningForTests();
+  withNoNodeEnv(() => {
+    const { logger, envWarns } = captureLogger();
+    const app = new App({ logger });
+    app.use(cors({ origin: ["https://app.example.com"] }));
+    assert.equal(envWarns().length, 0);
+  });
 });
