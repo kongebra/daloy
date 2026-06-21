@@ -258,7 +258,7 @@ export default function HomePage() {
               style={{ animationDelay: "120ms" }}
             >
               Most backend code is now AI-written and shipped before anyone
-              reviews it. DaloyJS makes the safe path the default: a
+              reviews it. DaloyJS makes the safe path the easy one: a
               secure-by-default runtime, blocked install scripts,
               source-verified lockfiles, a zero-runtime-dependency core, and an
               optional hardened GitHub Actions bundle for teams on GitHub.
