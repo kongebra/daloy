@@ -41,6 +41,16 @@ export const TRACING_SPAN_STATUS_OK = 1;
 /** OpenTelemetry `SpanStatusCode.ERROR`. */
 export const TRACING_SPAN_STATUS_ERROR = 2;
 
+/**
+ * HTTP methods recognized by the OTel HTTP semantic conventions. Any other
+ * method is recorded as `_OTHER` on `http.request.method`, with the raw value
+ * preserved on `http.request.method_original` — this caps method cardinality
+ * and prevents a hostile client from minting unbounded metric/trace series.
+ */
+const KNOWN_HTTP_METHODS = new Set([
+  "CONNECT", "DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT", "TRACE",
+]);
+
 /** Attribute value accepted by OTel `Span.setAttribute`. */
 export type TracingAttributeValue = string | number | boolean | string[] | number[] | boolean[];
 
@@ -57,6 +67,8 @@ export interface TracingSpan {
   setStatus(status: { code: number; message?: string }): void;
   recordException?(err: unknown): void;
   end(endTime?: number): void;
+  /** OTel `Span.updateName`. Optional: tracers without it keep the creation-time name. */
+  updateName?(name: string): void;
 }
 
 /** Options passed to {@link TracingTracer.startSpan}. */
@@ -101,6 +113,13 @@ export interface OtelTracingOptions {
    * Default: `"otelSpan"`.
    */
   stateKey?: string;
+  /**
+   * Map the raw URL query string (without the leading `?`) to a value recorded
+   * on `url.query`, or `undefined` to record nothing. Default: query is OMITTED
+   * entirely — query strings routinely carry tokens/PII, so daloy does not put
+   * them on spans unless you opt in with a redactor.
+   */
+  redactQuery?: (search: string) => string | undefined;
 }
 
 interface TracingEntry {
@@ -111,8 +130,7 @@ interface TracingEntry {
 
 const REQUEST_TO_ENTRY: WeakMap<Request, TracingEntry> = new WeakMap();
 
-function defaultSpanName(req: Request, url: URL | undefined): string {
-  const method = req.method.toUpperCase();
+function defaultSpanName(req: Request, url: URL | undefined, method: string): string {
   const path = url ? url.pathname : "/";
   return `${method} ${path}`;
 }
@@ -155,10 +173,12 @@ export function otelTracing(opts: OtelTracingOptions): Hooks {
     if (existing) return existing;
 
     const url = safeParseUrl(req.url);
-    const method = req.method.toUpperCase();
-    const name = opts.spanName ? opts.spanName(req) : defaultSpanName(req, url);
+    const rawMethod = req.method.toUpperCase();
+    const method = KNOWN_HTTP_METHODS.has(rawMethod) ? rawMethod : "_OTHER";
+    const name = opts.spanName ? opts.spanName(req) : defaultSpanName(req, url, method);
 
     const attrs: TracingAttributes = { "http.request.method": method };
+    if (method === "_OTHER") attrs["http.request.method_original"] = rawMethod;
     if (url) {
       attrs["url.path"] = url.pathname;
       attrs["url.scheme"] = url.protocol.replace(/:$/, "");
@@ -167,7 +187,10 @@ export function otelTracing(opts: OtelTracingOptions): Hooks {
       // `url.hostname`/`url.port` rather than `url.host` (which concatenates them).
       if (url.hostname) attrs["server.address"] = url.hostname;
       if (url.port) attrs["server.port"] = Number(url.port);
-      if (url.search) attrs["url.query"] = url.search.replace(/^\?/, "");
+      if (url.search && opts.redactQuery) {
+        const q = opts.redactQuery(url.search.replace(/^\?/, ""));
+        if (q !== undefined) attrs["url.query"] = q;
+      }
     }
     const ua = req.headers.get("user-agent");
     if (ua) attrs["user_agent.original"] = ua;
@@ -194,6 +217,17 @@ export function otelTracing(opts: OtelTracingOptions): Hooks {
     beforeHandle(ctx) {
       const entry = startEntry(ctx.request);
       (ctx.state as Record<string, unknown>)[stateKey] = entry.span;
+      const route = (ctx.state as Record<string, unknown>).route;
+      if (typeof route === "string" && route.length > 0) {
+        entry.span.setAttribute("http.route", route);
+        // Only rename when no custom spanName override is in use — the caller
+        // chose their own name and we must not clobber it.
+        if (!opts.spanName) {
+          const method = ctx.request.method.toUpperCase();
+          const normalized = KNOWN_HTTP_METHODS.has(method) ? method : "_OTHER";
+          entry.span.updateName?.(`${normalized} ${route}`);
+        }
+      }
     },
     onError(err, ctx) {
       if (!ctx) return;
@@ -202,8 +236,10 @@ export function otelTracing(opts: OtelTracingOptions): Hooks {
       entry.errored = true;
       if (err instanceof Error) {
         entry.span.recordException?.(err);
+        entry.span.setAttribute("error.type", err.constructor?.name ?? "_OTHER");
         entry.span.setStatus({ code: TRACING_SPAN_STATUS_ERROR, message: err.message });
       } else {
+        entry.span.setAttribute("error.type", "_OTHER");
         entry.span.setStatus({ code: TRACING_SPAN_STATUS_ERROR });
       }
     },
@@ -215,6 +251,7 @@ export function otelTracing(opts: OtelTracingOptions): Hooks {
       const extra = opts.attributesFromResponse?.(res);
       if (extra) Object.assign(attrs, extra);
       if (res.status >= 500 && !entry.errored) {
+        entry.span.setAttribute("error.type", String(res.status));
         entry.span.setStatus({ code: TRACING_SPAN_STATUS_ERROR });
       }
       endOnce(entry, attrs);

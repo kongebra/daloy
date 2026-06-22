@@ -6,6 +6,7 @@ import {
   otelTracing,
   TRACING_SPAN_KIND_SERVER,
   TRACING_SPAN_STATUS_ERROR,
+  TRACING_SPAN_STATUS_UNSET,
   type Hooks,
   type TracingAttributeValue,
   type TracingSpan,
@@ -24,7 +25,12 @@ interface RecordedSpan {
   endCount: number;
 }
 
-function makeFakeTracer(): { tracer: TracingTracer; spans: RecordedSpan[] } {
+interface MakeFakeTracerOptions {
+  /** When true, the span will not have an `updateName` method. */
+  omitUpdateName?: boolean;
+}
+
+function makeFakeTracer(opts: MakeFakeTracerOptions = {}): { tracer: TracingTracer; spans: RecordedSpan[] } {
   const spans: RecordedSpan[] = [];
   const tracer: TracingTracer = {
     startSpan(name, options, context) {
@@ -55,6 +61,11 @@ function makeFakeTracer(): { tracer: TracingTracer; spans: RecordedSpan[] } {
           recorded.ended = true;
           recorded.endCount += 1;
         },
+        ...(opts.omitUpdateName ? {} : {
+          updateName(n: string) {
+            recorded.name = n;
+          },
+        }),
       };
       spans.push(recorded);
       return span;
@@ -106,7 +117,8 @@ test("otelTracing starts a SERVER span with HTTP semantic-convention attributes"
   assert.equal(span.attributes["url.path"], "/ok");
   assert.equal(span.attributes["url.scheme"], "http");
   assert.equal(span.attributes["server.address"], "api.test.local");
-  assert.equal(span.attributes["url.query"], "x=1");
+  // url.query is omitted by default (secure-by-default: query strings carry tokens/PII).
+  assert.equal("url.query" in span.attributes, false);
   assert.equal(span.attributes["user_agent.original"], "vitest/1.0");
   assert.equal(span.attributes["http.response.status_code"], 200);
   assert.equal(span.ended, true);
@@ -197,7 +209,8 @@ test("otelTracing traces unmatched requests through the error response", async (
   assert.equal(spans.length, 1);
   const span = spans[0]!;
   assert.equal(span.name, "GET /missing");
-  assert.equal(span.attributes["url.query"], "debug=1");
+  // url.query is omitted by default (secure-by-default).
+  assert.equal("url.query" in span.attributes, false);
   assert.equal(span.attributes["http.response.status_code"], 404);
   assert.equal(span.ended, true);
   assert.equal(span.endCount, 1);
@@ -406,4 +419,76 @@ test("operationId is undefined (not empty/null) when the route declares none", a
   });
   await app.fetch(new Request("http://x/health"));
   assert.equal(op, undefined);
+});
+
+// ─── semconv Task 2 tests ────────────────────────────────────────────────────
+
+test("span carries http.route and is renamed to {METHOD} {route}", async () => {
+  const { tracer, spans } = makeFakeTracer();
+  const app = new App({ hooks: otelTracing({ tracer }) });
+  app.route({ method: "GET", path: "/books/:id", responses: { 200: { description: "ok" } }, handler: () => ({ status: 200 as const, body: undefined }) });
+  await app.fetch(new Request("http://x/books/42"));
+  assert.equal(spans[0]!.attributes["http.route"], "/books/:id");
+  assert.equal(spans[0]!.name, "GET /books/:id");
+});
+
+test("unknown HTTP method is normalized to _OTHER with method_original", async () => {
+  const { tracer, spans } = makeFakeTracer();
+  const app = new App({ hooks: otelTracing({ tracer }) });
+  app.route({ method: "GET", path: "/x", responses: { 200: { description: "ok" } }, handler: () => ({ status: 200 as const, body: undefined }) });
+  // dispatch a non-standard method directly through the tracing hook path:
+  await app.fetch(new Request("http://x/x", { method: "PROPFIND" }));
+  assert.equal(spans[0]!.attributes["http.request.method"], "_OTHER");
+  assert.equal(spans[0]!.attributes["http.request.method_original"], "PROPFIND");
+});
+
+test("url query is omitted from the span by default (no secret leak)", async () => {
+  const { tracer, spans } = makeFakeTracer();
+  const app = new App({ hooks: otelTracing({ tracer }) });
+  app.route({ method: "GET", path: "/x", responses: { 200: { description: "ok" } }, handler: () => ({ status: 200 as const, body: undefined }) });
+  await app.fetch(new Request("http://x/x?token=secret"));
+  assert.equal("url.query" in spans[0]!.attributes, false);
+});
+
+test("redactQuery opts a sanitized query back in", async () => {
+  const { tracer, spans } = makeFakeTracer();
+  const app = new App({ hooks: otelTracing({ tracer, redactQuery: () => "[redacted]" }) });
+  app.route({ method: "GET", path: "/x", responses: { 200: { description: "ok" } }, handler: () => ({ status: 200 as const, body: undefined }) });
+  await app.fetch(new Request("http://x/x?token=secret"));
+  assert.equal(spans[0]!.attributes["url.query"], "[redacted]");
+});
+
+test("5xx without thrown error sets error.type to the status string", async () => {
+  const { tracer, spans } = makeFakeTracer();
+  const app = new App({ hooks: otelTracing({ tracer }) });
+  app.route({ method: "GET", path: "/x", responses: { 503: { description: "down" } }, handler: () => ({ status: 503 as const, body: undefined }) });
+  await app.fetch(new Request("http://x/x"));
+  assert.equal(spans[0]!.status!.code, TRACING_SPAN_STATUS_ERROR);
+  assert.equal(spans[0]!.attributes["error.type"], "503");
+});
+
+test("thrown error sets error.type to the error class name", async () => {
+  const { tracer, spans } = makeFakeTracer();
+  const app = new App({ hooks: otelTracing({ tracer }) });
+  app.route({ method: "GET", path: "/x", responses: { 500: { description: "err" } }, handler: () => { throw new TypeError("boom"); } });
+  await app.fetch(new Request("http://x/x"));
+  assert.equal(spans[0]!.attributes["error.type"], "TypeError");
+});
+
+test("4xx leaves span status UNSET (regression guard)", async () => {
+  const { tracer, spans } = makeFakeTracer();
+  const app = new App({ hooks: otelTracing({ tracer }) });
+  app.route({ method: "GET", path: "/x", responses: { 404: { description: "not found" } }, handler: () => ({ status: 404 as const, body: undefined }) });
+  await app.fetch(new Request("http://x/x"));
+  assert.equal(spans[0]!.status?.code ?? TRACING_SPAN_STATUS_UNSET, TRACING_SPAN_STATUS_UNSET);
+});
+
+test("tracer whose span lacks updateName() does not throw", async () => {
+  const { tracer, spans } = makeFakeTracer({ omitUpdateName: true });
+  const app = new App({ hooks: otelTracing({ tracer }) });
+  app.route({ method: "GET", path: "/books/:id", responses: { 200: { description: "ok" } }, handler: () => ({ status: 200 as const, body: undefined }) });
+  await app.fetch(new Request("http://x/books/42"));
+  assert.equal(spans[0]!.attributes["http.route"], "/books/:id"); // attr still set
+  // name stays as the creation-time path-based name since updateName is not available
+  assert.equal(spans[0]!.name, "GET /books/42");
 });
