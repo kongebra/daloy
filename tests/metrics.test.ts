@@ -219,7 +219,7 @@ test("httpMetrics exclude predicate skips instrumentation but still balances in-
   assert.match(out, /\ndaloy_http_requests_in_flight 0\n/);
 });
 
-test("default route label uses route template; raw-path fallback cap collapses overflow to <other>", async () => {
+test("default route label uses template for matched routes; raw paths are never used as labels", async () => {
   // Matched routes use ctx.state.route (the template), so cardinality is
   // inherently bounded — both /a/1 and /a/2 collapse to the same label /a/:id.
   const reg = new MetricsRegistry();
@@ -238,6 +238,41 @@ test("default route label uses route template; raw-path fallback cap collapses o
   assert.match(out, /route="\/a\/:id"/);
   assert.doesNotMatch(out, /route="\/a\/1"/);
   assert.doesNotMatch(out, /route="\/a\/2"/);
+});
+
+test("maxRouteCardinality cap collapses overflow raw-path labels to <other>", async () => {
+  // The raw-path fallback is reached when ctx.state.route is absent/empty.
+  // We clear it in beforeHandle so both routes go through the pathname-based
+  // cap logic instead of short-circuiting to the template.
+  // With maxRouteCardinality:1 the first distinct path is admitted; the second
+  // hits the cap and must render as route="<other>".
+  const reg = new MetricsRegistry();
+  const app = new App({ env: "development" });
+  app.use(httpMetrics({ registry: reg, maxRouteCardinality: 1 }));
+  const clearRoute = { beforeHandle: (ctx: any) => { ctx.state.route = ""; } };
+  app.route({
+    method: "GET",
+    path: "/cap-first",
+    hooks: clearRoute,
+    responses: { 200: { description: "ok" } },
+    handler: () => ({ status: 200 as const, body: {} }),
+  });
+  app.route({
+    method: "GET",
+    path: "/cap-second",
+    hooks: clearRoute,
+    responses: { 200: { description: "ok" } },
+    handler: () => ({ status: 200 as const, body: {} }),
+  });
+  // First request: /cap-first is added to seenRoutes (size was 0 < 1).
+  await app.fetch(new Request("http://x/cap-first"));
+  // Second request: seenRoutes.size === 1 >= maxRouteCardinality(1) → "<other>".
+  await app.fetch(new Request("http://x/cap-second"));
+  const out = reg.render();
+  // The first path was admitted before the cap was reached.
+  assert.match(out, /route="\/cap-first"/);
+  // The second path must have collapsed to the <other> sentinel (literal angle brackets).
+  assert.match(out, /route="<other>"/);
 });
 
 test("httpMetrics default route label uses ctx.state.route template", async () => {
