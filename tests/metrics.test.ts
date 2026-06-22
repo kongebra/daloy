@@ -219,7 +219,9 @@ test("httpMetrics exclude predicate skips instrumentation but still balances in-
   assert.match(out, /\ndaloy_http_requests_in_flight 0\n/);
 });
 
-test("default route label cardinality collapses overflow to <other>", async () => {
+test("default route label uses route template; raw-path fallback cap collapses overflow to <other>", async () => {
+  // Matched routes use ctx.state.route (the template), so cardinality is
+  // inherently bounded — both /a/1 and /a/2 collapse to the same label /a/:id.
   const reg = new MetricsRegistry();
   const app = new App({ env: "development" });
   app.use(httpMetrics({ registry: reg, maxRouteCardinality: 1 }));
@@ -232,8 +234,27 @@ test("default route label cardinality collapses overflow to <other>", async () =
   await app.fetch(new Request("http://x/a/1"));
   await app.fetch(new Request("http://x/a/2"));
   const out = reg.render();
-  assert.match(out, /route="\/a\/1"/);
-  assert.match(out, /route="&lt;other&gt;"|route="<other>"/);
+  // Both requests use the template — raw paths are not labels.
+  assert.match(out, /route="\/a\/:id"/);
+  assert.doesNotMatch(out, /route="\/a\/1"/);
+  assert.doesNotMatch(out, /route="\/a\/2"/);
+});
+
+test("httpMetrics default route label uses ctx.state.route template", async () => {
+  const registry = new MetricsRegistry({ prefix: "" });
+  const app = new App({ env: "development" });
+  app.use(httpMetrics({ registry }));
+  app.route({
+    method: "GET",
+    path: "/books/:id",
+    responses: { 200: { description: "ok" } },
+    handler: () => ({ status: 200 as const, body: {} }),
+  });
+  await app.fetch(new Request("http://x/books/1"));
+  await app.fetch(new Request("http://x/books/2"));
+  const out = registry.render();
+  assert.match(out, /route="\/books\/:id"/);
+  assert.doesNotMatch(out, /route="\/books\/1"/); // raw path NOT used as label
 });
 
 // ---------- app.metrics() route ----------

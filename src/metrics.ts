@@ -445,15 +445,18 @@ export interface HttpMetricsOptions {
   registry: MetricsRegistry;
   /**
    * Resolve the low-cardinality `route` label from the request context.
-   * Strongly recommended: return the route **template** (e.g. `/books/:id`),
-   * not the raw path, to keep series cardinality bounded. When omitted the
-   * request pathname is used, capped by {@link HttpMetricsOptions.maxRouteCardinality}.
+   * When supplied, this resolver wins over all other strategies. Return the
+   * route **template** (e.g. `/books/:id`), not the raw path, to keep series
+   * cardinality bounded. When omitted, `ctx.state.route` (set by the router)
+   * is used when available; otherwise the raw request pathname is used, capped
+   * by {@link HttpMetricsOptions.maxRouteCardinality}.
    */
   route?: (ctx: BaseContext<any, any>) => string | undefined;
   /**
-   * Maximum distinct values for the default (pathname-derived) `route` label
-   * before further values collapse to `"<other>"`. Ignored when a custom
-   * {@link HttpMetricsOptions.route} resolver is supplied. Default `100`.
+   * Maximum distinct values for the raw-pathname fallback `route` label before
+   * further values collapse to `"<other>"`. Only applies when neither a custom
+   * {@link HttpMetricsOptions.route} resolver nor a `ctx.state.route` template
+   * is available. Default `100`.
    */
   maxRouteCardinality?: number;
   /** Skip instrumentation for matching request paths (e.g. the scrape route). */
@@ -502,6 +505,10 @@ export function httpMetrics(opts: HttpMetricsOptions): Hooks {
 
   const routeLabel = (ctx: BaseContext<any, any>): string => {
     if (opts.route) return opts.route(ctx) ?? "<unknown>";
+    // Prefer the matched low-cardinality route template set by the router
+    // (e.g. "/books/:id") over the raw request pathname.
+    const template = (ctx.state as Record<string, unknown>).route;
+    if (typeof template === "string" && template.length > 0) return template;
     let path = "/";
     try {
       path = new URL(ctx.request.url).pathname;
