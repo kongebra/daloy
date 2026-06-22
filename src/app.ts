@@ -3406,6 +3406,12 @@ export class App<
       const state = ctx.state as Record<string, unknown>;
       state.requestId = requestId;
       state.log = log;
+      // Expose the matched low-cardinality template + operationId so
+      // observability hooks (tracing http.route, metric route labels) read a
+      // first-class source instead of regex-reconstructing the path. Two
+      // string|undefined writes keep ctx.state's hidden class monomorphic.
+      state.route = def.path;
+      state.operationId = def.operationId;
       if (this.decorationsCount !== 0) Object.assign(state, this.decorations);
 
       if (allHooks.beforeHandle !== undefined) {
@@ -4193,7 +4199,8 @@ export function findRoutesMissingResponseBodySchema(
   const offending: Array<{ method: string; path: string; statuses: number[] }> = [];
   for (const route of routes) {
     const statuses: number[] = [];
-    const responses = route.responses as Record<number, { body?: unknown } | undefined>;
+    const responses = route.responses as Record<number, { body?: unknown } | undefined> | undefined;
+    if (!responses) continue;
     for (const key of Object.keys(responses)) {
       const status = Number(key);
       // Only successful responses can carry an over-exposing body, and 204/205

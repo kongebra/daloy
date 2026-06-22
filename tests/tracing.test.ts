@@ -376,3 +376,34 @@ test("otelTracing onSend ends the span exactly once even after onError already f
   const span = spans[0]!;
   assert.equal(span.endCount, 1);
 });
+
+test("dispatch exposes matched route template and operationId on ctx.state", async () => {
+  let seen: { route?: unknown; operationId?: unknown } = {};
+  const app = new App();
+  app.route({
+    method: "GET",
+    path: "/books/:id",
+    operationId: "getBook",
+    responses: { 200: { description: "ok" } },
+    handler: (ctx) => {
+      seen = { route: ctx.state.route, operationId: ctx.state.operationId };
+      return { status: 200 as const, body: { ok: true } } as any;
+    },
+  });
+  await app.fetch(new Request("http://x/books/42"));
+  assert.equal(seen.route, "/books/:id");
+  assert.equal(seen.operationId, "getBook");
+});
+
+test("operationId is undefined (not empty/null) when the route declares none", async () => {
+  let op: unknown = "sentinel";
+  const app = new App();
+  app.route({
+    method: "GET",
+    path: "/health",
+    responses: { 200: { description: "ok" } },
+    handler: (ctx) => { op = ctx.state.operationId; return { status: 200 as const, body: { ok: true } } as any; },
+  });
+  await app.fetch(new Request("http://x/health"));
+  assert.equal(op, undefined);
+});

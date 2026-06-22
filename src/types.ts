@@ -233,7 +233,22 @@ export interface AuthSpec {
  *
  * @since 0.1.0
  */
-export interface AppState {}
+export interface AppState {
+  /**
+   * Matched low-cardinality route template (e.g. `"/books/:id"`), set by the
+   * framework before any hook runs. Use this as the OTel `http.route` attribute
+   * and as metric route labels — never the raw request path, which is
+   * high-cardinality and a metrics-cardinality DoS vector. `undefined` for
+   * unmatched requests (404 throws before this is set).
+   * @since (next)
+   */
+  route?: string;
+  /**
+   * The matched route's `operationId`, when declared; otherwise `undefined`.
+   * @since (next)
+   */
+  operationId?: string;
+}
 
 /**
  * Scheme-aware auth contract. Every shipped first-party
