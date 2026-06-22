@@ -1,0 +1,13 @@
+# Build context for .clusterfuzzlite/Dockerfile (the only Dockerfile that uses
+# the repo root as context). The fuzz build only needs src/, the root tsconfig*
+# / package.json, and .clusterfuzzlite/. Excluding the rest keeps the context
+# small and mirrors what CI sees from a clean checkout (no node_modules).
+.git
+node_modules
+**/node_modules
+website
+dist
+coverage
+build-out
+.next
+*.log

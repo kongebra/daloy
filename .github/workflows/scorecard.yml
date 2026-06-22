@@ -41,6 +41,13 @@ jobs:
         with:
           results_file: results.sarif
           results_format: sarif
+          # A read-only admin PAT lets Scorecard fully evaluate Branch-Protection
+          # (the default GITHUB_TOKEN cannot read all protection settings). Create
+          # a fine-grained PAT with Administration: read + Metadata: read and store
+          # it as the `SCORECARD_TOKEN` repo secret. Falls back to GITHUB_TOKEN when
+          # the secret is absent, so this change is safe to merge before the secret
+          # exists (Branch-Protection just stays under-reported until then).
+          repo_token: ${{ secrets.SCORECARD_TOKEN || secrets.GITHUB_TOKEN }}
           publish_results: true
 
       - name: Upload to code-scanning

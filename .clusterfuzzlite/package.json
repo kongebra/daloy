@@ -1,0 +1,5 @@
+{
+  "private": true,
+  "type": "commonjs",
+  "description": "Forces the fuzz targets in this directory to be treated as CommonJS so they can require('@jazzer.js/core') even though @daloyjs/core itself is a pure-ESM package. Not part of the pnpm workspace or any published artifact."
+}
