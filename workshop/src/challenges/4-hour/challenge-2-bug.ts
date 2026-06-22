@@ -37,7 +37,7 @@ const app = new App({
 });
 
 // REGRESSION #3: secureHeaders removed entirely. "It was breaking the local CORS test."
-app.use(cors({ origin: "*", credentials: true })); // REGRESSION #4: wildcard + credentials
+app.use(cors({ origin: () => true, credentials: true })); // REGRESSION #4: predicate reflects ANY origin + credentials
 app.use(rateLimit({ windowMs: 60_000, max: 1_000_000 })); // effectively disabled
 
 app.route({

@@ -24,7 +24,7 @@ This runs `scripts/dump-openapi.ts`, which `fetch`es `http://localhost:3000/open
 pnpm gen:client
 ```
 
-This runs `@hey-api/openapi-ts` against the config in [`openapi-ts.config.ts`](../../../openapi-ts.config.ts). Output lands in `generated/client/`.
+This runs `@hey-api/openapi-ts` against the config in [`openapi-ts.config.ts`](../../../../openapi-ts.config.ts). Output lands in `generated/client/`.
 
 ## Step 4 — Use it
 

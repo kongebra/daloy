@@ -12,7 +12,7 @@ A "bad PR" landed in `challenge-2-bug.ts`. It has **7 security regressions** (pl
 
 1. The body limit is now in the megabytes — what attack does that enable?
 2. One critical middleware was deleted. What kind of header-related attack does that re-enable?
-3. The CORS config has a wildcard and credentials. Why is that broken by spec?
+3. The CORS config reflects every origin back with credentials enabled. Why is that as dangerous as `*` + credentials — and why does reflecting the origin slip past the browser rule that forbids a literal `*` alongside credentials?
 4. The JWT verifier doesn't pass an `algorithms` allowlist. What attack family does that re-enable?
 5. The admin request body lost `.strict()`. What does an attacker put in the extra fields?
 6. The admin token comparison uses `===`. What does that leak?

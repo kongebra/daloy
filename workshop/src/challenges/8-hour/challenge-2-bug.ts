@@ -33,7 +33,7 @@ const app = new App({
 
 app.use(requestId());
 // 🐛 2: no secureHeaders middleware at all.
-app.use(cors({ origin: "*", credentials: true }));                   // 🐛 3
+app.use(cors({ origin: () => true, credentials: true }));            // 🐛 3 (reflects ANY origin + credentials)
 app.use(rateLimit({ windowMs: 60_000, max: 60 }));
 
 const jwtAuth: Hooks = {
