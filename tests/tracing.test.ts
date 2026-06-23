@@ -449,6 +449,19 @@ test("unknown HTTP method is normalized to _OTHER with method_original", async (
   assert.equal(spans[0]!.attributes["http.request.method_original"], "PROPFIND");
 });
 
+test("method_original is length-capped so a giant method cannot bloat a span", async () => {
+  const { tracer, spans } = makeFakeTracer();
+  const app = new App({ hooks: otelTracing({ tracer }) });
+  app.route({ method: "GET", path: "/x", responses: { 200: { description: "ok" } }, handler: () => ({ status: 200 as const, body: undefined }) });
+  // A hostile client can send arbitrarily long token-charset methods; the raw
+  // value is recorded on method_original capped to 16 chars (a real method is <=7).
+  const giant = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"; // 26 chars
+  await app.fetch(new Request("http://x/x", { method: giant }));
+  assert.equal(spans[0]!.attributes["http.request.method"], "_OTHER");
+  assert.equal(spans[0]!.attributes["http.request.method_original"], giant.slice(0, 16));
+  assert.equal((spans[0]!.attributes["http.request.method_original"] as string).length, 16);
+});
+
 test("url query is omitted from the span by default (no secret leak)", async () => {
   const { tracer, spans } = makeFakeTracer();
   const app = new App({ hooks: otelTracing({ tracer }) });
